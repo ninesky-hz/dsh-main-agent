@@ -12,6 +12,22 @@ steering, a mid-turn kill + tighter respawn, the silent-question → recorded-as
 flow, deliverable verification (it caught its own buggy link-checker and re-ran it),
 and full process-restart resume. Grader scores: m0–m5 and m7 at 100%.
 
+## dsh 0.2.0 compatibility
+
+This repository (a fork at `n-sky/dsh-supervisor`) carries the port to **dsh 0.2.0-rc.2**:
+
+- settings follow the per-row `Config` model — `export const Config` with `.volatile()` fields,
+  no `installSettingsSection` / `settingsNamespace` (both removed upstream); values are live
+  references read through `config.*.get()`, and edits are picked up from `loader/volatile-update`;
+- the settings card registers into the **`plugins.item`** slot through `configForms`
+  (`ctx.configForms.get(<entry id>)` + `whileServed` + `scope.mutate`), replacing `settingsScope`
+  and the old `settings.plugin.item` slot;
+- worker messages use `subagents.sendMessage` (the `followup` alias is gone), and worker
+  activity is read as `running` / `inactive`.
+
+Verified against dsh `0.2.0-rc.2`: 36/36 unit tests, a composed `--dump-config` of a full profile,
+and a live boot of the same profile whose `/supervisor/models` route answers `200`.
+
 ## Run the local course on a new PC
 
 Install Git and Python 3, clone this repository, then run its course launcher:
