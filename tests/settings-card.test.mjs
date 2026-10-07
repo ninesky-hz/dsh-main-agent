@@ -74,20 +74,24 @@ async function renderSettingsCard(value) {
     async set() {},
   }
   plugin.apply({
+    effect(callback) { return callback() },
     slots: {
       inject(_name, install) { install() },
       register(options, component) {
-        if (options.name === 'settings.plugin.item') SettingsCard = component
+        if (options.name === 'plugins.item') SettingsCard = component
         return () => {}
       },
     },
-    settingsScope: { bind() { return scope } },
+    configForms: {
+      get() { return scope },
+      whileServed(_namespaces, install) { return install() },
+    },
   })
 
   const render = () => {
     hook = 0
     effects = []
-    return SettingsCard()
+    return SettingsCard({ view: 'page' })
   }
   render()
   const pendingEffects = [...effects]

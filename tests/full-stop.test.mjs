@@ -201,6 +201,7 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   })
   let FeedView
   plugin.apply({
+    effect(callback) { return callback() },
     slots: {
       inject(_name, install) { install() },
       register(options, component) {
@@ -208,7 +209,12 @@ test('Feed stops the root supervisor from a worker view and removes the button',
         return () => {}
       },
     },
-    settingsScope: { bind() { return {} } },
+    configForms: {
+      get() {
+        return { subscribe() { return () => {} }, getSnapshot() { return { value: {}, writable: false } } }
+      },
+      whileServed(_namespaces, install) { return install() },
+    },
   })
 
   const byId = {
