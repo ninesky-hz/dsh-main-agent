@@ -347,7 +347,7 @@
     # Shipped send_message queues next-turn and cannot redirect a running
     # worker. This row is the same control pair, except a running direct
     # child is steered at its next step (lib/control.js); idle, waiting,
-    # and cold-resume delivery stays on the native ctx.subagents.followup.
+    # and cold-resume delivery stays on the native ctx.subagents.sendMessage.
     - id: tool-subagent-control
       name: dsh-supervisor/control
 

@@ -28,6 +28,10 @@ This repository (a fork at `n-sky/dsh-supervisor`) carries the port to **dsh 0.2
 Verified against dsh `0.2.0-rc.2`: 36/36 unit tests, a composed `--dump-config` of a full profile,
 and a live boot of the same profile whose `/supervisor/models` route answers `200`.
 
+`DESIGN.md`, `IMPLEMENTATION_PLAN.md` and the `tutorial/` course are kept as the original design
+record: where they name `installSettingsSection`, `settingsNamespace`, `followup`,
+`settings.plugin.item`, or a worker activity of `active`, read them through the table above.
+
 ## Run the local course on a new PC
 
 Install Git and Python 3, clone this repository, then run its course launcher:
