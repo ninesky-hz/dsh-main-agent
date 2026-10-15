@@ -1,33 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>9 · Milestone 4: workers — Supervisor on DSH</title>
+<title>第 9 章 · 里程碑 4：worker — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 9</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 9 章</span>
   <span class="spacer"></span>
   <a href="08-schedule.html">←</a>
   <a href="10-loop.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 4</p>
-  <h1>Workers: spawn, steer, kill, report</h1>
-  <p class="lede">The heart of the harness for your purposes: continuable background subagents.
-  This chapter explains the machinery precisely — then you exercise every verb by hand, which is
-  the design’s “M0 smoke test” and the foundation the supervision loop stands on.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 4</p>
+  <h1>worker：派生、纠偏、终止、报告</h1>
+  <p class="lede">对你而言 harness 的核心：可续用的后台 subagent。
+  本章精确讲解这套机器 —— 然后你亲手跑一遍每个动作，这既是
+  设计里的“M0 冒烟测试”，也是监督循环赖以立足的地基。</p>
 </header>
 
-<h2>What a continuable child actually is</h2>
-<p>The subagent subsystem doc defines it in one breath worth reading twice:</p>
+<h2>可续用的子级究竟是什么</h2>
+<p>subagent 子系统文档用一句话定义了它，值得读两遍：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md (lines 116–124, abridged)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md （第 116–124 行，节选）</figcaption>
 <pre><code>A continuable background subagent is one durable child Session with at most one
 process-local Activation, the period when a reconstructed child Agent is
 resident. An Activation is not a request, result, cancellation, or Task: it may
@@ -39,42 +39,42 @@ persisted Session
        -&gt; Agent inbox as the only turn FIFO
        -&gt; zero or more owned child Activations</code></pre>
 </figure>
-<p>Unpacked for a supervisor:</p>
+<p>把它拆开给监督者看：</p>
 <ul>
-  <li><strong>The child is a real session</strong> — a durable logical JSONL log like any other, visible in
-      the web sidebar and inspectable with <code>zstd -dc</code> on disk. Not a throwaway task.</li>
-  <li><strong>“Running” is temporary residency.</strong> When the child has turns to execute, an Activation
-      exists; when it finishes and owns nothing, it settles and unloads. The durable session stays.</li>
-  <li><strong>Cold resume is free.</strong> Messaging a child whose Activation is gone resurrects it from its
-      persisted session — days later, across process restarts. Your workers are immortal until you
-      choose otherwise.</li>
-  <li><strong>One inbox, with a deliberate steering fast path.</strong> Initial tasks and idle/cold
-      follow-ups use the native FIFO. For a running direct child, this bundle's control frontend uses
-      the harness's built-in <code>Agent.steer()</code>, so the correction becomes input to the next model
-      step inside the current turn.</li>
+  <li><strong>子级是一个真实的会话</strong> —— 一份和其它会话一样的持久逻辑 JSONL 日志，能在
+      web 侧栏看到，也能在磁盘上用 <code>zstd -dc</code> 检视。不是用完即弃的任务。</li>
+  <li><strong>“运行中”只是临时的驻留。</strong>当子级有回合要执行时，就存在一个 Activation；
+      当它完成且名下没有任何待办时，它收敛并卸载。持久会话仍然留着。</li>
+  <li><strong>冷恢复是免费的。</strong>给一个 Activation 已消失的子级发消息，会从它持久化的
+      会话里把它复活 —— 哪怕是几天后、跨进程重启。除非你主动选择，你的 worker
+      是不朽的。</li>
+  <li><strong>一个收件箱，外加一条刻意的纠偏快车道。</strong>初始任务与空闲/冷
+      后续都走原生 FIFO。对一个正在运行的直接子级，本 bundle 的控制前端使用
+      harness 内置的 <code>Agent.steer()</code>，于是这条纠正会成为当前回合里下一个模型
+      步骤的输入。</li>
 </ul>
 
-<h2>The five verbs and their exact semantics</h2>
+<h2>五个动作及其精确语义</h2>
 
-<h3>1 · Spawn</h3>
+<h3>1 · 派生（spawn）</h3>
 <p>
-  The plugin-owned <code>subagent</code> tool takes
-  <code>{ description, prompt, model, run_in_background }</code>. <code>model</code> is required and must be
-  one exact choice from the <strong>user-owned Settings → Plugins allowlist</strong>. A fresh install
-  enables <code>runtime/current</code>, which explicitly resolves the provider/model captured for the
-  calling request; fixed choices are exact <code>provider/model-id</code> routes. Fixed entries render
-  with native input modalities (<code>[text]</code> / <code>[text,image]</code>), so the supervisor can
-  route image work to a vision-capable worker the user approved. Empty settings disable spawning; no
-  route is inherited implicitly. Each allowed model route owns its effort setting:
-  <code>provider/default</code> omits an explicit effort, while fixed effort ids must be advertised by that
-  selected model. Even <code>runtime/current</code> follows only the main request's model route and never its
-  effort. The tool result displays the effective route, modalities,
-  and effort. The plugin always forwards the resolved route through native
-  <code>SubagentRequest.agentOptions</code>. In background mode it calls
-  <code>ctx.subagents.startContinuable()</code>:
+  插件自有的 <code>subagent</code> 工具接受
+  <code>{ description, prompt, model, run_in_background }</code>。<code>model</code> 是必填的，且必须是
+  <strong>用户所有的 Settings → Plugins 白名单</strong>里的一个精确选项。全新安装会
+  启用 <code>runtime/current</code>，它显式解析本次调用请求所捕获的 provider/model；
+  固定选项则是精确的 <code>provider/model-id</code> 路由。固定条目会连同原生输入
+  模态一同呈现（<code>[text]</code> / <code>[text,image]</code>），因此监督者可以把
+  图像类工作路由给用户已批准的、具备视觉能力的 worker。设置为空则禁用派生；
+  没有任何路由会被隐式继承。每条被允许的模型路由都有自己的推理强度设置：
+  <code>provider/default</code> 不发送显式推理强度，而固定推理强度 id 必须由所选模型
+  自我声明。即便是 <code>runtime/current</code>，也只跟随主请求的模型路由，绝不跟随其
+  推理强度。工具结果会显示生效的路由、输入模态
+  与推理强度。插件始终通过原生
+  <code>SubagentRequest.agentOptions</code> 转发解析后的路由。在后台模式下它调用
+  <code>ctx.subagents.startContinuable()</code>：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md (Cordis API section)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md （Cordis API 一节）</figcaption>
 <pre><code>/**
  * Establish one durable continuable child and deliver its initial prompt.
  * Resolves when the child's inbox accepts that prompt, without waiting for
@@ -84,21 +84,21 @@ persisted Session
 async startContinuable(spec: ContinuableStartSpec): Promise&lt;ContinuableStart&gt;</code></pre>
 </figure>
 <p>
-  Several facts ride along. The child records your supervisor as <code>parentSession</code> in its header
-  (lineage is durable). The row’s <code>persona</code> is registered as the child’s own persona and even
-  snapshotted in its descriptor for cold resume (<code>docs/subsystems/subagent.md</code>: “a
+  还有几个事实一并生效。子级会在自己的头部把监督者记为 <code>parentSession</code>
+  （血统是持久的）。该行的 <code>persona</code> 会注册为子级自己的人格，甚至
+  快照进它的描述符以供冷恢复（<code>docs/subsystems/subagent.md</code>：“a
   <code>continuable</code> descriptor … additionally snapshots resolved child
-  <code>agentOptions.provider/model</code> and optional <code>persona</code>/<code>toolFilter</code>”). And the
-  plugin-owned <code>toolFilter</code> removes <code>ask_user_question</code>, while the child-scoped native
-  <code>report</code> tool remains available. Finally, the tool returns the child id <em>immediately</em> —
-  spawning never blocks on the work. When an explicit effort applies, the plugin reserves that id and
-  writes the effort into the child's first durable request header.
+  <code>agentOptions.provider/model</code> and optional <code>persona</code>/<code>toolFilter</code>”）。而
+  插件自有的 <code>toolFilter</code> 会移除 <code>ask_user_question</code>，而子级作用域的原生
+  <code>report</code> 工具仍然可用。最后，该工具<em>立刻</em>返回子级 id ——
+  派生从不为工作阻塞。当有显式推理强度生效时，插件会预留该 id，并
+  把这个推理强度写进子级第一条持久请求的头部。
 </p>
 
-<h3>2 · Steer — <code>send_message</code></h3>
-<p>The native delivery table still owns idle, waiting, and cold children:</p>
+<h3>2 · 纠偏（steer）—— <code>send_message</code></h3>
+<p>空闲、等待中与冷子级仍由原生投递表负责：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md (lines 128–135)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md （第 128–135 行）</figcaption>
 <pre><code>SubagentRuntime.followup() is the sole continuation-message operation, and
 routing depends only on Activation residency:
 
@@ -109,16 +109,16 @@ routing depends only on Activation residency:
 | no Activation    | cold-resume a new Activation      |</code></pre>
 </figure>
 <p>
-  The supervisor preset replaces only the model-facing control row. For a live, running direct child,
-  <code>dsh-supervisor/control</code> calls <code>Agent.steer()</code>, the same primitive used by the web
-  UI's steer action: the message joins at the <em>next model step</em> without waiting for the whole turn.
-  All other states fall through to native <code>followup()</code>. Use interrupt-then-send only when the
-  current turn itself must stop. Direct-parent authority is preserved.
+  监督者的 preset 只替换面向模型的那一行控制项。对一个活着的、正在运行的直接子级，
+  <code>dsh-supervisor/control</code> 调用 <code>Agent.steer()</code>，也就是 web
+  UI 的纠偏动作所用的同一个原语：消息在<em>下一个模型步骤</em>加入，不必等整个回合结束。
+  其它所有状态都回落到原生 <code>followup()</code>。只有当当前回合本身必须停下时，才用
+  先 interrupt 再 send。直接父级的权限被完整保留。
 </p>
 
-<h3>3 · Kill — <code>interrupt_agent</code> + silence</h3>
+<h3>3 · 终止（kill）—— <code>interrupt_agent</code> + 沉默</h3>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md (interrupt, abridged)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md （interrupt 部分，节选）</figcaption>
 <pre><code>interrupt(targetSessionId, authority): void
   // Fire-and-return: the cancel signal is issued before this returns, but the
   // target may keep running until it observes the signal. Unclaimed pending
@@ -127,26 +127,26 @@ routing depends only on Activation residency:
   // FIFO queue.</code></pre>
 </figure>
 <p>
-  There is deliberately no destroy. Kill = interrupt + never message again: an un-messaged child
-  runs no turns and burns zero tokens, while its session stays on disk for the post-mortem. “Kill”
-  in your changelog means exactly this pair of decisions.
+  这里刻意没有 destroy。Kill = interrupt + 永不再发消息：一个不再收到消息的子级
+  不再执行任何回合、消耗零 token，而它的会话留在磁盘上供事后剖析。“Kill”
+  在你的 changelog 里，指的就是这两个决定的组合。
 </p>
 
-<h3>4 · Report — the worker’s side</h3>
+<h3>4 · 报告（report）—— worker 那一侧</h3>
 <p>
-  Every continuable in-process child automatically gets a <code>report</code> tool — your preset didn’t
-  add it; the <em>host</em> row <code>tool-subagent-report</code> registers a continuable-child setup that
-  installs it in every child (<code>packages/bundle/base/cordis.patch.yml</code>, lines 331–333; the
-  cordis preset’s comments explain why that row must be host-plane). Delivery default is
-  <strong>wakeup</strong>: the parent gets a real turn. That is your blocked-question channel, and your
-  worker persona (chapter 6) already instructs workers to use it. The guarded spawn request also
-  denies the global <code>ask_user_question</code> tool in both schema and execution: a question opened
-  there would wait silently inside the child session and would not emit <code>subagent-report</code>.
+  每一个可续用的进程内子级都会自动获得 <code>report</code> 工具 —— 不是你的 preset
+  加的；而是 <em>host</em> 平面的 <code>tool-subagent-report</code> 行注册了一套 continuable-child 设置，
+  把它安装进每一个子级（<code>packages/bundle/base/cordis.patch.yml</code>，第 331–333 行；
+  cordis preset 的注释解释了为什么那一行必须位于宿主平面）。投递方式的默认值是
+  <strong>wakeup</strong>：父级会得到真实的一个回合。这就是你的「被阻塞问题」通道，而你的
+  worker 人格（第 6 章）已经要求 worker 使用它。这条受保护的派生请求还会在
+  schema 与执行两个层面拒绝全局 <code>ask_user_question</code> 工具：在那里打开的提问
+  只会在子级会话里静静等待，而且不会发出 <code>subagent-report</code>。
 </p>
 
-<h3>5 · The settle notice — the free wake</h3>
+<h3>5 · 收敛通知 —— 免费的唤醒</h3>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md (lines 212 &amp; 222–231, abridged)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/subsystems/subagent.md （第 212 与 222–231 行，节选）</figcaption>
 <pre><code>... when a resident Activation settles, it delivers one notice to the child's
 durable direct parent describing how that epoch ended and carrying its final
 assistant content. That delivery is unconditional for every child whose id a
@@ -160,134 +160,134 @@ interface SubagentSettledMessageSource {
 }</code></pre>
 </figure>
 <p>
-  Unconditional. Every worker you spawn will wake you exactly once when it finishes — with its final
-  message attached. The bundle enriches that same claimed notice from the child's durable final
-  <code>turn/end</code> when retries exhaust, producing text such as
-  <code>Terminal failure [QUOTA]: …</code>. Intermediate retryable failures remain silent; if a retry
-  succeeds, the notice is ordinary. The child remains resumable through <code>send_message</code>.
+  无条件。你派生的每个 worker 完成时都会恰好唤醒你一次 —— 并附上它的最终
+  消息。当重试耗尽时，bundle 会用子级持久的最终
+  <code>turn/end</code> 来充实这同一条被认领的通知，产生诸如
+  <code>Terminal failure [QUOTA]: …</code> 这样的文本。中间的可重试失败保持静默；如果某次重试
+  成功了，这条通知就是普通的。子级仍可通过 <code>send_message</code> 被恢复。
 </p>
 
-<h3>Bookkeeping — <code>list_agents</code></h3>
+<h3>记账 —— <code>list_agents</code></h3>
 <p>
-  Enumerates your children with status <code>running</code> / <code>idle</code> / <code>ready</code>
-  (<code>ready</code> = storage-only, resumable), reading durable state without waking anyone
-  (<code>docs/tool-catalog.md</code>, <code>list_agents</code>; service:
-  <code>listChildren()</code> in <code>subagent.md</code>). This is how the supervisor checks what drivers
-  are open and enforces the settings-owned worker cap. <strong>Running is not proof of progress.</strong>
-  A check-in must compare a report, artifact/log change, or completed step with the prior
-  <code>NOTES.md</code> checkpoint.
+  枚举你的子级，状态为 <code>running</code> / <code>idle</code> / <code>ready</code>
+  （<code>ready</code> = 仅存在于存储、可恢复），读取持久状态而不唤醒任何
+  人（<code>docs/tool-catalog.md</code>、<code>list_agents</code>；服务：
+  <code>subagent.md</code> 里的 <code>listChildren()</code>）。监督者就是这样检查有哪些驱动器
+  开着，并执行由设置掌控的 worker 上限。<strong>“运行中”不是有进展的证明。</strong>
+  一次巡检必须把一份报告、产物/日志变更或已完成的步骤，与先前的
+  <code>NOTES.md</code> 检查点做比对。
 </p>
 
-<h2>The task prompt: the supervisor’s half of the contract</h2>
+<h2>任务提示词：契约中属于监督者的那一半</h2>
 <p>
-  Native machinery delivers the message; <em>what</em> the message says is your design’s §7.2 structure,
-  now carried entirely in the spawn call (simplification S4 — no brief files). Roles are whatever the
-  mission needs — implementer, browser operator, and notably <strong>explorer</strong>: a worker whose entire
-  deliverable is a report (survey this repo, map this system), the supervisor’s long-range eyes when
-  its own quick reads aren’t enough. The persona you wrote in chapter 7 already mandates the
-  structure; here is the shape a good spawn looks like, for your test below:
+  原生机器负责投递消息；消息<em>写着什么</em>是你设计里第 7.2 节的结构，
+  如今完全由派生调用承载（简化项 S4 —— 不再有 brief 文件）。角色随任务
+  需要而定 —— 实现者、浏览器操作员，尤其还有 <strong>explorer</strong>：一种 worker，其全部
+  交付物就是一份报告（勘察这个仓库、测绘这个系统），当监督者自己快速阅读
+  不够用时，它就是监督者的远程眼睛。你在第 7 章写的人格已经强制要求这套
+  结构；下面是一次好的派生该有的形状，供你后面的测试使用：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>anatomy of a guarded subagent call (what the supervisor should compose)</figcaption>
-<pre><code>description: "researcher: count zh docs"
+<figcaption><span class="badge you">YOURS</span>一次受保护的 subagent 调用解剖（监督者应当组织成什么样）</figcaption>
+<pre><code>description: "researcher: 统计 zh 文档"
 
 prompt: |
-  # Role
-  You are a filesystem researcher.
+  # Role（角色）
+  你是一名文件系统调研员。
 
-  # Objective
-  Produce an exact count of files matching *.zh.md under
-  $HOME/src/deepseek-harness/docs, with a per-subdirectory breakdown.
+  # Objective（目标）
+  对 $HOME/src/deepseek-harness/docs 下所有匹配 *.zh.md 的文件给出
+  精确计数，并给出按子目录的分解。
 
-  # Scope
-  In: reading under that directory. Out: writing anywhere except your
-  outcome file; network; installing anything.
+  # Scope（范围）
+  In：只读该目录下的内容。Out：除了你的 outcome 文件，不写任何地方；
+  不联网；不安装任何东西。
 
-  # Context
-  The directory exists and is readable. Your workspace is $HOME/agi-lab.
+  # Context（背景）
+  该目录存在且可读。你的工作区是 $HOME/agi-lab。
 
-  # Protocol
-  - Blocked on info only your supervisor/user has → call report with the
-    precise question, then stop.
-  - Done → write outcome.md (did / verified / remaining) under
-    $HOME/agi-lab/.agi/subagents/&lt;your session id&gt;/ , then report a
-    one-paragraph summary.
+  # Protocol（协议）
+  - 被只有监督者/用户才掌握的信息阻塞 → 调用 report 给出准确的问题，
+    然后停止。
+  - 完成 → 在 $HOME/agi-lab/.agi/subagents/&lt;your session id&gt;/ 下写
+    outcome.md（做了什么 / 验证了什么 / 还剩什么），然后报告一段话的
+    总结。
 
-  # Constraints
-  Read-only outside your outcome directory.
+  # Constraints（约束）
+  除你的 outcome 目录外只读。
 
-model: "runtime/current"  # explicit fresh-install default: same route as this calling turn
+model: "runtime/current"  # 全新安装的显式默认值：与本次调用回合同一条路由
 run_in_background: true</code></pre>
 </figure>
 <p>
-  Reasoning effort is not a tool argument: it is configured by the user on this route's row in the
-  live Supervisor settings. The rendered result should name the resolved route, modalities, and
-  effective effort, for example <code>effort=high</code>. Even for <code>runtime/current</code>, only
-  the route follows the calling turn; effort never does.
+  推理强度不是工具参数：它由用户在 live Supervisor 设置里这条路由那一行上
+  配置。渲染出来的结果应当写明解析后的路由、输入模态与
+  生效的推理强度，例如 <code>effort=high</code>。即便是 <code>runtime/current</code>，也只有
+  路由会跟随调用它的回合；推理强度绝不跟随。
 </p>
 
-<h2>Test it live — the M0 smoke test, by hand</h2>
+<h2>实机验证 —— 手工跑一遍 M0 冒烟测试</h2>
 <p>
-  You now drive every verb yourself, as the user, before trusting the supervisor to. Use your
-  <code>main-agent</code> session in <code>$HOME/agi-lab</code>. This is the design’s five-observation M0,
-  adapted to your tools.
+  在信任监督者去驱动之前，你先以用户身份亲手驱动每一个动作。使用
+  <code>$HOME/agi-lab</code> 里的 <code>main-agent</code> 会话。这就是设计里的「五个观察」M0，
+  已按你的工具做适配。
 </p>
 <div class="box test">
-  <span class="box-title">Milestone 4 acceptance — five observations</span>
-  <p><strong>Auto-grade:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m4</code> — reads the session event logs
-     and verifies all five observations left their durable evidence (spawn/steer/kill calls, the
-     <code>subagent-settled</code> and <code>subagent-report</code> messages, a child <code>report</code>, outcome.md).</p>
+  <span class="box-title">里程碑 4 验收 —— 五个观察</span>
+  <p><strong>自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m4</code> —— 读取会话事件日志
+     并核验五个观察都留下了持久证据（spawn/steer/kill 调用、
+     <code>subagent-settled</code> 与 <code>subagent-report</code> 消息、子级的一次 <code>report</code>、outcome.md）。</p>
   <ol>
-    <li><strong>Spawn returns an id.</strong> Say: <em>“Spawn a dev agent in the background with a slow task:
-        role researcher; objective: sleep 90 seconds using bash, then count files in /tmp; protocol
-        as usual (outcome.md + report).”</em> <strong>Expect:</strong> the tool result names a started child
-        id; the supervisor’s turn ends. In the sidebar, a new child session appears; on disk,
-        <code>find "$HOME/.dsh/sessions" -name session.jsonl.zstd | wc -l</code> grew by one.</li>
-    <li><strong>Steer lands at the next step.</strong> While the child sleeps, say: <em>“Steer it: also count
-        directories, not just files.”</em> <strong>Expect:</strong> a <code>send_message</code> call; in the
-        <em>child’s</em> session view, the correction is accepted into the running turn and affects the
-        next model step; the worker need not finish its old plan first.</li>
-    <li><strong>Settle notice wakes the parent.</strong> Wait for the child to finish. <strong>Expect:</strong>
-        the supervisor wakes <em>on its own</em> with a notice (“how the child ended” + final summary),
-        reads the outcome, and records progress. You did nothing.</li>
-    <li><strong>Report wakes the parent.</strong> Spawn a second worker whose task is deliberately
-        under-specified (e.g. “write the greeting to the configured location” with no location in
-        Context, and an explicit instruction that this is not discoverable — ask via report).
-        <strong>Expect:</strong> the child calls <code>report</code> with a precise question; the supervisor
-        wakes, answers via <code>send_message</code>; the child completes with the answer as its next
-        turn.</li>
-    <li><strong>Interrupt stops the burn.</strong> Spawn a third worker with a long task, then say:
-        <em>“That one’s off the rails — kill it and log the kill.”</em> <strong>Expect:</strong>
-        <code>interrupt_agent</code>; <code>list_agents</code> then shows it not running (idle/ready);
-        a <code>kill</code> line lands in <code>CHANGELOG.jsonl</code>; no further child activity appears in
-        its session log.</li>
+    <li><strong>派生会返回一个 id。</strong>说：<em>“在后台派生一个 dev agent 做一个慢任务：
+        角色 researcher；目标：用 bash 睡 90 秒，然后统计 /tmp 里的文件数；协议
+        照常（outcome.md + report）。”</em> <strong>预期：</strong>工具结果给出一个已启动的子级
+        id；监督者的回合结束。侧栏里出现一个新的子级会话；磁盘上，
+        <code>find "$HOME/.dsh/sessions" -name session.jsonl.zstd | wc -l</code> 的结果加一。</li>
+    <li><strong>纠偏落在下一个步骤。</strong>趁子级在睡，说：<em>“纠偏一下：除了文件，
+        也统计目录。”</em> <strong>预期：</strong>发生一次 <code>send_message</code> 调用；在
+        <em>子级</em>的会话视图里，这条纠正被接进正在运行的回合，并影响
+        下一个模型步骤；worker 不必先跑完它的旧计划。</li>
+    <li><strong>收敛通知唤醒父级。</strong>等子级完成。<strong>预期：</strong>
+        监督者<em>自己</em>醒来并带有一条通知（“子级如何结束” + 最终摘要），
+        读 outcome，并记录进展。你什么都没做。</li>
+    <li><strong>report 唤醒父级。</strong>派生第二个 worker，其任务被刻意
+        写得欠明确（例如“把问候语写到配置好的位置”，而 Context 里
+        没有任何位置，并明确指示这不可自行发现 —— 要求通过 report 来问）。
+        <strong>预期：</strong>子级调用 <code>report</code> 提出一个精确的问题；监督者
+        醒来，通过 <code>send_message</code> 作答；子级把答案当作自己的下一个
+        回合，随后完成。</li>
+    <li><strong>interrupt 止住燃烧。</strong>派生第三个 worker 跑一个长任务，然后说：
+        <em>“那个跑飞了 —— 终止它，并记下这次 kill。”</em> <strong>预期：</strong>
+        <code>interrupt_agent</code>；随后 <code>list_agents</code> 显示它不在运行（idle/ready）；
+        <code>CHANGELOG.jsonl</code> 里落下一行 <code>kill</code>；它的会话日志里
+        不再出现新的子级活动。</li>
   </ol>
-  <p><strong>Also verify the persona took:</strong> open the first child’s session in the UI — its behavior
-  should reflect the Dev-Agent persona from your row (e.g. it reports a one-paragraph summary at the
-  end). If the child instead behaves like a generic coding agent and never reports, your
-  <code>persona:</code> block on the dev spawn row (<code>tool-spawn-dev</code>) has an indentation problem —
-  re-validate the preset.</p>
+  <p><strong>另外核验人格是否生效：</strong>在 UI 里打开第一个子级的会话 —— 它的行为
+  应当体现你那一行里的 Dev-Agent 人格（例如最后会报告一段
+  摘要）。如果子级表现得像一个通用编码 agent、从不报告，那么你
+  dev 派生行（<code>tool-spawn-dev</code>）上的 <code>persona:</code> 块有缩进问题 ——
+  请重新校验该 preset。</p>
 </div>
 
 <div class="box why">
-  <span class="box-title">Why observation 2 matters more than it looks</span>
+  <span class="box-title">为什么第 2 个观察比它看起来更重要</span>
   <p>
-    Steering mid-flight is the capability your design originally assumed it would have to build as
-    kill + fork. The small control frontend reuses the harness's existing step-boundary steer primitive,
-    preserving context and leaving idle/cold delivery on the native subsystem.
+    飞行中途纠偏，本是你原设计以为必须靠 kill + fork 自行构建的
+    能力。这个小小的控制前端复用了 harness 已有的步骤边界纠偏原语，
+    保住了上下文，并把空闲/冷投递留给原生子系统。
   </p>
 </div>
 
-<h2>What exists now</h2>
+<h2>现在有了什么</h2>
 <p>
-  Every mechanical piece of supervision works under your hand: spawn, steer, kill, report, settle,
-  enumerate. What’s left is making the <em>supervisor</em> drive them unattended, on its own clock —
-  the loop.
+  监督的每个机械部件都能在你手下跑通：派生、纠偏、终止、报告、收敛、
+  枚举。剩下的就是让<em>监督者</em>无人值守地、按自己的时钟驱动它们 ——
+  也就是那个循环。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="08-schedule.html">← Chapter 8 — Milestone 3: time</a>
-  <a class="next" href="10-loop.html">Chapter 10 — Milestone 5: the loop →</a>
+  <a class="prev" href="08-schedule.html">← 第 8 章 —— 时间：schedule 叠加层</a>
+  <a class="next" href="10-loop.html">第 10 章 —— 里程碑 5：循环 →</a>
 </nav>
 </main>
 </body>

@@ -1,37 +1,35 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>5 · Creator mode and the Cordis toolset — Supervisor on DSH</title>
+<title>第 5 章 · Creator mode 与 Cordis 工具集 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part I · Chapter 5</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 I 部分 · 第 5 章</span>
   <span class="spacer"></span>
   <a href="04-lab.html">←</a>
   <a href="06-preset.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part I — Foundations</p>
-  <h1>Creator mode and the Cordis toolset</h1>
-  <p class="lede">The harness can read and modify itself while it runs — through an agent. This
-  chapter introduces the <code>cordis</code> preset (“创造模式”, Creator mode), walks the seven
-  <code>cordis_*</code> tools it carries, and has you define, run, and remove your first live plugin.
-  These skills let you inspect the runtime now and author separately named preset variants later.</p>
+  <p class="kicker">第 I 部分 —— 基础</p>
+  <h1>Creator mode 与 Cordis 工具集</h1>
+  <p class="lede">harness 能在运行的时候读写自己 —— 通过一个 agent 来做。本章介绍 <code>cordis</code>
+  preset（“创造模式”，Creator mode），把它带的七个 <code>cordis_*</code> 工具挨个过一遍，并让你亲手
+  定义、运行、移除你的第一个活插件。这些本事让你现在就能检查运行时，以后再写出另起名字的 preset 变体。</p>
 </header>
 
-<h2>What Creator mode is</h2>
+<h2>Creator mode 是什么</h2>
 <p>
-  <code>cordis</code> is the fourth shipped preset. Its own header explains its reason to exist better
-  than any summary:
+  <code>cordis</code> 是随附的第四个 preset。它自己的文件头，比任何总结都更能说明它为什么存在：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/agent.cordis.yml (lines 1–12)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/agent.cordis.yml（第 1–12 行）</figcaption>
 <pre><code># The `cordis` agent preset: the standard coding agent, plus the ability to
 # read and write the runtime it is running in.
 #
@@ -45,45 +43,45 @@
 # mount. Treat a session on this preset as shell access ...</code></pre>
 </figure>
 <p>
-  “A person can ask an agent to author another agent” is why this mode is useful when you later make
-  a variant. The Creator preset itself is <code>standard</code> + three additions:
+  “A person can ask an agent to author another agent”（人能叫一个 agent 去写另一个 agent）—— 这就是
+  以后做变体时，这个模式有用的原因。Creator preset 本身，就是 <code>standard</code> 加三样东西：
 </p>
 <ul>
-  <li>the row <code>tool-cordis</code> (package <code>@deepseek-ai/dsh-tool-cordis</code>) — the toolset;</li>
-  <li>two bundled skills: <code>editing-cordis-compositions</code> (preset authoring) and
-      <code>cordis-plugin-development</code> (dynamic plugins);</li>
-  <li>a persona that teaches the two-plane rule and forbids editing shipped presets.</li>
+  <li>一行 <code>tool-cordis</code>（包 <code>@deepseek-ai/dsh-tool-cordis</code>）—— 也就是这套工具集；</li>
+  <li>两个随附的技能：<code>editing-cordis-compositions</code>（写 preset）和
+      <code>cordis-plugin-development</code>（动态插件）；</li>
+  <li>一个 persona，它教两平面规则，并禁止修改随附的 preset。</li>
 </ul>
 
 <div class="box warn">
-  <span class="box-title">A docs-drift warning you need before anything else</span>
+  <span class="box-title">动手之前，必须先知道的文档漂移警告</span>
   <p>
-    The comment above says <code>cordis_mount</code>, and the <code>editing-cordis-compositions</code> skill
-    still teaches verbs called <code>cordis_inspect</code> / <code>cordis_mount</code> / <code>cordis_unmount</code>.
-    <strong>Those tools no longer exist.</strong> The live toolset — read it from the source of truth,
-    <code>packages/extensions/tool-cordis/src/index.ts</code> — registers seven tools with a
-    define/run lifecycle instead. The skill’s <em>advice</em> (planes, copy-then-edit, validation) remains
-    correct; only its tool names are stale. This course always uses the live names below.
+    上面那段注释里写的是 <code>cordis_mount</code>，而 <code>editing-cordis-compositions</code> 技能到现在
+    还教 <code>cordis_inspect</code> / <code>cordis_mount</code> / <code>cordis_unmount</code> 这几个动词。
+    <strong>这些工具已经不存在了。</strong>现在真正活着的那套工具 —— 去唯一的事实来源
+    <code>packages/extensions/tool-cordis/src/index.ts</code> 里读 —— 注册的是七个工具，走的是
+    define/run 生命周期。技能里的那套<em>建议</em>（平面、先复制再改、要校验）仍然是对的；过时的只是
+    工具名。本课程一律用下面这些还活着的名字。
   </p>
 </div>
 
-<h2>The seven tools</h2>
-<p>Each row cites the registration line in <code>packages/extensions/tool-cordis/src/index.ts</code>:</p>
+<h2>七个工具</h2>
+<p>每一行都标出了它在 <code>packages/extensions/tool-cordis/src/index.ts</code> 里的注册行号：</p>
 <table>
-  <tr><th>Tool</th><th>Line</th><th>What it does</th></tr>
-  <tr><td><code>cordis_inspect_list</code></td><td>42</td><td>Lists every <em>inspect provider</em> — read-only query surfaces on host and client — with their methods and schemas. Always your first call.</td></tr>
-  <tr><td><code>cordis_inspect_query</code></td><td>61</td><td>Runs one declared read-only query: exact service methods (<code>Service.listService</code>), event contracts (<code>Event.listEvents</code>), sandbox globals (<code>Builtin.listBuiltins</code>), visible tools (<code>Tool.listTools</code>), and — from the browser — live slot trees and theme tokens.</td></tr>
-  <tr><td><code>cordis_inspect_self</code></td><td>97</td><td>Lists this session’s dynamic plugins; with <code>pluginId</code>+<code>packageId</code> returns exact source and diagnostics.</td></tr>
-  <tr><td><code>cordis_define</code></td><td>149</td><td>Records an immutable <em>package</em>: a name, purpose, and a host half and/or client half of plain-JavaScript code. Validates syntax only — <strong>nothing runs yet</strong>.</td></tr>
-  <tr><td><code>cordis_run</code></td><td>241</td><td>Activates one package (<code>mode: run</code> first time / restart / rollback; <code>update</code> to switch versions). A client half may require your approval in the UI.</td></tr>
-  <tr><td><code>cordis_stop</code></td><td>330</td><td>Disposes the running effects; keeps the definition, versions, and grants.</td></tr>
-  <tr><td><code>cordis_undefine</code></td><td>352</td><td>Permanently removes the plugin and all its packages.</td></tr>
+  <tr><th>工具</th><th>行</th><th>它做什么</th></tr>
+  <tr><td><code>cordis_inspect_list</code></td><td>42</td><td>列出每一个 <em>inspect provider</em> —— 宿主和客户端上的只读查询面 —— 连同它们的方法和 schema。永远是你第一个要调用的。</td></tr>
+  <tr><td><code>cordis_inspect_query</code></td><td>61</td><td>跑一条声明好的只读查询：精确的服务方法（<code>Service.listService</code>）、事件契约（<code>Event.listEvents</code>）、沙箱全局对象（<code>Builtin.listBuiltins</code>）、可见的工具（<code>Tool.listTools</code>），以及 —— 从浏览器这边 —— 活着的 slot 树和主题令牌。</td></tr>
+  <tr><td><code>cordis_inspect_self</code></td><td>97</td><td>列出本会话的动态插件；带上 <code>pluginId</code>+<code>packageId</code> 时，返回精确的源码和诊断信息。</td></tr>
+  <tr><td><code>cordis_define</code></td><td>149</td><td>记录一个不可变的 <em>package</em>：名字、用途，以及用纯 JavaScript 写的宿主半边和／或客户端半边代码。只校验语法 —— <strong>这时候什么都还没跑</strong>。</td></tr>
+  <tr><td><code>cordis_run</code></td><td>241</td><td>激活一个 package（第一次用 <code>mode: run</code>；重启、回滚也用它；切换版本用 <code>update</code>）。如果含客户端半边，可能需要在 UI 里由你批准。</td></tr>
+  <tr><td><code>cordis_stop</code></td><td>330</td><td>把正在生效的效果拆掉；定义、版本和授权都留着。</td></tr>
+  <tr><td><code>cordis_undefine</code></td><td>352</td><td>永久删掉这个插件和它的所有 package。</td></tr>
 </table>
 
-<h3>The vocabulary: Plugin → Package → Run</h3>
-<p>Three ids, from the toolset’s own system prompt:</p>
+<h3>那套词汇：Plugin → Package → Run</h3>
+<p>三个 id，出自这套工具自己的系统提示词：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/extensions/tool-cordis/src/prompt.ts (“Identity, versions, and approval”)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/packages/extensions/tool-cordis/src/prompt.ts（“Identity, versions, and approval”）</figcaption>
 <pre><code>- pluginId identifies a Plugin that can be modified over time ...
 - packageId identifies one immutable Host/Client source version under a Plugin.
   To change code, define a new Package; never overwrite an old version.
@@ -93,34 +91,32 @@
   recently failed.</code></pre>
 </figure>
 <p>
-  So iteration looks like: <code>define</code> v1 → <code>run</code> → find a bug →
-  <code>define</code> v2 <em>under the same pluginId</em> (<code>plugin: {kind: "existing", pluginId}</code>) →
-  <code>run</code> with <code>mode: "update"</code>. Rollback is <code>run</code> on the old package. Versions are
-  immutable, so you can always get back.
+  所以一轮迭代长这样：<code>define</code> 出 v1 → <code>run</code> → 发现一个 bug →
+  <em>在同一个 pluginId 底下</em> <code>define</code> 出 v2（<code>plugin: {kind: "existing", pluginId}</code>）
+  → 用 <code>mode: "update"</code> 去 <code>run</code>。回滚就是对旧 package 再 <code>run</code> 一次。
+  版本是不可变的，所以你永远回得去。
 </p>
 
-<h3>What dynamic plugins are — and are not</h3>
+<h3>动态插件是什么 —— 以及不是什么</h3>
 <ul>
-  <li>They live <strong>only in process memory</strong>: a dsh restart clears them. They change no file, no
-      <code>cordis.yml</code>, no preset. (README: “Dynamic packages live only in the shared DSH process
-      memory… cannot be promoted automatically.”)</li>
-  <li>They are <strong>real</strong>: a host half gets a <code>ctx</code> façade onto the live runtime — it can
-      register model tools, listen to events, call services. A client half is delivered to every open
-      web page and can register UI into shipped slots.</li>
-  <li>They are <strong>session-scoped</strong>: only the session that defined a plugin sees and controls it.</li>
-  <li>The sandbox “isolates globals but is not a security boundary” — hence the shell-access trust
-      stance. (<code>packages/extensions/tool-cordis/README.md</code>, “Trust stance”.)</li>
+  <li>它们<strong>只活在进程内存里</strong>：dsh 一重启就没了。它们不改任何文件，不改
+      <code>cordis.yml</code>，不改 preset。（README：“Dynamic packages live only in the shared DSH
+      process memory… cannot be promoted automatically.”）</li>
+  <li>它们是<strong>真的</strong>：宿主半边能拿到一个通向活运行时的 <code>ctx</code> 门面 —— 可以注册模型
+      工具、监听事件、调用服务。客户端半边会投递到每一个打开着的网页，并能把 UI 注册进随附的 slot 里。</li>
+  <li>它们是<strong>会话级的</strong>：只有定义了某个插件的那个会话，才看得见并控制它。</li>
+  <li>沙箱“隔离了全局对象，但它不是安全边界” —— 所以才有那条“当成 shell 权限来对待”的立场。
+      （<code>packages/extensions/tool-cordis/README.md</code>，“Trust stance”。）</li>
 </ul>
-<p>Perfect, in other words, for <em>probing and prototyping</em> — which is how chapters 6 and 11 use them.</p>
+<p>换句话说，它们特别适合<em>探查和做原型</em> —— 第 6 章和第 11 章就是这么用它们的。</p>
 
-<h2>The code rules inside a dynamic plugin</h2>
+<h2>动态插件内部的代码规矩</h2>
 <p>
-  Both halves are <em>plain JavaScript function bodies that return a plugin object</em>. The
-  <code>cordis-plugin-development</code> skill (this one is current) drills the rules; the four that
-  matter most:
+  两个半边都是<em>纯 JavaScript 的函数体，返回一个插件对象</em>。<code>cordis-plugin-development</code>
+  技能（这个是时新的）把规矩讲透了；其中最重要的四条：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md (condensed)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/skills/cordis-plugin-development/SKILL.md（压缩节选）</figcaption>
 <pre><code>1. Plain JS only: no import/require, no TypeScript, no JSX.
    Client React code must use React.createElement(...).
 
@@ -135,25 +131,23 @@
    slot props). Extract the leaf fields you need.</code></pre>
 </figure>
 <div class="box ts">
-  <span class="box-title">TypeScript corner · why “plain JavaScript”?</span>
+  <span class="box-title">TypeScript 角落 · 为什么是“纯 JavaScript”？</span>
   <p>
-    Dynamic code is evaluated directly in a <code>node:vm</code> sandbox — no compiler runs. TypeScript
-    annotations would be syntax errors here. This is a feature for you: everything you learned in
-    chapter 2 applies with zero build tooling. When you graduate to a packaged plugin in chapter 13,
-    the same code gains type annotations and a 5-line build script — that’s the whole difference.
+    动态代码是直接在 <code>node:vm</code> 沙箱里求值的 —— 跑不过任何编译器。TypeScript 的类型标注在这里
+    会变成语法错误。这对你反而是好事：你在第 2 章学到的东西，一行构建工具都不用就能全部用上。等你在
+    第 13 章升级成打包插件时，同一份代码会多出类型标注和一个 5 行的构建脚本 —— 差别就这么多。
   </p>
 </div>
 
-<h2>Your first live plugin, end to end</h2>
+<h2>你的第一个活插件，从头到尾</h2>
 <p>
-  Time to drive. Open the web UI → new session → workspace <code>$HOME/agi-lab</code> → preset
-  <strong>创造模式 / Creator mode</strong> (the <code>cordis</code> preset). Then paste each prompt below as a
-  chat message and watch what the agent does. (You are practicing two skills at once: the tool
-  lifecycle, and <em>directing</em> an agent that holds the tools — the same skill your supervisor will
-  need with its workers.)
+  该你上手了。打开 Web UI → 新建会话 → 工作区 <code>$HOME/agi-lab</code> → preset
+  <strong>创造模式 / Creator mode</strong>（也就是 <code>cordis</code> preset）。然后把下面每段 prompt
+  当成一条聊天消息贴进去，看 agent 怎么做。（你同时在练两样本事：工具的生命周期，以及<em>指挥</em>一个
+  手里握着工具的 agent —— 你的监督者将来指挥 worker 时需要的，正是同一样本事。）
 </p>
 
-<h3>Step 1 — discover, then query</h3>
+<h3>第 1 步 —— 先发现，再查询</h3>
 <pre><code>Prompt 1:
   "Call cordis_inspect_list and tell me, in one line each, which inspect
    providers exist on host and client."
@@ -163,13 +157,13 @@ Prompt 2:
    and show me 10 interesting service keys. Then query the exact service
    'agentPresets' and paste its method signatures."</code></pre>
 <p>
-  That second query returns the roster’s real, current signatures — <code>list()</code>,
-  <code>copy()</code>, <code>standingKeyFor()</code> — the API the package setup and later preset variants rely on. This
-  discover-before-code discipline is the skill’s standard workflow (steps 1–2), and it is why dynamic
-  plugins rarely guess wrong: the runtime tells you its own contracts.
+  第二条查询返回的是 roster 真实、当下的签名 —— <code>list()</code>、<code>copy()</code>、
+  <code>standingKeyFor()</code> —— 也就是包的安装流程和以后的 preset 变体所依赖的那套 API。这种
+  “先发现、再写代码”的纪律是这个技能的标准工作流（第 1–2 步），也正是动态插件很少猜错的原因：
+  运行时自己会告诉你它的契约。
 </p>
 
-<h3>Step 2 — define a host-half plugin that registers a real model tool</h3>
+<h3>第 2 步 —— 定义一个宿主半边插件，注册一个真正的模型工具</h3>
 <pre><code>Prompt 3:
   "Define a dynamic plugin (cordis_define, plugin kind 'new', idPrefix 'lab').
    Host half only, with this code, then run it with cordis_run:
@@ -192,20 +186,20 @@ Prompt 2:
        }))
      },
    }"</code></pre>
-<p>Read your own code like a chapter-2 exercise:</p>
+<p>像做第 2 章的练习那样，读一读你自己写的代码：</p>
 <ul>
-  <li>The function body returns a plugin object — <code>name</code> + <code>apply(ctx)</code> (idea 1).</li>
-  <li><code>harness</code> is a sandbox <em>builtin</em> (discoverable via <code>Builtin.listBuiltins</code>;
-      declared in <code>packages/extensions/cordis-host-runner/src/sandbox.ts</code>, lines 18–36:
-      <code>harness.handle</code>, <code>harness.defineTool</code>, <code>harness.registerTool(ctx, tool)</code>)
-      whose <code>registerTool</code>/<code>defineTool</code> pair registers a model tool owned by this
-      plugin’s fiber — so <code>cordis_stop</code> removes it (idea 5).</li>
-  <li><code>parameters: {}</code> and the <code>output</code> block mirror the real
-      <code>ToolDefinition</code> contract from <code>docs/subsystems/tools.md</code>: a schema for the value,
-      a <code>render</code> that turns it into model-visible content.</li>
+  <li>函数体返回一个插件对象 —— <code>name</code> + <code>apply(ctx)</code>（第 1 个要点）。</li>
+  <li><code>harness</code> 是一个沙箱<em>内置对象</em>（可以用 <code>Builtin.listBuiltins</code> 发现；
+      声明在 <code>packages/extensions/cordis-host-runner/src/sandbox.ts</code> 第 18–36 行：
+      <code>harness.handle</code>、<code>harness.defineTool</code>、<code>harness.registerTool(ctx, tool)</code>）。
+      它的 <code>registerTool</code>/<code>defineTool</code> 这一对，注册出来的模型工具归这个插件的 fiber
+      所有 —— 所以 <code>cordis_stop</code> 能把它拿掉（第 5 个要点）。</li>
+  <li><code>parameters: {}</code> 和 <code>output</code> 块对应的是 <code>docs/subsystems/tools.md</code>
+      里真实的 <code>ToolDefinition</code> 契约：一个描述取值的 schema，加上一个 <code>render</code>，
+      把取值变成模型能看见的内容。</li>
 </ul>
 
-<h3>Step 3 — use it, inspect it, remove it</h3>
+<h3>第 3 步 —— 用它、查它、删它</h3>
 <pre><code>Prompt 4:  "Call lab_uptime."          → expect: "up Ns"
 Prompt 5:  "cordis_inspect_self — show my plugins and their states."
 Prompt 6:  "cordis_stop it, try lab_uptime again, and tell me what happens."
@@ -213,44 +207,43 @@ Prompt 6:  "cordis_stop it, try lab_uptime again, and tell me what happens."
 Prompt 7:  "cordis_undefine it."</code></pre>
 
 <div class="box test">
-  <span class="box-title">Test it live — milestone: the toolset lifecycle</span>
-  <p>You pass this chapter when all of these were observed in your Creator session:</p>
+  <span class="box-title">动手试 —— 里程碑：工具集的生命周期</span>
+  <p>下面这些在你的 Creator 会话里全都观察到过，这一章就算过了：</p>
   <ol>
-    <li><code>cordis_inspect_query</code> returned real signatures for <code>agentPresets</code>.</li>
-    <li><code>cordis_define</code> answered with a <code>pluginId</code>/<code>packageId</code> and “not running yet”.</li>
-    <li>After <code>cordis_run</code>, calling <code>lab_uptime</code> returned an uptime string —
-        a tool that existed nowhere on disk, served by code you wrote into a running process.</li>
-    <li>After <code>cordis_stop</code>, the tool vanished (effects unwound — chapter 2, idea 5, proven live).</li>
-    <li><code>cordis_undefine</code> left <code>cordis_inspect_self</code> reporting no plugins.</li>
+    <li><code>cordis_inspect_query</code> 返回了 <code>agentPresets</code> 的真实签名。</li>
+    <li><code>cordis_define</code> 回了 <code>pluginId</code>/<code>packageId</code>，以及“还没在跑”。</li>
+    <li><code>cordis_run</code> 之后，调用 <code>lab_uptime</code> 返回了一个运行时长字符串 ——
+        一个磁盘上哪儿都不存在的工具，由你写进一个正在运行的进程里的代码提供。</li>
+    <li><code>cordis_stop</code> 之后，这个工具消失了（效果被干净拆掉 —— 第 2 章第 5 个要点，现场验证）。</li>
+    <li><code>cordis_undefine</code> 之后，<code>cordis_inspect_self</code> 报告说没有任何插件。</li>
   </ol>
 </div>
 
 <div class="box why">
-  <span class="box-title">Why this matters for the supervisor build</span>
+  <span class="box-title">这对搭建监督者为什么重要</span>
   <p>
-    Chapter 6 installs the repository's exact packaged preset so the primary path cannot drift from
-    the plugin version that supplies its custom rows. The roster and dynamic-plugin mechanics you just
-    learned remain the supported way to copy that preset into a separately named variant and
-    mount-validate later edits. Chapter 11 shows the same host/client split promoted into the bundle's
-    durable Feed tab and settings card.
+    第 6 章会安装本仓库打包好的那个确切的 preset，这样主路径就不会和提供它那些自定义行的插件版本脱节。
+    你刚学的 roster 和动态插件机制，仍然是受支持的途径：把那个 preset 复制成一个另起名字的变体，
+    并对以后的改动做挂载校验。第 11 章会展示同样的宿主/客户端切分，被提升成 bundle 里那个持久的
+    监督动态 Feed 标签页和设置卡片。
   </p>
 </div>
 
-<h2>If something goes wrong</h2>
+<h2>出错了怎么办</h2>
 <ul>
-  <li><strong>Run fails technically</strong> → have the agent call
-      <code>cordis_inspect_self(pluginId, packageId)</code>: it returns the exact source plus the error
-      and stack. Define a corrected package <em>under the same plugin</em>; never overwrite.</li>
-  <li><strong>Client half says “awaiting approval”</strong> → that is you: an approval card appears in the
-      conversation. One check mark approves this package; double check marks pre-approve future
-      versions of the same plugin.</li>
-  <li><strong><code>service "x" is not declared</code></strong> → code used <code>ctx.x</code> without
-      <code>inject</code>; switch to <code>ctx.get('x')</code> or declare it (skill, “Common failure checks”).</li>
+  <li><strong>运行真的失败了</strong> → 让 agent 调
+      <code>cordis_inspect_self(pluginId, packageId)</code>：它会返回精确的源码，加上错误和调用栈。
+      <em>在同一个插件底下</em>定义一个修好的 package；绝不覆盖旧的。</li>
+  <li><strong>客户端半边显示“等待批准”</strong> → 那是在等你：对话里会出现一张批准卡。打一个勾是批准
+      这个 package；打两个勾是预先批准这个插件将来的版本。</li>
+  <li><strong><code>service "x" is not declared</code></strong> → 代码用了 <code>ctx.x</code> 却没有声明
+      <code>inject</code>；改成 <code>ctx.get('x')</code>，或者把它声明出来（技能，
+      “Common failure checks”）。</li>
 </ul>
 
 <nav class="pager">
-  <a class="prev" href="04-lab.html">← Chapter 4 — Your lab</a>
-  <a class="next" href="06-preset.html">Chapter 6 — Milestone 1: the main-agent preset →</a>
+  <a class="prev" href="04-lab.html">← 第 4 章 —— 你的实验场</a>
+  <a class="next" href="06-preset.html">第 6 章 —— 里程碑 1：main-agent preset →</a>
 </nav>
 </main>
 </body>

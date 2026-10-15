@@ -1,155 +1,155 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Build an Always-On Supervisor Agent on DeepSeek Harness — from scratch</title>
+<title>在 DeepSeek Harness 上从零构建一个常驻监督者 Agent</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Always-On Supervisor on DSH</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">DSH 上的常驻监督者</span>
   <span class="spacer"></span>
-  <a href="00-setup.html">Start →</a>
+  <a href="00-setup.html">开始 →</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">A hands-on course, from the ground up</p>
-  <h1>Build an Always-On Supervisor Agent on DeepSeek Harness</h1>
+  <p class="kicker">一门动手型的课程，从最底层开始</p>
+  <h1>在 DeepSeek Harness 上构建常驻监督者 Agent</h1>
   <p class="lede">
-    Fourteen chapters that take you from “what is a plugin?” to a running 24/7 Main Agent
-    that spawns, watches, steers, and kills worker subagents — built almost entirely out of
-    parts the harness already ships. Every chapter ends with something you can test live
-    in your own running <code>dsh web</code>.
+    十四章，带你从“插件是什么？”一路走到一个真正在跑的 24/7 Main Agent（监督者）——
+    它会派生、观察、纠偏并终止 worker 子代理，而且几乎全部是用 harness
+    已经自带的部分搭出来的。每一章结尾都有一个能在你自己跑着的
+    <code>dsh web</code> 里实测的东西。
   </p>
 </header>
 
-<h2>The philosophy of this course</h2>
+<h2>这门课走的是什么路子</h2>
 <p>
-  Your design documents (<code>$HOME/src/dsh-supervisor/DESIGN.md</code> and <code>$HOME/src/dsh-supervisor/IMPLEMENTATION_PLAN.md</code>)
-  describe a supervisor built from a preset plus five custom plugins. This course deliberately takes a
-  <strong>native-first</strong> path instead: we reuse and configure what the harness already ships, and we
-  keep the native lifecycle machinery and add narrow policy frontends only where the shipped tools do
-  not enforce the supervisor's contract. That gets you to a working system dramatically
-  faster, and — more importantly for learning — every native piece you configure is a piece you
-  end up understanding.
+  你的设计文档（<code>$HOME/src/dsh-supervisor/DESIGN.md</code> 和 <code>$HOME/src/dsh-supervisor/IMPLEMENTATION_PLAN.md</code>）
+  描述的监督者是“一份 preset 加五个自定义插件”。这门课有意走一条
+  <strong>原生优先</strong>的路：复用并配置 harness 已经自带的东西，
+  保留原生的生命周期机器，只在自带工具无法落实监督者契约的地方，
+  加一层窄口径的策略前端。这样你到一个能跑的系统会快得多，
+  而且 —— 对学习来说更重要的是 —— 你配置过的每一块原生部件，
+  最后都真的被你理解了。
 </p>
-<p>Concretely, here is what the design wanted and what the harness already provides:</p>
+<p>具体说，下面是设计想要的东西，以及 harness 已经提供了什么：</p>
 <table>
-  <tr><th>Supervisor need</th><th>Native mechanism (already running in your dsh)</th><th>Custom code?</th></tr>
-  <tr><td>Spawn a background worker</td><td>Native continuable child lifecycle, behind a settings-guarded <code>subagent</code> frontend</td><td>Thin policy frontend</td></tr>
-  <tr><td>Steer a running worker</td><td>Native follow-up/cold-resume lifecycle; the supervisor's <code>send_message</code> joins a running turn at its next model step</td><td>Thin control frontend</td></tr>
-  <tr><td>Kill a worker</td><td><code>interrupt_agent</code> + never message it again (zero further token burn)</td><td>No</td></tr>
-  <tr><td>Worker blocked on a question</td><td>The child’s native <code>report</code> tool wakes the parent; spawn policy removes dead-end <code>ask_user_question</code></td><td>Tool restriction</td></tr>
-  <tr><td>Wake when a worker finishes</td><td>Native settle notice, enriched with the final durable failure cause when retries exhaust</td><td>Small diagnostic hook</td></tr>
-  <tr><td>Wake on a timer (patience / periodic check)</td><td><code>schedule_create</code> (one schedule-service config row)</td><td>No — config only</td></tr>
-  <tr><td>Track the locked goal</td><td>Native goal domain and UI, behind a grounded, non-blocking frontend</td><td>Thin policy frontend</td></tr>
-  <tr><td>Inspect what a worker did</td><td>Children are ordinary sessions in the web GUI, and ordinary JSONL files on disk</td><td>No</td></tr>
-  <tr><td>The supervisor personality & protocol</td><td>An installed, user-owned <em>agent preset</em> packaged with this repository</td><td>YAML + prose</td></tr>
-  <tr><td>Durable state (goal, notes, questions, changelog)</td><td>Plain files in <code>.agi/</code>, written with the shell/fs tools every agent has</td><td>No — convention only</td></tr>
-  <tr><td>Glanceable run UI and real stop</td><td>Native view slot/projections plus the bundled Feed route and Full stop maintenance action</td><td>Bundled client + host route</td></tr>
-  <tr><td>Extra trace files or a no-argument wait tool</td><td>—</td><td>Optional, chapter 13</td></tr>
+  <tr><th>监督者需要什么</th><th>原生机制（已经在你的 dsh 里跑着）</th><th>要写自定义代码吗？</th></tr>
+  <tr><td>派生一个后台 worker</td><td>原生的可续用子级生命周期，前面套一层受设置保护的 <code>subagent</code> 前端</td><td>一层薄薄的策略前端</td></tr>
+  <tr><td>纠偏一个正在跑的 worker</td><td>原生的追发/冷恢复生命周期；监督者的 <code>send_message</code> 会在运行中回合的下一个模型步骤接上</td><td>一层薄薄的控制前端</td></tr>
+  <tr><td>终止一个 worker</td><td><code>interrupt_agent</code> + 之后再也不给它发消息（不再烧一个 token）</td><td>不用</td></tr>
+  <tr><td>worker 卡在一个问题上</td><td>子级原生的 <code>report</code> 工具会唤醒父级；spawn 策略移除了会走到死路的 <code>ask_user_question</code></td><td>一处工具限制</td></tr>
+  <tr><td>worker 做完时被唤醒</td><td>原生收敛通知；重试耗尽时会补上最终的持久失败原因</td><td>一个小诊断钩子</td></tr>
+  <tr><td>按定时器唤醒（耐心等待 / 周期巡检）</td><td><code>schedule_create</code>（一行 schedule 服务配置）</td><td>不用 —— 只是配置</td></tr>
+  <tr><td>跟踪被锁定的目标</td><td>原生的目标域与 UI，前面套一层先打底、不阻塞的前端</td><td>一层薄薄的策略前端</td></tr>
+  <tr><td>查看 worker 干了什么</td><td>子级就是 web GUI 里的普通会话，也就是磁盘上的普通 JSONL 文件</td><td>不用</td></tr>
+  <tr><td>监督者的人格与协议</td><td>一份随本仓库打包、已安装且归用户所有的 <em>agent preset</em></td><td>YAML + 文字</td></tr>
+  <tr><td>持久状态（目标、笔记、提问、changelog）</td><td><code>.agi/</code> 里的普通文件，用每个 agent 都有的 shell/fs 工具写</td><td>不用 —— 只是约定</td></tr>
+  <tr><td>一眼可看的运行 UI 和真正的停止</td><td>原生的 view 槽位/投影，加上打包的监督动态 Feed 路由与 Full stop 维护动作</td><td>打包的 client + 宿主路由</td></tr>
+  <tr><td>额外的 trace 文件，或者一个无参数的 wait 工具</td><td>—</td><td>可选，第 13 章</td></tr>
 </table>
 <p>
-  So the “build” is: <strong>one preset + one schedule-service row + a persona and file convention,
-  packaged with narrow goal/spawn/control/diagnostic/UI policy plugins</strong>. The worker lifecycle,
-  retries, durable sessions, goals, schedules, and wake delivery remain native.
+  所以所谓“构建”就是：<strong>一份 preset + 一行 schedule 服务 + 一段人格和一套文件约定，
+  再配上几个窄口径的 goal/spawn/control/diagnostic/UI 策略插件一起打包</strong>。worker 生命周期、
+  重试、持久会话、目标、schedule 和唤醒投递，都仍然是原生的。
 </p>
 
 <div class="box why">
-  <span class="box-title">Why native-first wins here</span>
+  <span class="box-title">为什么在这里原生优先会赢</span>
   <p>
-    Custom machinery is code you must debug <em>while also</em> debugging your agent’s behavior. When the
-    spawn/steer/kill/report loop is the harness’s own, a failure can only be in your prompt or your
-    protocol — a much smaller search space. You can always add the custom extras later
-    (chapter 13 shows exactly how, using this repository's installed bundle as the template).
+    自定义机器是你在调试 agent 行为<em>之余</em>还得额外调的一堆代码。当
+    spawn/steer/kill/report 这个循环是 harness 自己的时候，出问题就只可能出在你的提示词或你的
+    协议上 —— 搜索空间小得多。那些自定义的额外零件，你随时可以后面再加
+    （第 13 章会具体展示怎么做，用本仓库这个已经装好的 bundle 当模板）。
   </p>
 </div>
 
-<h2>Start from a clean PC</h2>
+<h2>从一台干净的 PC 开始</h2>
 <ul>
-  <li>No Harness process or source checkout, preset, workspace, or supervisor plugin is assumed.</li>
-  <li>After cloning this course, <code>./tutorial/setup.sh</code> installs its grader dependencies and
-      serves it on an unused localhost port. It does not hide any Harness setup.</li>
-  <li><a href="00-setup.html">Required setup</a> installs dsh, clones DeepSeek Harness at the path used
-      throughout the course, configures a model, starts the Harness web UI, and creates the lab workspace.</li>
-  <li>No TypeScript experience. Chapters carry <span style="color:var(--box-ts);font-weight:650">TypeScript corner</span>
-      boxes that teach exactly the syntax you are looking at, when you are looking at it.</li>
+  <li>不假设你已经有一个 Harness 进程、源码检出、preset、工作区或监督者插件。</li>
+  <li>clone 这门课之后，<code>./tutorial/setup.sh</code> 会装上它的评分器依赖，
+      并在一个空闲的 localhost 端口上把它伺服起来。它不会把任何 Harness 设置藏起来。</li>
+  <li><a href="00-setup.html">必需的环境准备</a> 会装上 dsh、把 DeepSeek Harness clone 到全课程
+      都在用的那个路径、配好一个模型、启动 Harness 的 web UI，并创建实验工作区。</li>
+  <li>不需要 TypeScript 经验。各章里有 <span style="color:var(--box-ts);font-weight:650">TypeScript corner</span>
+      小框，在你正看着某段语法的时候，正好教你那段语法。</li>
 </ul>
 
-<h2>How each chapter works</h2>
+<h2>每一章是怎么组织的</h2>
 <ul>
-  <li><strong>Narrative first</strong> — concepts in prose, then the real code.</li>
-  <li><strong>Cited code</strong> — every claim about the harness points at a file (and usually lines) in
-      <code>$HOME/src/deepseek-harness</code> so you can verify it yourself. Code blocks are labeled
+  <li><strong>先讲道理</strong> —— 用文字讲清概念，然后才是真正的代码。</li>
+  <li><strong>引用的代码</strong> —— 关于 harness 的每一句断言都指向 
+      <code>$HOME/src/deepseek-harness</code> 里的某个文件（通常还给出行号），好让你自己去核验。代码块会标上
       <span class="badge cite">CITED</span>
-      (exists in the repo — go read it) or
+      （仓库里确实存在 —— 去读它）或
       <span class="badge you">YOURS</span>
-      (you will write/paste it).</li>
-  <li><strong>Test it live</strong> — a green box at the end of every milestone with the exact steps and the
-      expected observation. Do not continue until it passes; later chapters assume it.</li>
-  <li><strong>Auto-grading</strong> — every milestone box includes a <em>Run grader</em> button and the CLI fallback:
-      <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m0…m7</code> scores the durable evidence (preset files, patch
-      rows, <code>.agi/</code> state, session event logs) and exits 0/1 at the 90% bar. <code>all</code> runs
-      m0–m6 in one report; <code>doctor</code> shows what it can see. Details:
-      <code>$HOME/src/dsh-supervisor/tutorial/GRADING.md</code>.</li>
+      （这是你要写进去或贴进去的）。</li>
+  <li><strong>实机验证</strong> —— 每个里程碑结尾都有一个绿色小框，给出确切的步骤和
+      预期看到的现象。没通过就别往下走；后面的章节默认它已经过了。</li>
+  <li><strong>自动评分</strong> —— 每个里程碑框里都有 <em>运行评分器</em> 按钮，以及命令行兜底：
+      <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m0…m7</code> 会给持久证据打分（preset 文件、patch
+      行、<code>.agi/</code> 状态、会话事件日志），并在 90% 这条线上以 0/1 退出。<code>all</code> 会把
+      m0–m6 合成一份报告跑；<code>doctor</code> 显示它能看见什么。细节见
+      <code>$HOME/src/dsh-supervisor/tutorial/GRADING.md</code>。</li>
 </ul>
 
-<p class="part-label">Part I — Understand the machine (chapters 1–5)</p>
+<p class="part-label">第 I 部分 —— 理解这台机器（第 1–5 章）</p>
 <ol class="toc" start="1">
-  <li><a href="01-big-picture.html">The big picture</a><span class="tag">concepts</span>
-      <span class="desc">What an always-on supervisor is, the sleep/wake loop, and the exact inventory of native parts we will assemble.</span></li>
-  <li><a href="02-cordis.html">Cordis from scratch</a><span class="tag">concepts</span>
-      <span class="desc">Plugins, contexts, services, <code>inject</code>, events, effects, waterfalls — the five ideas everything else stands on. Includes your JavaScript/TypeScript bootstrapping.</span></li>
-  <li><a href="03-harness.html">Anatomy of the harness</a><span class="tag">concepts</span>
-      <span class="desc">Profiles, bundles, patch layers, the two planes (host vs. preset), the session log, and the turn flow. Where every kind of change belongs.</span></li>
-  <li><a href="04-lab.html">Your lab</a><span class="tag">hands-on</span>
-      <span class="desc">Tour the clean deployment you started: process, <code>$DSH_HOME</code>, sessions on disk, web UI, and safety rules.</span></li>
-  <li><a href="05-creator-mode.html">Creator mode and the Cordis toolset</a><span class="tag">testable</span>
-      <span class="desc">The self-referential preset: seven <code>cordis_*</code> tools that inspect and extend the live runtime. You define, run, and remove your first dynamic plugin.</span></li>
+  <li><a href="01-big-picture.html">大局观</a><span class="tag">概念</span>
+      <span class="desc">常驻监督者是什么、“睡/醒”这个循环，以及我们要拼装的原生部件的确切清单。</span></li>
+  <li><a href="02-cordis.html">从零开始学 Cordis</a><span class="tag">概念</span>
+      <span class="desc">插件、context、服务、<code>inject</code>、事件、effect、waterfall —— 其他一切所立足的那几个想法。还包含你的 JavaScript/TypeScript 起步。</span></li>
+  <li><a href="03-harness.html">拆开 harness 看内部</a><span class="tag">概念</span>
+      <span class="desc">profile、bundle、patch 层、两个平面（宿主 vs. preset）、会话日志，以及回合的流转。每种改动该放在哪儿。</span></li>
+  <li><a href="04-lab.html">你的实验场</a><span class="tag">动手</span>
+      <span class="desc">逛一遍你刚启动的那套干净部署：进程、<code>$DSH_HOME</code>、磁盘上的会话、web UI，以及安全规则。</span></li>
+  <li><a href="05-creator-mode.html">Creator mode 与 Cordis 工具集</a><span class="tag">可验证</span>
+      <span class="desc">那个自我指涉的 preset：七个 <code>cordis_*</code> 工具，能检查并且扩展正在运行的运行时。你会定义、运行、然后移除自己的第一个动态插件。</span></li>
 </ol>
 
-<p class="part-label">Part II — Build the supervisor (chapters 6–12)</p>
+<p class="part-label">第 II 部分 —— 构建监督者（第 6–12 章）</p>
 <ol class="toc" start="6">
-  <li><a href="06-preset.html">Milestone 1 — Install and inspect <code>main-agent</code></a><span class="tag">testable</span>
-      <span class="desc">Install the bundle before its package rows are referenced, restart, verify the generated preset, and mount a real session.</span></li>
-  <li><a href="07-brain.html">Milestone 2 — The brain: persona, protocol, and the <code>.agi/</code> state contract</a><span class="tag">testable</span>
-      <span class="desc">Read the exact installed persona/state contract and test workspace-grounded, non-blocking goal setup over the native goal service.</span></li>
-  <li><a href="08-schedule.html">Milestone 3 — Time: the schedule overlay</a><span class="tag">testable</span>
-      <span class="desc">One schedule-service row gives sessions <code>schedule_create</code>. Patience timers and periodic wake-ups with zero custom timer code.</span></li>
-  <li><a href="09-delegation.html">Milestone 4 — Workers: spawn, steer, kill, report</a><span class="tag">testable</span>
-      <span class="desc">The native continuable subagent loop plus guarded model/effort routing, parent-only questions, next-step steering, and terminal-failure diagnostics.</span></li>
-  <li><a href="10-loop.html">Milestone 5 — The supervision loop</a><span class="tag">testable</span>
-      <span class="desc">Wire settle notices + schedule wakes + session-log inspection into the full sleep/wake/triage cycle. Forced steer, forced kill, forced unanswered question.</span></li>
-  <li><a href="11-ui.html">Milestone 6 — UI, the minimal way</a><span class="tag">testable</span>
-      <span class="desc">The bundled Feed tab, live Supervisor settings card, and the durable Full stop control that stops the whole delegated run.</span></li>
-  <li><a href="12-acceptance.html">Milestone 7 — Acceptance run</a><span class="tag">testable</span>
-      <span class="desc">A scripted end-to-end goal with every behavior forced once, plus the restart-resilience check. Your definition of done.</span></li>
+  <li><a href="06-preset.html">里程碑 1 —— 安装并查看 <code>main-agent</code> preset</a><span class="tag">可验证</span>
+      <span class="desc">在它的包行被引用之前先装上这个 bundle、重启、核验生成出来的 preset，并挂载一个真实会话。</span></li>
+  <li><a href="07-brain.html">里程碑 2 —— 大脑：人格、协议与 <code>.agi/</code> 状态契约</a><span class="tag">可验证</span>
+      <span class="desc">读一遍真实装好的 persona/状态契约，并在原生目标服务上测试“先打底工作区、不阻塞”的目标设置。</span></li>
+  <li><a href="08-schedule.html">里程碑 3 —— 时间：schedule 叠加层</a><span class="tag">可验证</span>
+      <span class="desc">一行 schedule 服务就让会话拥有 <code>schedule_create</code>。耐心等待定时器和周期唤醒，一行自定义定时器代码都不用写。</span></li>
+  <li><a href="09-delegation.html">里程碑 4 —— worker：派生、纠偏、终止、报告</a><span class="tag">可验证</span>
+      <span class="desc">原生可续用子代理循环，加上受保护的模型/推理强度路由、只向父级提问、下一步纠偏，以及最终失败诊断。</span></li>
+  <li><a href="10-loop.html">里程碑 5 —— 监督循环</a><span class="tag">可验证</span>
+      <span class="desc">把收敛通知 + schedule 唤醒 + 会话日志巡检接进完整的“睡/醒/分诊”循环。强制纠偏、强制终止、强制出现一个没人回答的提问。</span></li>
+  <li><a href="11-ui.html">里程碑 6 —— UI，最省事的做法</a><span class="tag">可验证</span>
+      <span class="desc">打包的监督动态 Feed 标签页、实时的监督者设置卡片，以及能停掉整条委派运行链的持久 Full stop 控件。</span></li>
+  <li><a href="12-acceptance.html">里程碑 7 —— 验收运行</a><span class="tag">可验证</span>
+      <span class="desc">一个照脚本走的端到端目标，每个行为都强制走一遍，再加一次重启韧性检查。这就是你“做完”的定义。</span></li>
 </ol>
 
-<p class="part-label">Part III — Beyond native (chapters 13–14)</p>
+<p class="part-label">第 III 部分 —— 超越原生（第 13–14 章）</p>
 <ol class="toc" start="13">
-  <li><a href="13-extensions.html">Optional extensions: real host plugins</a><span class="tag">advanced</span>
-      <span class="desc">When native isn’t enough: a <code>wait_for_agents</code> tool, trace tap, or state route packaged like the supervisor bundle you installed in chapter 6.</span></li>
-  <li><a href="14-troubleshooting.html">Troubleshooting & reference</a><span class="tag">reference</span>
-      <span class="desc">The failure catalog, a glossary, and the map of harness docs worth reading next.</span></li>
+  <li><a href="13-extensions.html">可选扩展：真正的宿主插件</a><span class="tag">进阶</span>
+      <span class="desc">当原生不够用时：像你在第 6 章装的那个监督者 bundle 一样，把一个 <code>wait_for_agents</code> 工具、trace 分流器或状态路由打包起来。</span></li>
+  <li><a href="14-troubleshooting.html">故障排查与参考</a><span class="tag">参考</span>
+      <span class="desc">故障清单、术语表，以及接下来值得读的 harness 文档地图。</span></li>
 </ol>
 
-<h2>A note on your existing plan</h2>
+<h2>关于你已有的那份计划</h2>
 <p>
-  <code>IMPLEMENTATION_PLAN.md</code> predates two things: the design’s own simplifications (S1–S4) and
-  your decision to build native-first. Where this course and the plan disagree — custom
-  a fully custom <code>agi-spawn</code> lifecycle vs. the guarded frontend over native continuable workers,
-  <code>brief.md</code> files vs. prompt-carried tasks, and bespoke run-list/trace tabs vs. the bundled Feed
-  plus shipped session views — <strong>this course reflects the current decision</strong> and
-  says so in place. The plan remains useful as the reference for the “maximal” custom build,
-  which chapter 13 revisits.
+  <code>IMPLEMENTATION_PLAN.md</code> 早于两件事：设计自己的简化（S1–S4），以及
+  你决定走原生优先。凡是这门课和那份计划不一致的地方，比如
+  完全自定义的 <code>agi-spawn</code> 生命周期 vs. 套在原生可续用 worker 上的受保护前端、
+  <code>brief.md</code> 文件 vs. 提示词随身携带的任务，以及自制的 run-list/trace 标签页 vs. 打包的监督动态 Feed
+  加上自带的会话视图 —— <strong>这门课反映的是当前的决定</strong>，
+  并且会在相应位置说明这一点。那份计划仍然有用，可以当你做“最大号”自定义构建时的参考，
+  第 13 章会再回到它。
 </p>
 
 <nav class="pager">
-  <a class="next" href="00-setup.html">Required setup — Start on a clean PC →</a>
+  <a class="next" href="00-setup.html">必需的环境准备 —— 从一台干净的 PC 开始 →</a>
 </nav>
 </main>
 </body>

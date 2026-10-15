@@ -1,62 +1,62 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>13 · Optional extensions: real host plugins — Supervisor on DSH</title>
+<title>第 13 章 · 可选扩展：真正的宿主插件 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part III · Chapter 13</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 III 部分 · 第 13 章</span>
   <span class="spacer"></span>
   <a href="12-acceptance.html">←</a>
   <a href="14-troubleshooting.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part III — Beyond native</p>
-  <h1>Optional extensions: real host plugins</h1>
-  <p class="lede">Everything the plan’s M2 wanted — a tool-call delay, per-worker trace files, a
-  blocking <code>wait_for_agents</code>, an HTTP state endpoint — as <em>packaged, restart-surviving</em>
-  plugins installed into your profile. You may never need them; when you do, this is the honest path,
-  with a real installed plugin as your template.</p>
+  <p class="kicker">第 III 部分 —— 超越原生</p>
+  <h1>可选扩展：真正的宿主插件</h1>
+  <p class="lede">计划里的 M2 想要的东西全在这儿 —— 工具调用延迟、每个 worker 一份的 trace 文件、一个
+  阻塞式 <code>wait_for_agents</code>、一个 HTTP 状态端点 —— 而且都是<em>打包好的、能挺过重启</em>的
+  插件，装进你的 profile 里。你可能永远用不上它们；真要用的时候，这才是老实的做法，
+  而且有一个真实装好的插件给你当模板。</p>
 </header>
 
-<h2>When to reach for this chapter</h2>
+<h2>什么时候该翻到这一章</h2>
 <ul>
-  <li>You want a capability to <strong>survive restarts</strong> (dynamic plugins die with the process).</li>
-  <li>You want it <strong>process-wide</strong> — observing every session, or serving HTTP.</li>
-  <li>You have prototyped it dynamically (chapters 5/11) and it earned permanence.</li>
+  <li>你希望某个能力<strong>挺过重启</strong>（动态插件会随进程一起死掉）。</li>
+  <li>你希望它是<strong>进程级</strong>的 —— 观察每一个会话，或者对外提供 HTTP。</li>
+  <li>你已经动态地把它做成了原型（第 5/11 章），而它挣得了永久身份。</li>
 </ul>
-<p>The rule of thumb from the toolset’s own docs: dynamic packages “cannot be promoted automatically.
-To keep an experiment, implement a normal … plugin through the regular development workflow”
-(<code>packages/extensions/tool-cordis/README.md</code>). This chapter is that workflow.</p>
+<p>工具集自己的文档给出的准则是：「cannot be promoted automatically.
+To keep an experiment, implement a normal … plugin through the regular development workflow」
+（<code>packages/extensions/tool-cordis/README.md</code>）。这一章讲的就是这套流程。</p>
 
 <div class="box why">
-  <span class="box-title">This repo already uses the pattern</span>
+  <span class="box-title">这个仓库已经在用这个模式</span>
   <p>
-    The supervisor project itself is packaged this way: <code>$HOME/src/dsh-supervisor/package.json</code> declares
-    <code>dsh.bundle.patch</code>, its <code>cordis.patch.yml</code> inserts the schedule rows plus a setup
-    plugin (<code>lib/index.js</code>, plain ESM, no build step) that installs the bundled
-    <code>main-agent</code> preset into the user preset root at boot — verified end-to-end:
-    <code>dsh plugin --profile web add file:$HOME/src/dsh-supervisor</code> registered the dependency <em>and</em> the
-    bundles entry, and a restart from a deleted-preset state auto-installed everything. Read those
-    three files as the minimal worked example before building <code>agi-extras</code> below; note that a
-    plugin whose job is a filesystem <em>installation</em> (not a runtime registration) legitimately has
-    nothing to dispose.
+    监督者项目本身就是这么打包的：<code>$HOME/src/dsh-supervisor/package.json</code> 声明了
+    <code>dsh.bundle.patch</code>，它的 <code>cordis.patch.yml</code> 插入了 schedule 行，外加一个 setup
+    插件（<code>lib/index.js</code>，纯 ESM，没有构建步骤），这个插件在启动时把打包的
+    <code>main-agent</code> preset 装进用户 preset 根目录 —— 端到端验证过：
+    <code>dsh plugin --profile web add file:$HOME/src/dsh-supervisor</code> 同时注册了依赖 <em>和</em>
+    bundles 条目，而且从“preset 被删掉”的状态重启会自动把一切装回来。在动手写下面的 <code>agi-extras</code> 之前，
+    先把那三个文件读成最小可用范例；注意，
+    一个职责是文件系统<em>安装</em>（而不是运行时注册）的插件，理所应当
+    没有什么需要在销毁时清理。
   </p>
 </div>
 
-<h2>Your installed template is this supervisor bundle</h2>
+<h2>你装好的模板就是这个监督者 bundle</h2>
 <p>
-  Chapter 6 installed <code>$HOME/src/dsh-supervisor</code> into the web profile. Use the package you have
-  already inspected and run successfully as the template—no unrelated third-party checkout is assumed.
+  第 6 章已经把 <code>$HOME/src/dsh-supervisor</code> 装进了 web profile。就拿这个你已经检查过、
+  并且成功跑过的包当模板 —— 这里不假设你另外检出过任何无关的第三方仓库。
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/package.json (load-bearing fields)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/package.json（关键字段）</figcaption>
 <pre><code>{
   "name": "dsh-supervisor",
   "type": "module",
@@ -81,7 +81,7 @@ To keep an experiment, implement a normal … plugin through the regular develop
 }</code></pre>
 </figure>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/cordis.patch.yml (essential shape)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/cordis.patch.yml（基本结构）</figcaption>
 <pre><code># One bundle layer can mount native services and its own host plugin.
 - insert:
     - id: agi-schedule
@@ -89,35 +89,35 @@ To keep an experiment, implement a normal … plugin through the regular develop
     - id: agi-supervisor-setup
       name: dsh-supervisor</code></pre>
 </figure>
-<p>The recipe, extracted:</p>
+<p>把配方抽出来就是：</p>
 <ol>
-  <li>An npm package (<code>"type": "module"</code>, runtime JS in <code>lib/</code>).</li>
-  <li>Harness packages as <strong>peer dependencies</strong> — your plugin imports them; the running dsh
-      provides them (chapter 3: profile module resolution makes bare names resolve to the install).</li>
-  <li>A one-row <code>cordis.patch.yml</code> + the <code>dsh.bundle</code> manifest field → the package
-      <em>is</em> a bundle: listing it in the profile’s <code>dsh.profile.bundles</code> mounts its rows as
-      one more layer.</li>
-  <li>Install through the same porcelain used in chapter 6:
-      <code>dsh plugin --profile web add "file:$HOME/src/my-plugin"</code>, then restart dsh once. The
-      command owns the dependency and bundle-manifest edits; do not reproduce them by hand.</li>
+  <li>一个 npm 包（<code>"type": "module"</code>，运行时 JS 放在 <code>lib/</code>）。</li>
+  <li>把 Harness 的包作为 <strong>peer dependencies</strong> —— 你的插件 import 它们；运行中的 dsh
+      提供它们（第 3 章：profile 的模块解析让裸包名解析到那份安装）。</li>
+  <li>一份只有一行的 <code>cordis.patch.yml</code> + manifest 里的 <code>dsh.bundle</code> 字段 → 这个包
+      <em>就</em>是一个 bundle：把它列进 profile 的 <code>dsh.profile.bundles</code>，它那几行就作为
+      又一层被挂载。</li>
+  <li>用第 6 章那套同样的 porcelain 安装：
+      <code>dsh plugin --profile web add "file:$HOME/src/my-plugin"</code>，然后把 dsh 重启一次。
+      依赖和 bundle-manifest 的改动由这条命令负责；不要手动照抄一遍。</li>
 </ol>
 
 <div class="box ts">
-  <span class="box-title">JavaScript first · no hidden build toolchain</span>
+  <span class="box-title">JavaScript 优先 · 没有藏着的构建工具链</span>
   <p>
-    This repository ships plain ESM directly in <code>lib/</code>; it has no <code>src/</code>, TypeScript
-    compiler, or build script. Use that same minimal pattern for this exercise. TypeScript is a valid
-    later refinement, but it requires a toolchain you would need to add and document yourself.
+    这个仓库直接把纯 ESM 放在 <code>lib/</code> 里发布；它没有 <code>src/</code>、没有 TypeScript
+    编译器，也没有构建脚本。这个练习就用同样极简的模式。TypeScript 是一种合理的
+    后续精修，但它需要一套工具链，而你得自己加、自己写文档。
   </p>
 </div>
 
-<h2>Scaffold: <code>agi-extras</code>, one package, four small plugins</h2>
+<h2>搭骨架：<code>agi-extras</code>，一个包，四个小插件</h2>
 <p>
-  Rather than four packages, make one — <code>$HOME/src/agi-extras</code> — whose bundle patch inserts a row
-  per feature (each row addressable, hence individually disable-able from your profile patch):
+  别做四个包，做一个 —— <code>$HOME/src/agi-extras</code> —— 它的 bundle patch 为每个特性插入一行
+  （每一行都可被寻址，因此可以在你的 profile patch 里单独禁用）：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>$HOME/src/agi-extras layout</figcaption>
+<figcaption><span class="badge you">YOURS</span>$HOME/src/agi-extras 布局</figcaption>
 <pre><code>agi-extras/
   package.json          # name @agi/extras, dsh.bundle → cordis.patch.yml,
                         # peers: cordis, dsh-tools, dsh-subagent, dsh-host-webserver
@@ -129,23 +129,23 @@ To keep an experiment, implement a normal … plugin through the regular develop
     state.js            # GET /agi/state route</code></pre>
 </figure>
 <p>
-  Copy this repository's manifest as a starting point, rename the package to <code>@agi/extras</code>,
-  keep only the peers each file imports, export <code>./delay</code>, <code>./trace</code>, <code>./wait</code>,
-  and <code>./state</code> to their <code>lib/*.js</code> files, and keep the <code>dsh.bundle.patch</code>
-  declaration. The bundle patch then inserts one row per exported subpath. Below is each plugin's core;
-  read the referenced contract before finalizing it.
+  把这个仓库的 manifest 复制过来当起点，把包名改成 <code>@agi/extras</code>，
+  只保留每个文件真正 import 的 peers，把 <code>./delay</code>、<code>./trace</code>、<code>./wait</code>
+  和 <code>./state</code> 分别导出到对应的 <code>lib/*.js</code>，并保留 <code>dsh.bundle.patch</code>
+  声明。然后 bundle patch 为每个导出的子路径插入一行。下面是每个插件的核心；
+  定稿之前先读一读它引用的契约。
 </p>
 
-<h3>1 · <code>agi-tool-delay</code> — the waterfall lesson, applied</h3>
+<h3>1 · <code>agi-tool-delay</code> —— 把 waterfall 那一课用上</h3>
 <p class="muted">
-  The listener signature is verified, not guessed:
+  这个监听器签名是核验过的，不是猜的：
   <code>'tools/pre-execute'(exec: ToolExecution, next: () =&gt; Promise&lt;PreToolDecision&gt;)</code> —
-  a waterfall whose listeners return an allow/deny/ask <em>decision</em>, where “<code>next()</code>
-  delegates to allow” (<code>docs/subsystems/tools.md</code>, line 693). Delay-then-delegate is therefore
-  just an awaited pause before returning <code>next()</code>.
+  一个 waterfall，它的监听器返回 allow/deny/ask 的<em>决定</em>，其中「<code>next()</code>
+  delegates to allow」（<code>docs/subsystems/tools.md</code>，第 693 行）。所以“先延迟、再委托”
+  不过是在返回 <code>next()</code> 之前 await 一个暂停。
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>lib/delay.js (core; signature per docs/subsystems/tools.md:693)</figcaption>
+<figcaption><span class="badge you">YOURS</span>lib/delay.js（核心；签名依据 docs/subsystems/tools.md:693）</figcaption>
 <pre><code>import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -170,14 +170,14 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 
-<h3>2 · <code>agi-subagent-trace</code> — the firehose lesson, applied</h3>
+<h3>2 · <code>agi-subagent-trace</code> —— 把 firehose 那一课用上</h3>
 <p>
-  Listens to the post-commit append feed — “<code>'session/event'(session, event)</code>… fire-and-forget;
-  observer failures are logged and contained” (<code>docs/subsystems/session.md</code>) — and mirrors
-  child tool calls into greppable per-worker files:
+  它监听提交后追加的那条 feed —— 「<code>'session/event'(session, event)</code>… fire-and-forget;
+  observer failures are logged and contained」（<code>docs/subsystems/session.md</code>）—— 并把子级的工具调用镜像成
+  可按 worker grep 的文件：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>lib/trace.js (core; verify header fields in docs/subsystems/session.md “SessionHeader”)</figcaption>
+<figcaption><span class="badge you">YOURS</span>lib/trace.js（核心；header 字段请到 docs/subsystems/session.md 的 “SessionHeader” 里核验）</figcaption>
 <pre><code>import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -201,21 +201,21 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 
-<h3>3 · <code>agi-wait</code> — <code>wait_for_agents</code>, if you prefer blocking ergonomics</h3>
+<h3>3 · <code>agi-wait</code> —— <code>wait_for_agents</code>，如果你更喜欢阻塞式的手感</h3>
 <p>
-  Uses two verified contracts: <code>defineTool</code> (chapter 5; full reference
-  <code>docs/subsystems/tools.md</code>) and
-  <code>ctx.subagents.listChildren(parentSessionId, signal?)</code>, whose entries are a tagged union —
-  child rows are <code>{ kind: 'child', id, activity: 'running' | 'inactive', … }</code> and damaged
-  siblings arrive as <code>{ kind: 'diagnostic', id, reason }</code> rows <em>without</em> an
-  <code>activity</code> field (<code>packages/subagent/subagent/src/list-children.ts</code>, lines 44–57 —
-  so every read of <code>activity</code> must check <code>kind</code> first). One caution from your plan
-  stands: the base mounts
-  <code>dsh-tool-call-timeout-policy</code>, so either configure its row above your wake interval or
-  return early with “call me again.”
+  用了两个已核验的契约：<code>defineTool</code>（第 5 章；完整参考见
+  <code>docs/subsystems/tools.md</code>）和
+  <code>ctx.subagents.listChildren(parentSessionId, signal?)</code>，它的条目是一个带标签的联合类型 ——
+  子级行是 <code>{ kind: 'child', id, activity: 'running' | 'inactive', … }</code>，而损坏的
+  同级条目会以 <code>{ kind: 'diagnostic', id, reason }</code> 行出现，<em>没有</em>
+  <code>activity</code> 字段（<code>packages/subagent/subagent/src/list-children.ts</code>，第 44–57 行 ——
+  所以每次读 <code>activity</code> 都必须先检查 <code>kind</code>）。你计划里的一条警告
+  依然成立：基础层挂载了
+  <code>dsh-tool-call-timeout-policy</code>，所以要么把它那一行配得比你的唤醒间隔更长，要么
+  提前返回一句“再叫我一次”。
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>lib/wait.js (core)</figcaption>
+<figcaption><span class="badge you">YOURS</span>lib/wait.js（核心）</figcaption>
 <pre><code>import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -266,22 +266,22 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 <p class="muted">
-  Plane note: registering into the host <code>tools</code> registry from a host plugin makes the tool
-  visible everywhere. If you want it supervisor-only, keep the host plugin providing nothing and add
-  a preset row instead — or accept global visibility; it is harmless to agents without children.
+  平面说明：从宿主插件往宿主的 <code>tools</code> 注册表里注册，会让这个工具
+  处处可见。如果你想让它只属于监督者，就让宿主插件什么都不提供，改在
+  preset 里加一行 —— 或者接受全局可见；对没有子级的 agent 来说它无害。
 </p>
 
-<h3>4 · <code>agi-state-route</code> — <code>.agi/</code> over HTTP</h3>
+<h3>4 · <code>agi-state-route</code> —— 用 HTTP 暴露 <code>.agi/</code></h3>
 <p>
-  The supervisor bundle already ships the bounded <code>GET /supervisor/feed?ws=…</code> route used by
-  Feed. Treat this sketch as a lesson for a <em>different</em> mission-specific schema, not something the
-  current supervisor still needs. The route contract is exactly chapter 3’s web server:
-  <code>ctx.webServer.register({ kind, path, handler })</code> returns a disposer; duplicates throw
-  (<code>docs/subsystems/web-server.md</code>). Path-validate the <code>ws</code> query parameter — the
-  server is unauthenticated localhost.
+  监督者 bundle 已经自带那条有边界的 <code>GET /supervisor/feed?ws=…</code> 路由，供
+  监督动态 Feed 使用。把这段草图当成<em>另一种</em>任务专属 schema 的练习，而不是当前监督者
+  还需要的东西。路由契约正是第 3 章那个 web server：
+  <code>ctx.webServer.register({ kind, path, handler })</code> 返回一个 disposer；重复注册会抛错
+  （<code>docs/subsystems/web-server.md</code>）。要对 <code>ws</code> 查询参数做路径校验 —— 这个
+  server 是不鉴权的 localhost。
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>lib/state.js (sketch)</figcaption>
+<figcaption><span class="badge you">YOURS</span>lib/state.js（草图）</figcaption>
 <pre><code>export const name = 'agi-state-route'
 export const inject = ['webServer']
 
@@ -296,9 +296,9 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 
-<h2>Install into the profile</h2>
+<h2>装进 profile</h2>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>register and restart</figcaption>
+<figcaption><span class="badge you">YOURS</span>注册并重启</figcaption>
 <pre><code>cd "$HOME/src/agi-extras"
 dsh plugin --profile web add "file:$PWD"
 
@@ -306,65 +306,65 @@ dsh plugin --profile web add "file:$PWD"
 # Ctrl-C, wait for shutdown, then run `dsh web` again.</code></pre>
 </figure>
 <div class="box warn">
-  <span class="box-title">Bundle layers are boot-time</span>
+  <span class="box-title">bundle 层是启动期的事</span>
   <p>
-    Unlike your live-watched patch file, the <em>bundle list</em> composes at boot — hence the one
-    restart. Afterwards, iteration is: edit <code>lib/</code>, run your tests, restart. Copy this repository's test and
-    self-check habits. To disable one
-    feature without uninstalling, add an id-targeted <code>disabled: true</code> patch for its row in
-    your profile patch — that part is live.
+    和你那个被实时监视的 patch 文件不同，<em>bundle 列表</em>是在启动时组合的 —— 所以需要那一次
+    重启。之后的迭代就是：改 <code>lib/</code>、跑你的测试、重启。把本仓库的测试和
+    自检习惯照抄过来。要禁用一个
+    特性而不卸载，就在你的 profile patch 里为它那一行加一条按 id 定位的 <code>disabled: true</code> ——
+    那部分是实时的。
   </p>
 </div>
 
 <div class="box test">
-  <span class="box-title">Test it live — per plugin</span>
+  <span class="box-title">实机验证 —— 逐个插件</span>
   <ol>
-    <li><strong>delay:</strong> set <code>"toolDelaySeconds": 2</code> in the lab’s config; a tool call in a
-        <code>.agi</code>-workspace session visibly lags ~2 s (compare <code>tool/call</code>→<code>tool/result</code>
-        timestamps in the session log); a session elsewhere doesn’t.</li>
-    <li><strong>trace:</strong> spawn any worker; <code>.agi/subagents/&lt;id&gt;/trace.log</code> fills with one
-        line per child tool call.</li>
-    <li><strong>wait:</strong> in the supervisor: “spawn a 60-second sleeper, then call wait_for_agents” —
-        returns early on settle; with a long child, returns at <code>wakeMinutes</code>.</li>
-    <li><strong>state:</strong> <code>curl -s "http://127.0.0.1:3080/agi/state?ws=$HOME/agi-lab" | python3 -m json.tool</code></li>
-    <li><strong>teardown proof:</strong> disable a row via profile patch → its capability vanishes without a
-        rebuild (effects unwound — chapter 2, idea 5, at packaged scale).</li>
+    <li><strong>delay：</strong>在实验工作区的 config 里设 <code>"toolDelaySeconds": 2</code>；在
+        <code>.agi</code> 工作区里的会话中，一次工具调用会肉眼可见地滞后约 2 秒（比对会话日志里
+        <code>tool/call</code>→<code>tool/result</code> 的时间戳）；别处的会话则不会。</li>
+    <li><strong>trace：</strong>派生任意一个 worker；<code>.agi/subagents/&lt;id&gt;/trace.log</code> 会一行一行
+        写入每一次子级工具调用。</li>
+    <li><strong>wait：</strong>在监督者里说：“派生一个睡 60 秒的 worker，然后调用 wait_for_agents” ——
+        子级收敛就提前返回；子级耗时长，就在 <code>wakeMinutes</code> 到点时返回。</li>
+    <li><strong>state：</strong> <code>curl -s "http://127.0.0.1:3080/agi/state?ws=$HOME/agi-lab" | python3 -m json.tool</code></li>
+    <li><strong>拆除证明：</strong>通过 profile patch 禁用一行 → 它的能力不用重建就消失
+        （effect 被逐一退回 —— 第 2 章第 5 个想法，在打包尺度上）。</li>
   </ol>
 </div>
 
-<h2>Survey: how the ecosystem packages presets</h2>
+<h2>巡视：整个生态是怎么打包 preset 的</h2>
 <p>
-  The <a href="https://github.com/topics/dsh-plugin"><code>dsh-plugin</code> GitHub topic</a> is the
-  official discovery channel, and community aggregators (awesome-lists with auto-refreshed indexes;
-  visual marketplaces like WhaleHub) build directly on it. Cloning the preset-shipping plugins in
-  that index shows three distribution shapes, all live in the wild:
+  <a href="https://github.com/topics/dsh-plugin"><code>dsh-plugin</code> 这个 GitHub topic</a> 是
+  官方的发现渠道，社区聚合器（带自动刷新索引的 awesome-list；
+  像 WhaleHub 这样的可视化市场）直接建在它上面。把那个索引里发布 preset 的插件 clone 下来，
+  能看到三种分发形态，而且都在野外真实存在：
 </p>
 <table>
-  <tr><th>Shape</th><th>Example</th><th>Mechanics</th></tr>
-  <tr><td>Script-only</td><td><code>dsh-preset-qa-mode</code></td><td>Preset directory + <code>install.sh</code>/<code>.ps1</code> copying into <code>~/.dsh/.agent-presets/</code>. No package, no bundle. (= this repo’s <code>scripts/install-manual.sh</code> fallback.)</td></tr>
-  <tr><td>Bundle with a copy-at-boot installer</td><td><code>dsh-minimal-msys2</code>, and this repo</td><td><code>dsh.bundle.patch</code> inserts one plugin row; the plugin materializes packaged presets into the user preset root if absent. Discovery is unmemoized, so no restart is needed after the copy; uninstalling the plugin deliberately leaves installed presets alone. Use <code>ctx.logger</code>, not <code>console</code>.</td></tr>
-  <tr><td>Bundle registering packaged assets as roots</td><td><code>dsh-preset-scaffold</code></td><td>Instead of (only) a preset, its plugin registers the package’s own <code>skills/</code> directory as a skill root via <code>FileSystemSkillProvider</code> (<code>includeDefaultRoots: false, customSkillDirs</code>) — its guidance loads into every session on the host profile with no preset switch. A pattern worth stealing when your contribution is <em>knowledge</em>, not composition.</td></tr>
+  <tr><th>形态</th><th>例子</th><th>机制</th></tr>
+  <tr><td>纯脚本</td><td><code>dsh-preset-qa-mode</code></td><td>一个 preset 目录 + <code>install.sh</code>/<code>.ps1</code>，把它们拷进 <code>~/.dsh/.agent-presets/</code>。没有包，没有 bundle。（= 本仓库 <code>scripts/install-manual.sh</code> 那条退路。）</td></tr>
+  <tr><td>带“启动时拷贝”安装器的 bundle</td><td><code>dsh-minimal-msys2</code>，以及本仓库</td><td><code>dsh.bundle.patch</code> 插入一行插件；这个插件在用户 preset 根目录里没有打包 preset 时就把它写进去。发现过程没有记忆化，所以拷完之后不需要重启；卸载这个插件会刻意留下已安装的 preset 不动。要用 <code>ctx.logger</code>，不要用 <code>console</code>。</td></tr>
+  <tr><td>bundle 把打包资源注册成根</td><td><code>dsh-preset-scaffold</code></td><td>它的插件不只是（也不止于）提供一个 preset，而是通过 <code>FileSystemSkillProvider</code>（<code>includeDefaultRoots: false, customSkillDirs</code>）把这个包自己的 <code>skills/</code> 目录注册成一个 skill 根 —— 它的指导内容会加载进宿主 profile 上的每一个会话，不需要切 preset。当你的贡献是<em>知识</em>而不是组合时，这个模式值得偷。</td></tr>
 </table>
 <p class="muted">
-  Also seen: the roster supports deployment-configured extra preset <code>roots</code>
-  (<code>dsh-agent-presets</code> Config), but a bundle patch cannot append to the shipped row’s config
-  without restating it wholesale — which is why copy-at-boot won in practice. For monorepos there is
-  a subpath install form: <code>github:owner/repo#ref&amp;path:/.dsh-plugin</code>.
+  还见过：roster 支持由部署来配置额外的 preset <code>roots</code>
+  （<code>dsh-agent-presets</code> 的 Config），但 bundle patch 无法往已发布那一行的 config 里追加内容，
+  除非整份重写一遍 —— 这就是“启动时拷贝”在实践中胜出的原因。monorepo 里还有一种
+  子路径安装形式：<code>github:owner/repo#ref&amp;path:/.dsh-plugin</code>。
 </p>
 
-<h2>Packaged client plugins (last word on UI)</h2>
+<h2>打包的客户端插件（关于 UI 的最后一句话）</h2>
 <p>
-  The repository now contains the concrete production example this chapter once lacked:
-  <code>lib/client.js</code> registers the durable Feed and Supervisor settings card, while
-  <code>lib/index.js</code> supplies their host routes. <code>package.json</code> declares
-  <code>dsh.client.platform: web</code> and exports <code>./client</code>, so the harness's client-module
-  scan serves it without rebuilding the core frontend. Copy that pattern only when your new surface
-  earns a permanent packaged seat; use chapter 11's retired pill exercise for disposable experiments.
+  这个仓库现在包含了这一章曾经缺少的那个具体生产范例：
+  <code>lib/client.js</code> 注册持久的监督动态 Feed 与监督者设置卡片，而
+  <code>lib/index.js</code> 提供它们的宿主路由。<code>package.json</code> 声明了
+  <code>dsh.client.platform: web</code> 并导出 <code>./client</code>，于是 harness 的 client 模块
+  扫描就能把它供出来，不需要重建核心前端。只在你的新界面挣得一个永久打包席位时才照抄这个模式；
+  一次性的实验，就用第 11 章那个已经退役的状态胶囊练习。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="12-acceptance.html">← Chapter 12 — Acceptance run</a>
-  <a class="next" href="14-troubleshooting.html">Chapter 14 — Troubleshooting & reference →</a>
+  <a class="prev" href="12-acceptance.html">← 第 12 章 —— 里程碑 7：验收</a>
+  <a class="next" href="14-troubleshooting.html">第 14 章 —— 故障排查与参考 →</a>
 </nav>
 </main>
 </body>

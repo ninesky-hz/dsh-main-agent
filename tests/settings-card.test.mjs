@@ -124,7 +124,7 @@ test('removed runtime/current remains available in the add-model dropdown', asyn
     && node.props.value === 'runtime/current')
   assert.ok(option)
   assert.ok(option.children.some(child => typeof child === 'string'
-    && child.includes('Current runtime model')))
+    && child.includes('当前运行时模型')))
 })
 
 test('Settings preserves a configured fixed effort and exposes native capability labels', async () => {

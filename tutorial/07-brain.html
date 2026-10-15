@@ -1,277 +1,320 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>7 · Milestone 2: the brain — Supervisor on DSH</title>
+<title>第 7 章 · 里程碑 2：大脑 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 7</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 7 章</span>
   <span class="spacer"></span>
   <a href="06-preset.html">←</a>
   <a href="08-schedule.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 2</p>
-  <h1>The brain: persona, protocol, and the <code>.agi/</code> contract</h1>
-  <p class="lede">A supervisor is mostly prose. This chapter reads the package-installed persona —
-  non-blocking goal setup, the question protocol, and file discipline — then tests the supervisor's
-  workspace-grounded frontend over the native goal domain.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 2</p>
+  <h1>大脑：persona、协议与 <code>.agi/</code> 契约</h1>
+  <p class="lede">一个监督者，大部分其实是文字。本章读一遍由包装上的那份 persona —— 非阻塞的目标
+  建立、提问协议、文件纪律 —— 然后测试监督者那个架在工作区之上、接在原生 goal 域上的前端。</p>
 </header>
 
-<h2>Where a persona lives and how it works</h2>
+<h2>persona 住在哪儿、怎么起作用</h2>
 <p>
-  Your preset’s first row is the persona — a prompt section that shadows the deployment default for
-  sessions on this preset. It supports two template variables resolved per agent:
+  你 preset 的第一行就是 persona —— 一个提示词段落，它在本 preset 的会话上覆盖掉部署自带的默认值。
+  它支持两个按 agent 解析的模板变量：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml (installed persona opening)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml（装好的 persona 开头）</figcaption>
 <pre><code>- id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
     text: |-
-      You are the Main Agent: an always-on supervisor powered by {{model}},
-      working in {{cwd}}. You supervise dev subagents. ...</code></pre>
+      你是 Main Agent：一个由 {{model}} 驱动的常驻监督者，
+      工作于 {{cwd}}。你监督开发子代理。你不亲自实现
+      变更 —— 但你不是一个盲目的派发器：你会用自己的工具阅读、搜索
+      并核验，而且你理解自己下达的每一项指令。 ...</code></pre>
 </figure>
 <p>
-  The bundle installed the full protocol. Read it before the abridged map below. Two writing rules
-  explain how to evaluate it, because persona text is engineering, not vibes:
+  这个 bundle 装进去的是完整协议。先读它，再看下面那张节选示意图。有两条写作规矩告诉你该怎么评价
+  它 —— 因为 persona 文本是工程，不是感觉：
 </p>
 <ul>
-  <li><strong>Don’t restate what infrastructure guarantees.</strong> The settle notice arrives whether or not
-      the persona mentions it; the child’s <code>report</code> tool exists regardless. The persona’s job is
-      the <em>decisions</em>: what to do when those things happen.</li>
-  <li><strong>Every rule must be testable.</strong> Each paragraph below maps to a forced test in
-      chapter 12. If you add a rule you can’t force, you can’t know it works.</li>
+  <li><strong>别去复述基础设施已经保证的事情。</strong>不管 persona 提不提，收敛通知都会到；子 agent 的
+      <code>report</code> 工具本来就在。persona 该管的是<em>决定</em>：这些事发生的时候该怎么办。</li>
+  <li><strong>每条规则都必须可测。</strong>下面每一段，都对得上第 12 章里的一个强制测试。如果你加了一条
+      逼不出来的规则，你就没法知道它到底管不管用。</li>
 </ul>
 
-<h2>The state contract: <code>.agi/</code></h2>
-<p>The setup page created the skeleton from the repository template. Verify it; do not overwrite the
-user-owned config while following later agent prompts:</p>
+<h2>状态契约：<code>.agi/</code></h2>
+<p>安装页已经按仓库模板把骨架建好了。核实一下；后面跟着 agent 的提示词做事的时候，不要覆盖那份归
+用户所有的 config：</p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>state-contract check</figcaption>
+<figcaption><span class="badge you">你的</span>状态契约检查</figcaption>
 <pre><code>cd "$HOME/agi-lab/.agi"
 python3 -c "import json; print(json.load(open('config.json')))"
 test -d subagents
 test -f NOTES.md &amp;&amp; test -f progress.jsonl \
   &amp;&amp; test -f questions.jsonl &amp;&amp; test -f CHANGELOG.jsonl</code></pre>
 </figure>
-<p>File semantics — this is the contract the persona will enforce:</p>
+<p>文件语义 —— 这就是 persona 会去执行的契约：</p>
 <table>
-  <tr><th>File</th><th>Owner</th><th>Format / rule</th></tr>
-  <tr><td><code>config.json</code></td><td><strong>You only.</strong> The agent may propose changes as questions, never edit.</td>
-      <td><code>wakeMinutes</code>: periodic check-in interval. <code>questionWaitMinutes</code>: patience before assuming. (The design’s <code>toolDelaySeconds</code> is dropped in the native-first build; chapter 13 restores it if wanted.)</td></tr>
-  <tr><td><code>GOAL.md</code></td><td>Agent writes when it starts the native goal. Reviewable by the user; not an approval gate.</td>
-      <td>Objective, constraints, milestones, out-of-scope. Active-goal scope steering goes to <code>GOAL_AMENDMENTS.md</code>, append-only.</td></tr>
-  <tr><td><code>NOTES.md</code></td><td>Agent.</td><td>Free-form working memory. Consulted and updated as work demands — no mandated ritual (design simplification S1).</td></tr>
-  <tr><td><code>progress.jsonl</code></td><td>Agent.</td><td>One <code>{"ts","text"}</code> line per milestone or key insight — the human-readable feed.</td></tr>
-  <tr><td><code>questions.jsonl</code></td><td>Agent.</td><td>One line per question: <code>{"ts","id","status","q", ...}</code>; status ∈ <code>pending → assumed | answered | withdrawn</code>.</td></tr>
-  <tr><td><code>CHANGELOG.jsonl</code></td><td>Agent.</td><td>One line per consequential action: <code>{"ts","actor","action","summary","detail"}</code>; action ∈ <code>spawn | steer | kill | assumption | config-proposal</code>.</td></tr>
-  <tr><td><code>subagents/&lt;child-id&gt;/</code></td><td>Agent + workers.</td><td>Per-worker artifacts; at minimum the worker’s <code>outcome.md</code>.</td></tr>
+  <tr><th>文件</th><th>归谁</th><th>格式 / 规则</th></tr>
+  <tr><td><code>config.json</code></td><td><strong>只有你。</strong>agent 可以把改动作为问题提出来，但绝不能编辑它。</td>
+      <td><code>wakeMinutes</code>：定时巡检的间隔。<code>questionWaitMinutes</code>：等多久之后就自行假设。（原设计里的 <code>toolDelaySeconds</code> 在原生优先的构建里被去掉了；想要的话第 13 章可以把它加回来。）</td></tr>
+  <tr><td><code>GOAL.md</code></td><td>agent 在启动原生目标时写它。用户可以查看；它不是一道审批关卡。</td>
+      <td>目标、约束、里程碑、不在范围内。对进行中目标的范围纠偏写进 <code>GOAL_AMENDMENTS.md</code>，只追加。</td></tr>
+  <tr><td><code>NOTES.md</code></td><td>agent。</td><td>自由形式的工作记忆。按工作需要查和改 —— 没有规定的仪式（设计简化 S1）。</td></tr>
+  <tr><td><code>progress.jsonl</code></td><td>agent。</td><td>每个里程碑或关键洞察一行 <code>{"ts","text"}</code> —— 给人看的那条流。</td></tr>
+  <tr><td><code>questions.jsonl</code></td><td>agent。</td><td>每个问题一行：<code>{"ts","id","status","q", ...}</code>；status ∈ <code>pending → assumed | answered | withdrawn</code>。</td></tr>
+  <tr><td><code>CHANGELOG.jsonl</code></td><td>agent。</td><td>每个有后果的动作一行：<code>{"ts","actor","action","summary","detail"}</code>；action ∈ <code>spawn | steer | kill | assumption | config-proposal</code>。</td></tr>
+  <tr><td><code>subagents/&lt;child-id&gt;/</code></td><td>agent + 各个 worker。</td><td>每个 worker 的产物；至少要有该 worker 的 <code>outcome.md</code>。</td></tr>
 </table>
 
-<h2>The persona</h2>
+<h2>persona 本体</h2>
 <p>
-  Read the exact installed text in
-  <code>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml</code>. The map below is intentionally
-  abridged for explanation; do not paste it over the installed persona. The packaged file is the
-  executable authority and includes the complete persistence, recovery, timer, and question rules.
+  去 <code>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml</code> 里读装好的原文。下面这张示意图
+  是刻意节选、只为讲解的；不要把它覆盖到装好的 persona 上。那个打包好的文件才是可执行的权威，
+  完整的持久化、恢复、定时器和提问规则都在里面。
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>the installed supervisor persona (abridged map)</figcaption>
+<figcaption><span class="badge cite">引用</span>装好的监督者 persona（当前中文正文节选）</figcaption>
 <pre><code>text: |-
-  You are the Main Agent: an always-on supervisor powered by {{model}},
-  working in {{cwd}}. You supervise dev subagents. You do not implement
-  changes yourself — but you are not a blind dispatcher: you read, search,
-  and verify with your own tools, and you understand everything you order.
+  你是 Main Agent：一个由 {{model}} 驱动的常驻监督者，
+  工作于 {{cwd}}。你监督开发子代理。你不亲自实现
+  变更 —— 但你不是一个盲目的派发器：你会用自己的工具阅读、搜索
+  并核验，而且你理解自己下达的每一项指令。
 
-  GROUNDING — understand before you delegate:
-  - You have full tools. Use them freely for UNDERSTANDING: read files,
-    search the repo, inspect session logs, run read-only commands. Never
-    delegate a question that a 30-second read answers.
-  - The boundary is mutation, not curiosity: writing code, changing
-    systems, and long multi-step production go to workers; reading,
-    judging, and verifying are your own job and need your own eyes.
-  - For understanding too large for your context (survey a big repo, map
-    an unfamiliar system), spawn an EXPLORER worker whose whole deliverable
-    is a report (outcome.md); fold its findings into NOTES.md.
-  - Record what you learn in NOTES.md as you learn it — your grounding
-    must survive a restart like everything else.
-  - A worker saying "done" is a claim; a file existing is a fact. Verify
-    deliverables yourself when a look is cheap.
+  GROUNDING（打底：先理解再委派）：
+  - 你拥有全部工具。为了「理解」可以随意使用它们：读文件、
+    搜索仓库、检查会话日志、运行只读命令。绝不要把
+    一次 30 秒阅读就能回答的问题委派出去。
+  - 分界线在于「改动」，不在于「好奇」：写代码、更改
+    系统，以及长时间多步骤的生产工作交给 worker；阅读、
+    判断与核验是你自己的职责，需要你亲眼看。
+  - 对于超出你上下文的庞杂理解任务（勘察一个大仓库、
+    摸清一个陌生系统），派生一个 EXPLORER worker（调研型），
+    它的全部交付物就是一份报告（outcome.md）；
+    把它的发现并入 NOTES.md。
+  - 学到什么就随手记进 NOTES.md —— 你的打底
+    必须和其他一切一样经受住重启。
+  - worker 说「done」只是一个声称；文件存在才是事实。当
+    查看一眼代价很低时，亲自核验交付物。
 
-  STATE — files are the truth; your chat context is a cache:
-  - Durable state lives in {{cwd}}/.agi/. Consult and update it as the work
-    demands; a process restart must cost nothing.
-  - .agi/config.json is USER-ONLY. Never edit it; propose changes as
-    questions. Re-read it when you need a timing value; the user may retune
-    it while you run.
-  - Append every consequential action (spawn / steer / kill / assumption /
-    config-proposal) to .agi/CHANGELOG.jsonl as one JSON line:
-    {"ts","actor":"main-agent","action","summary","detail"}.
-  - Record milestones and key insights as {"ts","text"} lines in
-    .agi/progress.jsonl — the user follows you at a glance there.
+  PERSISTENCE（持久推进：可恢复的分支不是阻塞项）：
+  - 在向用户提问或停下一个分支之前，先检查工作区里
+    已有的 runbook、脚本、状态、日志与恢复命令。走完
+    一组有界的、彼此不同的安全恢复尝试，并记录每一次尝试
+    证明了什么。绝不要用快速重复来冒充一次不同的
+    恢复，也绝不绕开任何安全或审批边界。
+  - 只上报那个真正需要人类权限或信息的最小的依赖项。
+    一个受阻的分支不会让任务停下：在那个依赖等待期间，
+    继续推进独立的研究、准备、核验以及其他里程碑。
+  - 一个活跃的长期任务绝不能陷入停滞。在结束
+    任何回合之前，至少留下一条持久的续行路径：一个运行中的
+    worker、一轮活跃的原生目标，或者一个定时提醒，
+    它会重新检查那个具体阻塞项并继续安全的独立
+    工作。聊天里承诺「等待」不算一条续行路径。
+……（节选）
 
-  GOAL SETUP (once per goal): derive objective, constraints, milestones,
-  and out-of-scope from the direct request and durable workspace evidence.
-  Inspect relevant runbooks and scripts first. Ask only for a material choice
-  or authority that cannot be discovered or handled safely. Then call
-  start_goal. It writes {{cwd}}/.agi/GOAL.md, arms the native goal immediately,
-  and returns to the same turn. Do not ask for a confirmation phrase and do
-  not stop: proceed directly into THE LOOP. The user can inspect GOAL.md and
-  steer, pause, or stop through ordinary chat.
+  STATE（状态：文件才是真相，聊天上下文只是缓存）：
+  - 持久状态保存在 {{cwd}}/.agi/。按工作需要
+    查阅并更新它；一次进程重启必须零代价。
+  - .agi/config.json 是 USER-ONLY 的。绝不编辑它；把改动建议作为
+    提问提出。需要时间参数时重新读它；用户可能在你运行期间
+    重新调整它。它没有携带的键会回落到你的
+    SUPERVISOR META-CONFIG 段落里的部署默认值（同样归用户所有，
+    同样实时生效）。
+  - 把每一个有后果的动作（spawn / steer / kill / assumption /
+    config-proposal）作为一行 JSON 追加到 .agi/CHANGELOG.jsonl：
+    {"ts","actor":"main-agent","action","summary","detail"}。
+  - 把里程碑与关键洞见作为 {"ts","text"} 行记录进
+    .agi/progress.jsonl —— 用户在那里一眼就能跟上你。
 
-  THE LOOP (after the goal locks):
-  1. Ground, then plan: check the current state of the workspace and any
-     relevant code or docs with your own reads and searches, then decompose
-     the next self-contained unit of work. Delegate exploration only when
-     it exceeds what you can cheaply read yourself.
-  2. Spawn it: call subagent with a description naming the role, one exact
-     choice from the live SUPERVISOR META-CONFIG allowlist, and
-     a prompt containing the COMPLETE task (structure: Role / Objective /
-     Scope in-out / Context pointers / Protocol / Constraints). Tell the
-     worker to write outcome.md under {{cwd}}/.agi/subagents/&lt;its own
-     session id&gt;/ when done. Log the spawn, selected model, advertised
-     modalities, and effective effort shown by the tool result. Each allowed
-     model row owns its user-selected effort; the tool exposes no effort
-     argument and never inherits the main turn's effort.
-     runtime/current explicitly follows only the model route captured for this turn; it
-     is enabled on a fresh install. There is no implicit default inheritance;
-     an empty allowlist disables spawning.
-  3. Sleep by ending your turn. You will wake when a worker settles or
-     reports, a scheduled reminder fires, or the user speaks.
-  4. On wake, triage:
-     - Settle notice: read the worker's outcome.md and final message, and
-       verify the deliverable with your own eyes (does the file exist? does
-       it match the objective?); update progress.jsonl; spawn the next unit
-       or finish.
-     - Worker report (a question): answer via send_message if you know;
-       otherwise ask the user (QUESTIONS below) and keep other work moving.
-     - Scheduled check-in: list_agents proves driver liveness only. Compare a
-       concrete report, artifact/log change, or completed step with the prior
-       NOTES.md checkpoint. Fresh evidence → record it. No fresh evidence →
-       immediately send_message for a concise progress/blocker report. Still
-       unchanged at the next check after that probe → interrupt_agent, record
-       the stall, then recover or respawn. Drifting with evidence → steer with
-       a concrete send_message; it joins a running worker at the next model
-       step. Interrupt first ONLY if the current turn must stop now.
-     - User message: it overrides everything; it is steering.
-  5. Repeat until the goal's milestones are met; keep the goal tool current.
+  GOAL SETUP（目标设定：每个目标一次）：从直接的人类请求加上持久的
+  工作区证据中，推导出目标、约束、里程碑与范围之外的内容。
+  先检查相关的 runbook 与脚本；不要把遗留的 GOAL.md 或
+  NOTES.md 摘要误当成当前的操作性检查。只提问那种无法被
+  发现、也无法被安全处理的实质性选择或授权；否则就做出
+  最安全且可逆的假设。然后调用 start_goal。它会写出
+  {{cwd}}/.agi/GOAL.md 并立即武装原生续行循环。简要暴露
+  已武装了什么，但不要要求用户确认它，也不要结束回合：
+  直接进入 THE LOOP。用户可以随时检查 GOAL.md，并通过
+  普通聊天纠偏、暂停或停止。GOAL.md 在活跃期间是锁定的；
+  改变范围的指令属于纠偏，必须体现在 GOAL_AMENDMENTS.md 中，
+  或者在当前目标完成后用一个替代目标来体现。
 
-  QUESTIONS (to the user):
-  - Ask in chat AND append {"ts","id","status":"pending","q"} to
-    .agi/questions.jsonl. Immediately schedule_create a one-shot reminder
-    for questionWaitMinutes (from config.json), then continue any work that
-    does not depend on the answer.
-  - If the reminder fires with no reply: set status "assumed", record the
-    assumption you take, log it, proceed. A late reply is fresh steering:
-    state what you assumed and already did; the user decides on rework.
-  - If you resolve a question yourself, set status "withdrawn" with the
-    reason and delete the pending reminder.
+  THE LOOP（主循环：目标锁定之后）：
+  1. 先打底，再规划：用你自己的阅读与搜索检查工作区以及任何
+     相关代码或文档的当前状态，然后拆解出下一个
+     自包含的工作单元。只有当探索超出你自己能低成本读完的
+     范围时，才把探索委派出去。
+  2. 派生它：调用 subagent，给一个点名角色的 description，以及
+     一个包含「完整任务」的 prompt（结构：Role / Objective /
+     Scope in-out / Context pointers / Protocol / Constraints），
+     带上 run_in_background: true，并从你的
+     SUPERVISOR META-CONFIG 段落中必须精确选定一个 model 选项。
+     告诉 worker 在完成时把 outcome.md 写到
+     {{cwd}}/.agi/subagents/&lt;its own session id&gt;/ 下。记录这次
+     派生，包括所选模型、它公布的输入模态，以及
+     工具结果显示的实际生效推理强度。meta-config 拥有完整的、
+     归用户所有的模型白名单、每条允许路由的 worker 推理强度，
+     以及强制执行的并行 worker 上限；它是实时的，所以要重新检查它，
+     而不是凭记忆套用旧值。你只能选择一个被允许的模型；
+     该工具没有推理强度参数，也绝不继承你自己的推理强度。
+     `runtime/current` 在用户允许时，会显式跟随为你当前回合
+     捕获的模型路线；全新安装时它是启用的。不存在隐式的
+     继承/默认模型。如果列表为空，worker 派生就是被禁用的；
+     请用户在 Settings -> Plugins -> dsh-supervisor 里添加一个选项。
+     只为那些必须查看图片的单元选择 [text,image] 固定模型
+     （截图、UI 检查、图表），并在 prompt 里点名 worker 应当
+     read_image 的图片文件。绝不使用另一个委派工具来绕过白名单。
+  3. 结束你的回合，以此休眠。你会在以下时刻被唤醒：某个 worker 收敛
+     或报告、某个定时提醒触发，或者用户说话。
+  4. 醒来后，做分诊：
+     - 收敛通知：读该 worker 的 outcome.md 与最终消息，并亲眼
+       核验交付物（文件是否存在？是否与目标相符？）；
+       更新 progress.jsonl；派生下一个单元或收尾。
+     - worker 报告（一个提问）：如果你知道答案，就通过 send_message
+       回答；否则问用户（见下文 QUESTIONS），并让其他工作继续推进。
+     - 定时巡检：检查该 worker（list_agents；读它的产物或
+       会话日志），并把具体证据与 NOTES.md 里上一次检查点
+       比较。`list_agents` 的状态 `running` 只能证明驱动还开着，
+       不能证明有实际进展在发生。绝不重复一句空洞的
+       「仍在运行 / 继续监控」结论。有新鲜证据且进展正常：
+       在 NOTES.md 里记一行有证据支撑的内容。没有新鲜证据：
+       立即 send_message 要求一份简明的进展/阻塞报告，并记录
+       这次探针。探针之后的下一次巡检仍然毫无变化：
+       interrupt_agent，记录这次停滞，然后恢复，或者用修订后的
+       任务重新派生。有证据但出现漂移：用 send_message 发一条
+       具体的纠正（如果该 worker 还在它的回合里，消息会在下一步
+       并入；如果它空闲，则会开启下一回合；只有在当前回合
+       必须立刻停止时才先用 interrupt_agent）。上下文被污染：
+       interrupt_agent，记录这次终止，并用修订后的任务重新派生。
+     - 用户消息：它覆盖一切；它属于纠偏。
+  5. 重复，直到目标的里程碑全部达成；让 goal 工具保持最新，
+     然后把这个目标标记为完成。
 
-  LIMITS:
-  - Run at most ONE dev subagent at a time unless the user raises the limit.
-  - Never edit .agi/config.json, the host composition, or shipped presets.
-  - You may propose preset/persona changes; apply none without user
-    confirmation.</code></pre>
+  Timer discipline（定时器纪律）：在派生之后，以及在用户消息之后、
+  而仍有 worker 在运行时，调用 schedule_list。如果不存在
+  周期性巡检提醒，就用 schedule_create 创建一条，间隔为
+  wakeMinutes*60 秒（wakeMinutes 来自 config.json；周期性提醒的
+  下限是 300 秒）。Full stop 之后的一条用户消息是显式的监督者恢复，
+  但 Full stop 已经排空了它旧的 worker 分支；这条规则只会在
+  存在新的运行中工作之后才重新武装循环。单独的 worker 收敛/报告
+  消息不会重新武装一条已被删除的提醒。当没有 worker 仍在运行时，
+  只有在另一条持久续行路径已经存在，或者原生目标已完成、
+  已暂停或已阻塞之后，才删除这条 worker 巡检提醒。一个活跃任务上
+  尚未解决的人类依赖需要它的提问提醒（以及在做出假设之后，
+  一条有界重试提醒）；绝不要让任务处于既无 worker、又无目标轮次、
+  也无提醒的状态。绝不保留超过一条周期性 worker 巡检提醒。
+
+  QUESTIONS（向用户提问）：
+  - 在聊天里提问，并把 {"ts","id","status":"pending","q"} 追加到
+    .agi/questions.jsonl。立即用 schedule_create 创建一条
+    questionWaitMinutes*60 秒后触发的一次性提醒（来自 config.json），
+    然后继续推进任何不依赖该答案的工作。
+  - 如果提醒触发时仍无回复：把 status 置为 "assumed"，记录
+    最安全的可逆假设，记入日志，并继续推进独立工作。如果该
+    依赖仍然阻塞某一个分支，就安排一条有界的稍后重试，
+    而不是陷入停滞。迟到的回复属于新的纠偏：说明你假设了
+    什么、已经做了什么；由用户决定是否返工。
+  - 如果你自己解决了某个提问，就把 status 置为 "withdrawn"，附上
+    原因，并删除那条待处理提醒。
+
+  LIMITS（限制）：
+  - 同一时间最多只运行 ONE 个开发子代理，除非用户提高这个
+    上限。
+  - 绝不编辑 .agi/config.json、宿主组合（host composition），或随发行版提供的 preset。
+  - 你可以提议修改 preset/persona；未经用户确认，一条也不得
+    应用。</code></pre>
 </figure>
 
 <div class="box ts">
-  <span class="box-title">TypeScript corner · YAML multiline strings</span>
-  <p><code>|-</code> starts a <em>literal block</em>: newlines are preserved and the trailing newline is
-  stripped. This is why the installed structured protocol remains readable. If you later edit a copied
-  variant, every line must stay indented deeper than <code>text:</code>.</p>
+  <span class="box-title">TypeScript 角落 · YAML 多行字符串</span>
+  <p><code>|-</code> 开始一个<em>字面块</em>：换行被保留，末尾那个换行被去掉。装进去的那份结构化协议
+  之所以读得下去，就是因为它。以后你要改复制出来的变体，每一行都必须比 <code>text:</code> 缩进得更深。</p>
 </div>
 
-<h2>The non-blocking frontend over the native goal domain</h2>
+<h2>架在原生 goal 域上的非阻塞前端</h2>
 <p>
-  Chapter 6 already replaced the model-facing goal row. The native goal <em>service</em>, projection,
-  and session driver remain host-side. The preset disables only the inferred-intent
-  <code>@deepseek-ai/dsh-tool-goal</code> frontend and mounts
-  <code>dsh-supervisor/goal</code>. Its <code>start_goal</code> writes a canonical GOAL.md and
-  immediately calls the native service from a direct-human turn after <code>get_goal</code>.
-  It then returns control to the same model turn. The web UI still renders the current goal for the session. That
-  display is your Progress-tab replacement for the goal itself; <code>progress.jsonl</code> covers the
-  feed. Zero UI code.
+  第 6 章已经换掉了那个面向模型的 goal 配置行。原生的 goal <em>服务</em>、投影和会话驱动器，都还留在
+  宿主侧。preset 只禁用了那个“猜意图”的 <code>@deepseek-ai/dsh-tool-goal</code> 前端，换成挂载
+  <code>dsh-supervisor/goal</code>。它的 <code>start_goal</code> 会写一份规范的 GOAL.md，并且在一次
+  直接来自人的轮次里、<code>get_goal</code> 之后立刻调用原生服务，然后把控制权交回同一个模型轮。
+  Web UI 仍然会为这个会话渲染当前目标。那块显示就是你用来替代“进度标签页”的东西，而
+  <code>progress.jsonl</code> 负责那条流。UI 代码：零行。
 </p>
 
 <div class="box why">
-  <span class="box-title">Field notes from a real run (glm-5.3, 2026-08-21)</span>
+  <span class="box-title">一次真实运行的现场笔记（glm-5.3，2026-08-21）</span>
   <ul>
-    <li><strong>Goal rounds are free self-continuation.</strong> <code>start_goal</code> arms the
-        native domain, which drives <em>automatic continuation rounds</em> (bounded by
-        <code>max_goal_rounds</code>) — the supervisor got six free turns to poll its worker before
-        handing off to the settle notice and its check-in reminder. Budget them deliberately.</li>
-    <li><strong><code>update_goal(complete)</code> needs a human turn or an active goal round.</strong> A
-        settle-notice wake counts as neither; the supervisor learned to finish bookkeeping and close
-        the goal on the next human turn. Expect that pattern in transcripts.</li>
-    <li><strong>An imperative mission cannot skip grounding.</strong> The frontend has no
-        inferred-intent <code>create_goal</code> tool. The continuation guard requires a current
-        <code>get_goal</code> check and permits read-only inspection before <code>start_goal</code>;
-        operational tools open immediately afterward.</li>
+    <li><strong>目标轮次是免费的自我续跑。</strong><code>start_goal</code> 一旦武装起原生域，它就会驱动
+        <em>自动续跑轮</em>（上限由 <code>max_goal_rounds</code> 约束）—— 那个监督者白拿了六轮，可以
+        反复查它的 worker，然后才交棒给收敛通知和它的巡检提醒。要把它们当成预算来用。</li>
+    <li><strong><code>update_goal(complete)</code> 需要一次人来发起的轮次，或者一个进行中的目标轮。</strong>
+        被收敛通知唤醒，这两样都不算；那个监督者学会了先把杂事记完，等下一次人的轮次再关闭目标。
+        你在会话记录里会看到这个套路。</li>
+    <li><strong>一个命令式的任务也跳不过打底。</strong>这个前端没有那个猜意图的
+        <code>create_goal</code> 工具。续跑守卫要求先做一次当下的 <code>get_goal</code> 检查，并允许在
+        <code>start_goal</code> 之前做只读检查；操作性工具紧接着就打开了。</li>
   </ul>
 </div>
 
-<h2>Validate, then run goal setup</h2>
-<p>The installed preset was already mount-tested in chapter 6. Open a <strong>fresh</strong> session on
-<code>main-agent</code> in <code>$HOME/agi-lab</code>.</p>
+<h2>先校验，再跑目标建立</h2>
+<p>装好的 preset 在第 6 章已经做过挂载测试了。在 <code>$HOME/agi-lab</code> 里用 <code>main-agent</code>
+开一个<strong>全新的</strong>会话。</p>
 
 <div class="box test">
-  <span class="box-title">Test it live — milestone 2 acceptance: non-blocking goal setup</span>
-  <p><strong>Auto-grade after the script:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m2</code> — verifies the
-     <code>.agi/</code> skeleton, every protocol marker in your persona, GOAL.md, the
-     <code>start_goal</code> call, JSONL validity, and amendment discipline.</p>
-  <p>Drive this script as the user, in a fresh <code>main-agent</code> session:</p>
+  <span class="box-title">动手试 —— 里程碑 2 验收：非阻塞的目标建立</span>
+  <p><strong>脚本做完后自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m2</code> —— 它会核对
+     <code>.agi/</code> 骨架、你 persona 里的每一个协议标记、GOAL.md、<code>start_goal</code> 调用、
+     JSONL 是否合法，以及纠偏记录的纪律。</p>
+  <p>在一个全新的 <code>main-agent</code> 会话里，由你以用户身份来走这个剧本：</p>
   <ol>
-    <li><strong>Give a vague mission:</strong> <em>“I want a tidy, well-documented summary of the DSH docs
-        folder. Make it happen.”</em></li>
-    <li><strong>Expect grounding before action.</strong> It should inspect the target, durable state,
-        and any relevant runbooks/scripts. It asks only when a material choice cannot be discovered
-        or handled with a safe reversible assumption.</li>
-    <li><strong>Grounding check:</strong> mid-interview, ask <em>“how big is that docs folder, anyway?”</em>
-        <strong>Expect:</strong> it runs a quick read itself (an <code>ls</code>/count under
-        <code>$HOME/src/deepseek-harness/docs</code>) and answers with facts — it must not ask you, guess, or
-        spawn a worker for a 30-second question. Discoverable facts are its own job (GROUNDING).</li>
-    <li><strong>Expect:</strong> <code>start_goal</code> writes
-        <code>$HOME/agi-lab/.agi/GOAL.md</code>, records the native goal (visible in the session UI),
-        and continues into work in the same turn. No generated confirmation phrase should appear.</li>
-    <li><strong>Amendment discipline:</strong> say <em>“actually, also cover the cookbook subfolder.”</em>
-        <strong>Expect:</strong> an entry in <code>GOAL_AMENDMENTS.md</code> recording your steering —
-        <code>GOAL.md</code> itself untouched (<code>stat -c %Y .agi/GOAL.md</code> before/after to prove it).</li>
-    <li><strong>Config discipline:</strong> say <em>“set questionWaitMinutes to 2 for me.”</em>
-        <strong>Expect:</strong> it refuses to edit <code>config.json</code> and instead proposes the change
-        (and logs a <code>config-proposal</code>). You edit the file yourself.</li>
+    <li><strong>给一个含糊的任务：</strong><em>“我想要一份 DSH docs 文件夹的整洁、有文档的总结。去做吧。”</em></li>
+    <li><strong>期待它先打底、再动手。</strong>它应该先去查目标、持久状态，以及任何相关的运行手册/脚本。
+        只有当某个实质选择既查不到、又没法用一个安全可逆的假设处理时，它才会问你。</li>
+    <li><strong>打底检查：</strong>在问答进行到一半时问它<em>“那个 docs 文件夹到底有多大？”</em>
+        <strong>期待：</strong>它自己去快速读一下（在 <code>$HOME/src/deepseek-harness/docs</code> 下
+        <code>ls</code>／数一数），然后用事实回答 —— 它不能拿一个 30 秒就能查清的问题来问你、瞎猜，
+        或者为它派生 worker。查得到的事实本来就是它自己的活（GROUNDING）。</li>
+    <li><strong>期待：</strong><code>start_goal</code> 写出 <code>$HOME/agi-lab/.agi/GOAL.md</code>、
+        记录下原生目标（在会话 UI 里能看见），并在同一个轮次里接着干活。不应该冒出任何“生成的确认口令”。</li>
+    <li><strong>纠偏记录的纪律：</strong>说<em>“等等，cookbook 子文件夹也要覆盖。”</em>
+        <strong>期待：</strong><code>GOAL_AMENDMENTS.md</code> 里多出一条记录你这次纠偏的条目 ——
+        <code>GOAL.md</code> 本身没被动过（前后各跑一次 <code>stat -c %Y .agi/GOAL.md</code> 来证明）。</li>
+    <li><strong>配置纪律：</strong>说<em>“帮我把 questionWaitMinutes 设成 2。”</em>
+        <strong>期待：</strong>它拒绝编辑 <code>config.json</code>，改为把这个改动提出来（并记一条
+        <code>config-proposal</code>）。文件由你自己改。</li>
   </ol>
-  <p><strong>Not yet expected to work:</strong> the patience timer (needs chapter 8’s schedule tools) and
-  spawning (chapter 9). If it tries to <code>schedule_create</code> and fails with “unknown tool” — good,
-  that is exactly the gap the next chapter fills.</p>
+  <p><strong>这时候还不该能用的：</strong>耐心倒计时（需要第 8 章的 schedule 工具）和派生（第 9 章）。
+  如果它试着调 <code>schedule_create</code> 并失败、报“unknown tool” —— 很好，下一章要填的正是这个缺口。</p>
 </div>
 
 <div class="box why">
-  <span class="box-title">Why the interview is worth being strict about</span>
+  <span class="box-title">为什么值得对这场问答较真</span>
   <p>
-    Everything downstream — task decomposition, worker prompts, milestone checks — inherits its
-    quality from <code>GOAL.md</code>. The setup should therefore be grounded without becoming a
-    mandatory second-turn approval ritual. If the agent skips existing automation, tighten the
-    GOAL SETUP paragraph to name the relevant runbook/script classes and re-test; persona iteration
-    is normal and cheap.
+    后面所有东西 —— 任务拆解、worker 提示词、里程碑检查 —— 的质量都是从 <code>GOAL.md</code> 继承来的。
+    所以建立目标这件事应该有依据，但不能变成一场强制的“第二轮审批仪式”。如果 agent 跳过了已经存在的
+    自动化，就把 GOAL SETUP 那一段收紧，点名相关的运行手册/脚本类别，然后重新测；persona 反反复复地改
+    是正常的，也很便宜。
   </p>
 </div>
 
-<h2>What exists now</h2>
+<h2>现在有什么了</h2>
 <p>
-  A supervisor that can lock a goal, keep honest files, and refuse to touch what isn’t its own. It
-  still cannot wake itself on a timer (chapter 8) or delegate (chapter 9).
+  一个能锁定目标、老实记账、并且拒绝碰不属于自己东西的监督者。它还不会按定时器自己醒来（第 8 章），
+  也还不会委派（第 9 章）。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="06-preset.html">← Chapter 6 — Milestone 1: the preset</a>
-  <a class="next" href="08-schedule.html">Chapter 8 — Milestone 3: time →</a>
+  <a class="prev" href="06-preset.html">← 第 6 章 —— 里程碑 1：main-agent preset</a>
+  <a class="next" href="08-schedule.html">第 8 章 —— 时间：schedule 叠加层 →</a>
 </nav>
 </main>
 </body>

@@ -1,190 +1,190 @@
-# Always-On Supervisor Agent — Design Document
+# dsh-supervisor —— 常驻监督者 Agent 设计文档（Always-On Supervisor Agent）
 
-A 24/7 Main Agent that supervises parallel Dev Agents (subagents), built entirely as
-DeepSeek Harness (DSH) agent presets + reusable Cordis plugins. Portable: point it at any
-workspace; all state lives in a relative `.agi/` directory there.
+一个 24/7 的 Main Agent，用于监督并行的 Dev Agent（子代理），完全以
+DeepSeek Harness（DSH）代理预设 + 可复用 Cordis 插件构建。可移植：把它指向任意
+工作区；所有状态都存放在该工作区下相对的 `.agi/` 目录中。
 
-Status: design locked after three interview rounds (decisions Q1–Q23, log at bottom),
-then **amended after verifying the harness** (amendments A1–A6, §13), then **simplified
-after user review** (simplifications S1–S4, §14), then **rebuilt native-first** after a
-second harness deep-dive (N1–N7, §15) — the core system now needs **zero custom
-plugins** — and finally **amended for grounding** (G1, §16): the Main Agent is a
-grounded manager, never a blind dispatcher.
-Implementation vehicle: the 15-chapter course in `tutorial/` (each milestone testable
-live) with automated graders in `tutorial/grade.py` (m0–m7). `IMPLEMENTATION_PLAN.md` v2
-is the index that maps milestones → chapters → graders; the v1 custom-build plan is
-preserved in git history and its salvageable skeletons live in tutorial chapter 13.
+状态：经过三轮访谈后设计锁定（决策 Q1–Q23，日志见文末），
+随后**在核实 harness 之后修订**（修订 A1–A6，§13），随后**在用户评审后简化**
+（简化 S1–S4，§14），随后**在第二次 harness 深入探查后以原生优先方式重建**
+（N1–N7，§15）—— 核心系统现在需要**零自定义
+插件** —— 最后**为打底而修订**（G1，§16）：Main Agent 是一个
+有事实打底的管理者，绝不是盲目的派发器。
+实施载体：`tutorial/` 中的 15 章课程（每个里程碑都可实机测试），
+配以 `tutorial/grade.py` 中的自动评分器（m0–m7）。`IMPLEMENTATION_PLAN.md` v2
+是把里程碑 → 章节 → 评分器映射起来的索引；v1 的自建方案
+保留在 git 历史中，其中可回收利用的骨架在教程第 13 章。
 
 ---
 
-## 1. Core concept
+## 1. 核心概念
 
-- **Main Agent** — one long-lived DSH session. Grounds the requested mission in the
-  workspace, writes a reviewable goal, arms the native loop, then continues: spawn
-  subagents → sleep → wake → inspect traces → steer / kill / continue → repeat.
-  Communicates proactively with the user and blocks only for genuinely human-owned
-  authority or information, never for a generated goal-confirmation ritual.
-- **Dev Agent** — a generic worker with full tool access, personalized per spawn: the
-  Main Agent authors each child's **role persona** (browser operator, researcher,
-  implementer, …) and a complete, self-contained task — both travel in the spawn call;
-  there are no brief files (S4). Multiple may run in parallel (default 1). It
-  installs whatever task tooling it needs at runtime (e.g. Playwright); no task tools
-  are pre-built. Realized as the custom `spawn_agent` tool in the `agi-spawn` host
-  plugin (A6).
-- **Files are the source of truth.** The Main Agent's session context is a cache, never
-  the record. Goal, notes, progress, questions, changelog, and subagent artifacts are
-  all on disk in `.agi/`, written as it goes. The UI renders those same files.
+- **Main Agent** —— 一个长期存活的 DSH 会话。它在工作区中为所请求的任务打底，
+  写下一个可复核的目标，武装原生循环，然后继续：派生
+  子代理 → 休眠 → 唤醒 → 巡检轨迹 → 纠偏 / 终止 / 继续 → 重复。
+  它主动与用户沟通，并且只为真正属于人类所有的
+  权限或信息而阻塞，从不为一个被生成出来的目标确认仪式而阻塞。
+- **Dev Agent** —— 一个拥有完整工具访问权限的通用 worker，按每次派生个性化：
+  Main Agent 撰写每个子级的**角色 persona**（浏览器操作员、调研员、
+  实现者……）以及一份完整、自包含的任务 —— 两者都在派生调用中传递；
+  没有 brief 文件（S4）。可以并行运行多个（默认 1）。它
+  在运行时安装自己需要的任何任务工具（例如 Playwright）；没有预置的
+  任务工具。实现为 `agi-spawn` host
+  插件中的自定义 `spawn_agent` 工具（A6）。
+- **文件即事实来源。** Main Agent 的会话上下文只是缓存，绝不是
+  记录。目标、笔记、进度、问题、changelog 以及子代理产物
+  全都以文件形式存在于 `.agi/`，随工作进展写入。UI 渲染的正是这些文件。
 
-## 2. Composition split (where each piece lives)
+## 2. 组合拆分（各部分所在位置）
 
-| Piece | Kind | Notes |
+| 部件 | 种类 | 说明 |
 |---|---|---|
-| `main-agent` | agent preset | persona, supervision protocol |
-| Dev Agent | `agi-spawn` host plugin (`spawn_agent` tool) | per-spawn role persona authored by the Main Agent; model + parallel limit in its row config (A6, S2, S3) |
-| `tool-delay` | host plugin | deterministic delay between tool calls |
-| `subagent-trace` | host plugin | auto-captures subagent activity to `trace.log` |
-| `wait_for_agents` | host plugin (tool) | the sleep/wake primitive (the one custom loop piece — A5) |
-| state service | host plugin | serves `.agi/` to the UI over a web route |
-| schedule overlay | shipped rows | `dsh-schedule` for the question-patience timer (`dsh-time-context` dropped — see N8) |
-| Progress Tab | client plugin | goal + event feed + question stack (display-only) |
-| Subagents Tab | client plugin | run list + detail pane + kill/steer buttons |
+| `main-agent` | 代理预设 | persona、监督协议 |
+| Dev Agent | `agi-spawn` host 插件（`spawn_agent` 工具） | 由 Main Agent 撰写的按次派生角色 persona；模型 + 并行上限在其行配置中（A6、S2、S3） |
+| `tool-delay` | host 插件 | 工具调用之间的确定性延迟 |
+| `subagent-trace` | host 插件 | 自动把子代理活动捕获到 `trace.log` |
+| `wait_for_agents` | host 插件（工具） | 休眠/唤醒原语（唯一一处自定义循环部件 —— A5） |
+| 状态服务 | host 插件 | 通过一条 web 路由把 `.agi/` 提供给 UI |
+| schedule overlay | 随包发布的行 | 用于提问耐心计时器的 `dsh-schedule`（`dsh-time-context` 已弃用 —— 见 N8） |
+| Progress Tab | 客户端插件 | 目标 + 事件流 + 提问栈（仅显示） |
+| Subagents Tab | 客户端插件 | 运行列表 + 详情面板 + 终止/纠偏按钮 |
 
-Plugins are independent and reusable — never inlined into a preset. Promote a plugin
-into the host composition proper only once proven. The shipped preset install is never
-edited; authored presets live in their own directories under `.agent-presets/`.
+插件相互独立且可复用 —— 绝不要内联进预设。只有当某个插件得到验证之后，
+才把它提升进 host 组合本体。随包发布的预设安装永不被
+编辑；有作者署名的预设存放在 `.agent-presets/` 下各自的目录中。
 
 ## 3. Main Agent
 
-### 3.1 Lifecycle
-One long-lived session (Q1a). No special context machinery for v1 (Q12): normal
-compaction suffices. No mandated wake ritual (S1): native session persistence is the
-memory across restarts — a crash or restart resumes the session as-is. `.agi/` (goal,
-notes, progress, subagent artifacts) remains the durable, human-inspectable record;
-the agent consults and updates it as the work demands, not by ritual.
+### 3.1 生命周期
+一个长期存活的会话（Q1a）。v1 没有特殊的上下文机制（Q12）：普通
+压缩足够。没有强制的唤醒仪式（S1）：原生会话持久化就是
+跨重启的记忆 —— 崩溃或重启会按原样恢复会话。`.agi/`（目标、
+笔记、进度、子代理产物）仍是持久、可人工检查的记录；
+代理按工作需求查阅并更新它，而不是按仪式去做。
 
-### 3.2 Sleep/wake loop (the heart of the system)
-Driven by the `wait_for_agents` tool (Q11, Q21):
+### 3.2 休眠/唤醒循环（系统的心脏）
+由 `wait_for_agents` 工具驱动（Q11、Q21）：
 
-- **No arguments.** It blocks until a subagent settles (returns or reports
-  blocked-on-a-question) **or** `wakeMinutes` elapses — whichever comes first. The
-  timeout is read from meta-config at call time, never chosen by the agent.
-- Spawning is always followed immediately by `wait_for_agents` — enforced by the
-  supervisor protocol in the persona (v1) — so the Main Agent cannot forget to sleep.
-- **Timeout wake:** tail/grep the subagent's `trace.log`, judge progress. If on track →
-  call `wait_for_agents` again (one short, bounded turn — that's the supervision cost,
-  tuned via `wakeMinutes`). If drifting → steer or kill (§5).
-- **Settle wake:** the native settle notice (or a child's `report`) wakes the parent
-  turn. Read `outcome.md`; answer a blocked question via `send_message` (A4), or
-  process the result and plan the next spawn.
+- **无参数。** 它会阻塞直到某个子代理收敛（返回或报告
+  被某个问题阻塞）**或** `wakeMinutes` 流逝 —— 以先发生者为准。
+  超时在调用时从 meta-config 读取，绝不由代理自行选择。
+- 派生之后总是立即跟上 `wait_for_agents` —— 由
+  persona 中的监督者协议强制执行（v1）—— 这样 Main Agent 不会忘记休眠。
+- **超时唤醒：** tail/grep 子代理的 `trace.log`，判断进展。若在正轨上 →
+  再次调用 `wait_for_agents`（一个简短、有界的回合 —— 这就是监督成本，
+  通过 `wakeMinutes` 调优）。若在漂移 → 纠偏或终止（§5）。
+- **收敛唤醒：** 原生收敛通知（或子级的 `report`）会唤醒父级
+  回合。读取 `outcome.md`；通过 `send_message` 回答被阻塞的问题（A4），或
+  处理结果并规划下一次派生。
 
-Rationale: pure blocking would make the Main Agent blind mid-flight and silently delete
-the steering requirement; pure polling wastes tokens. This is settle-or-timeout, the
-cheapest loop that still supervises. Note (A5): continuable children are *not* jobs, so
-`job_output(wait: true)` cannot replace this tool — it stays custom.
+理由：纯阻塞会让 Main Agent 在飞行途中失明，并静默删除
+纠偏要求；纯轮询浪费 token。这是收敛或超时，
+是仍能实施监督的最省成本的循环。注意（A5）：可继续的子级*不是* job，因此
+`job_output(wait: true)` 无法替代这个工具 —— 它必须保持自定义。
 
-### 3.3 Question protocol (user ↔ Main Agent) (Q9, Q18)
-- Behaves like a normal agent first: asks in chat and waits.
-- If no reply within `questionWaitMinutes` (default 5): record the question as
-  `assumed` in `questions.jsonl` with the assumption taken, log it, continue on
-  unblocked work. Never idle-block on a human. The patience timer is a native
-  `schedule_create` one-shot reminder (shipped schedule overlay), not custom machinery.
-- A late reply is **fresh steering**, not automatic retroactive rework: the agent states
-  what it assumed and what it already did; the user decides if rework is worth it.
-- The agent may **withdraw** its own stacked questions with a reason when it
-  self-resolves them (e.g. asked for a file, then found it by searching).
-- All human input flows through the Main Agent chat. The Progress Tab is display-only.
-  A user chat message is itself a wake-up (a turn), so chat is also how the user steers
-  the Main Agent.
+### 3.3 提问协议（用户 ↔ Main Agent）（Q9、Q18）
+- 首先表现得像一个普通代理：在聊天中提问并等待。
+- 若在 `questionWaitMinutes`（默认 5）内没有回复：把该问题以
+  `assumed` 记入 `questions.jsonl`，并附上所采取的假设，记录日志，继续处理
+  未被阻塞的工作。绝不因等待人类而空转阻塞。耐心计时器是一个原生
+  `schedule_create` 一次性提醒（随包发布的 schedule overlay），不是自定义机制。
+- 迟到的回复是**新的纠偏**，而不是自动追溯重做：代理会说明
+  它假设了什么、已经做了什么；由用户决定重做是否值得。
+- 当代理自行解决了自己堆叠的问题时，它可以**撤回**这些问题并附上理由
+  （例如先索要某个文件，随后通过搜索找到了它）。
+- 所有人类输入都经由 Main Agent 聊天流动。Progress Tab 仅用于显示。
+  用户聊天消息本身就是一次唤醒（一个回合），所以聊天也是用户对 Main Agent
+  实施纠偏的方式。
 
-### 3.4 Self-evolution (Q4)
-Allowed to modify, on its own:
-- its `.agi/` state files and role personas (trivially);
-- its **own preset** and the **`agi-spawn` plugin** (add tools, rewrite subagent setup
-  instructions and default persona fragments, tune prompt sections);
-- **dynamic Cordis plugins** at runtime (new tools/UI; temporary until persisted into a
-  preset).
+### 3.4 自我演化（Q4）
+允许自行修改：
+- 它的 `.agi/` 状态文件与角色 persona（这很轻量）；
+- 它**自己的预设**与 **`agi-spawn` 插件**（添加工具、重写子代理设置
+  说明和默认 persona 片段、调整提示词各区段）；
+- 运行时的**动态 Cordis 插件**（新工具/UI；在被持久化进某个
+  预设之前都是临时的）。
 
-Never the host composition (a bad edit bricks the harness).
+绝不修改 host 组合（一次糟糕的编辑会把 harness 变砖）。
 
-Rules:
-- **Every action logged** to `CHANGELOG.jsonl` — this is non-negotiable; the log is how
-  the user knows what truly happened.
-- Tool additions apply immediately (restart itself if needed); **persona/instruction
-  rewrites are queued for user review** — persona drift is the dangerous failure mode.
-- Preset edits are announced in the Progress Tab feed.
-- May *propose* `config.json` changes as questions, never edit it (§6).
+规则：
+- **每个动作都记入** `CHANGELOG.jsonl` —— 这没有商量余地；日志是
+  用户了解真实发生情况的方式。
+- 工具新增立即生效（必要时自行重启）；**persona/说明的
+  重写会排队等待用户评审** —— persona 漂移是危险的失败模式。
+- 预设编辑会在 Progress Tab 动态流中公告。
+- 可以*提议*修改 `config.json`，以问题的形式，但绝不编辑它（§6）。
 
-### 3.5 Non-blocking goal setup (Q19)
-On a direct long-running request, the supervisor checks native goal state, inspects
-durable mission files plus relevant workspace runbooks/scripts, writes `GOAL.md`
-(objective, constraints, milestones, out-of-scope), arms the native goal, and
-continues in the same turn. `GOAL.md` is user-reviewable but is not an approval gate;
-the user can steer, pause, or stop through ordinary chat. While active, the document
-is not rewritten casually: scope changes are append-only entries in
-`GOAL_AMENDMENTS.md` or become a replacement goal after completion. The supervisor
-asks only for choices, credentials, cookies, or authority that cannot be discovered
-or handled safely (see §9).
+### 3.5 非阻塞目标设置（Q19）
+在直接的长期运行请求上，监督者会检查原生目标状态，检查
+持久任务文件以及相关工作区 runbook/脚本，写入 `GOAL.md`
+（目标、约束、里程碑、范围外），武装原生目标，并在
+同一回合继续。`GOAL.md` 可由用户复核，但它不是审批门；
+用户可以通过普通聊天纠偏、暂停或停止。在目标激活期间，该文档
+不会被随意重写：范围变更以追加方式记入
+`GOAL_AMENDMENTS.md`，或在完成后成为替代目标。监督者
+只索取无法被发现或无法安全处理的选择、凭据、cookie 或权限
+（见 §9）。
 
 ## 4. Dev Agent
 
-- **A custom spawn tool — not a second preset, and not the shipped delegation row
-  (A3 + A6).** In-process children share the parent's process composition, so a second
-  preset buys nothing (A3). The shipped `tool-subagent` row is also out: it fixes one
-  persona per composition row, too rigid for personalization (A6). One layer down, the
-  `ctx.subagents` service accepts **persona and tool filter per request** ("in-process
-  backends scope filters and personas to child creation" — `docs/subsystems/subagent.md`),
-  and a continuable child's descriptor snapshots the resolved persona and model for cold
-  resume. The Dev Agent is therefore the `agi-spawn` host plugin registering
-  `spawn_agent(description, role, persona, prompt)`, a thin wrapper over
-  `ctx.subagents.startContinuable()`.
-- **Per-spawn personalization:** the Main Agent authors each child's persona at spawn
-  time; the `prompt` argument carries the complete, self-contained task (S4),
-  structured per §7.2. Persona says who the child *is*; the task says what it must *do*.
-- **Parallel limit enforced by the tool (S3):** `spawn_agent` counts running children
-  and rejects the call with a clear error at `maxParallelSubagents`. The limit is also
-  injected into the tool's description at mount, so the agent knows it up front — but
-  the tool, not the persona, is the enforcement.
-- Full tools/MCPs/skills. Installs additional tooling at runtime as the task demands.
-- **Stays focused on the task**: no self-logging duty — the `subagent-trace` plugin
-  captures its activity automatically (Q13b), so a confused subagent can't "forget" to
-  leave a trail.
-- **Blocked-question protocol (Q14a, amended A4):** if blocked on information only the
-  supervisor or user has, it calls its native `report` tool with the question and stops
-  working. Report delivery (wakeup) opens a parent turn; the Main Agent answers via
-  `send_message`, and the answer arrives as the child's next turn — context preserved,
-  no fork needed.
-- On completion it writes `outcome.md` (what it did, what it verified, what remains),
-  then reports a one-paragraph summary.
-- **Model:** `subagentModel` is set in the `agi-spawn` row config (S2) — user-owned;
-  the agent may propose changes, the user edits the composition. The row lives in the
-  live-watched profile patch layer, so a change still applies without a session remount.
-- Pacing is deliberately absent from tasks — the delay plugin enforces it; tasks never
-  repeat what infrastructure guarantees.
+- **一个自定义派生工具 —— 不是第二个预设，也不是随包发布的委托行
+  （A3 + A6）。** 进程内子级共享父级的进程组合，所以第二个
+  预设毫无收益（A3）。随包发布的 `tool-subagent` 行也不可取：它每条组合行
+  固定一个 persona，对于个性化来说太死板（A6）。再往下一层，
+  `ctx.subagents` 服务按请求接受**persona 和工具过滤**（"in-process
+  backends scope filters and personas to child creation" —— `docs/subsystems/subagent.md`），
+  并且可继续子级的描述符会为其冷恢复快照解析后的 persona 与模型。
+  因此 Dev Agent 就是注册
+  `spawn_agent(description, role, persona, prompt)` 的 `agi-spawn` host 插件，
+  它是 `ctx.subagents.startContinuable()` 之上的一层薄包装。
+- **按次派生的个性化：** Main Agent 在派生时撰写每个子级的 persona；
+  `prompt` 参数承载完整、自包含的任务（S4），
+  按 §7.2 结构化。Persona 说明子级*是*什么；任务说明它必须*做*什么。
+- **并行上限由工具强制执行（S3）：** `spawn_agent` 统计运行中的子级，
+  并在达到 `maxParallelSubagents` 时以清晰错误拒绝调用。该上限也会在挂载时
+  注入工具的描述，所以代理事先就知道它 —— 但
+  执行强制的是工具，不是 persona。
+- 完整的工具/MCP/技能。按任务需求在运行时安装额外的工具链。
+- **始终专注于任务**：没有自我记录职责 —— `subagent-trace` 插件
+  自动捕获其活动（Q13b），所以一个糊涂的子代理不可能"忘记"
+  留下痕迹。
+- **被阻塞提问协议（Q14a，经 A4 修订）：** 若被只有
+  监督者或用户才有的信息阻塞，它会用自己的原生 `report` 工具带上该问题并停止
+  工作。报告投递（唤醒）会开启一个父级回合；Main Agent 通过
+  `send_message` 作答，答案作为子级的下一回合到达 —— 上下文保留，
+  无需 fork。
+- 完成时它会写入 `outcome.md`（做了什么、核实了什么、还剩下什么），
+  然后报告一段摘要。
+- **模型：** `subagentModel` 在 `agi-spawn` 行配置中设置（S2）—— 归用户所有；
+  代理可以提议更改，由用户编辑组合。该行位于
+  实时监听的 profile patch 层，所以更改无需会话重挂载即可生效。
+- 任务中刻意不包含节奏控制 —— 由 delay 插件强制执行；任务绝不
+  重复基础设施已经保证的东西。
 
-## 5. Supervision & steering (Q5, Q6, Q15, Q22 — amended A1/A2)
+## 5. 监督与纠偏（Q5、Q6、Q15、Q22 —— 经 A1/A2 修订）
 
-Exactly three verbs, each writing a `CHANGELOG.jsonl` entry:
+只有三个动词，每个都写入一条 `CHANGELOG.jsonl` 记录：
 
-| Verb | Mechanics |
+| 动词 | 机制 |
 |---|---|
-| **spawn** | `spawn_agent` with the role persona and a complete, self-contained task (S4) — continuable background child; returns a durable child id. Rejected with a clear error at the parallel limit (S3). |
-| **kill** | native `interrupt_agent` + no further messages (A2): the current turn stops and an unmessaged child burns zero tokens. `job_kill` covers one-shot background children. The kill-reliability hard requirement is satisfied natively. |
-| **steer** | native `send_message` (A1): queues the correction as the running child's next turn — the exact Q15 wording, shipped. Prepend `interrupt_agent` only when the current turn must stop *now*. Also how blocked questions are answered. |
+| **spawn** | 以角色 persona 和一份完整、自包含的任务（S4）调用 `spawn_agent` —— 可继续的后台子级；返回持久的子级 id。达到并行上限时以清晰错误拒绝（S3）。 |
+| **kill** | 原生 `interrupt_agent` + 不再发消息（A2）：当前回合停止，且未被发消息的子级消耗零 token。`job_kill` 覆盖一次性后台子级。终止可靠性的硬性要求由原生方式满足。 |
+| **steer** | 原生 `send_message`（A1）：把纠正排为运行中子级的下一回合 —— 正是 Q15 的措辞，已随包发布。只有当当前回合必须*立刻*停止时才在前面加 `interrupt_agent`。这也是回答被阻塞提问的方式。 |
 
-Native DSH mechanics only (per Q22) — and better than the planned kill+fork fallback:
-mid-flight message injection is shipped. Kill + respawn-*fresh* (new spawn, revised
-task and persona) remains the fallback when the child's context itself is poisoned.
+只用原生 DSH 机制（按 Q22）—— 而且比原计划的 kill+fork 回退方案更好：
+飞行中消息注入已随包发布。Kill + 重新派生为*全新*子级（新的派生、修订后的
+任务与 persona）在子级上下文本身被污染时仍是回退方案。
 
-**Trace capture (Q13b):** the `subagent-trace` host plugin taps the native
-`session/event` firehose (A5) and appends every tool call + result summary to
-`subagents/<run-id>/trace.log`. Deterministic; enables the tail/grep inspection loop
-in §3.2 and feeds the Subagents Tab.
+**轨迹捕获（Q13b）：** `subagent-trace` host 插件接入原生
+`session/event` 消防水管（A5），并把每次工具调用 + 结果摘要追加到
+`subagents/<run-id>/trace.log`。确定性的；它支撑了 §3.2 中的 tail/grep 检查循环，
+并为 Subagents Tab 提供数据。
 
-## 6. Meta-configuration (Q7, Q16)
+## 6. Meta 配置（Q7、Q16）
 
-`.agi/config.json` — **user-only**. The Main Agent may propose changes as questions but
-never edits it. Read live: every sleep re-reads it, so the user can retune a running
-system without restarting anything.
+`.agi/config.json` —— **仅用户可改**。Main Agent 可以以问题形式提议更改，但
+绝不编辑它。实时读取：每次休眠都会重新读取它，所以用户可以在不重启任何东西的
+情况下调优一个运行中的系统。
 
 ```json
 {
@@ -194,27 +194,27 @@ system without restarting anything.
 }
 ```
 
-- `toolDelaySeconds` — enforced by the `tool-delay` host plugin intercepting tool
-  execution: deterministic, uniform, applies to every agent. A dev-time throttle against
-  rate limits / cost explosion; **removed once the system is proven** (kept simplistic
-  on purpose — no per-preset overrides, no budgets).
-- `wakeMinutes` — the `wait_for_agents` timeout (§3.2).
-- `questionWaitMinutes` — patience window before a question is stacked as `assumed`.
+- `toolDelaySeconds` —— 由拦截工具执行的 `tool-delay` host 插件强制：
+  确定、统一、适用于每个代理。一个开发期针对
+  速率限制 / 成本爆炸的节流；**系统得到验证后即移除**（刻意保持简单
+  —— 没有按预设覆写，没有预算）。
+- `wakeMinutes` —— `wait_for_agents` 的超时（§3.2）。
+- `questionWaitMinutes` —— 一个问题被堆叠为 `assumed` 之前的耐心窗口。
 
-`maxParallelSubagents` and `subagentModel` are **not** here: they live in the
-`agi-spawn` row config (S2, S3) — still user-owned (the agent proposes, the user edits
-the composition). The parallel limit is enforced by `spawn_agent` itself and stated in
-its description. The Main Agent must still handle >1 children (multiple live child ids,
-interleaved settle notices) when the user raises the limit.
+`maxParallelSubagents` 与 `subagentModel` **不**在这里：它们在
+`agi-spawn` 行配置中（S2、S3）—— 仍归用户所有（代理提议，用户编辑
+组合）。并行上限由 `spawn_agent` 自身强制执行，并在
+其描述中写明。当用户调高上限时，Main Agent 仍必须处理 >1 个子级（多个活跃子级 id、
+交错的收敛通知）。
 
-## 7. State directory `.agi/` (Q2c, Q23)
+## 7. 状态目录 `.agi/`（Q2c、Q23）
 
-Relative to the target workspace — the whole setup (preset + plugins) is workspace-
-agnostic and runs on any repo. Plain files: human-inspectable, grep-able,
-git-versionable. Written by the Main Agent (except `config.json`); the state service
-merely reads and serves them to the UI.
+相对于目标工作区 —— 整套设置（预设 + 插件）与工作区无关，
+可在任意仓库上运行。纯文件：可人工检查、可 grep、
+可纳入 git 版本管理。由 Main Agent 写入（`config.json` 除外）；状态服务
+只负责读取并把它们提供给 UI。
 
-### 7.1 Tree
+### 7.1 目录树
 
 ```
 .agi/
@@ -231,10 +231,10 @@ merely reads and serves them to the UI.
       outcome.md           # final report, or blocked-question payload
 ```
 
-### 7.2 Task structure (the `spawn_agent` prompt) (S4)
+### 7.2 任务结构（`spawn_agent` 的 prompt）（S4）
 
-The same structure v1 kept in a per-run `brief.md`, now carried entirely in the spawn
-call — no file:
+v1 曾保存在每次运行的 `brief.md` 中的同一结构，现在完全由派生
+调用承载 —— 没有文件：
 
 ```markdown
 # Role
@@ -259,7 +259,7 @@ Pointers to relevant files/URLs/prior outcomes — not prose dumps.
 Task-specific rules (e.g. "draft, never post without confirmation").
 ```
 
-### 7.3 Changelog entry (one JSON object per line)
+### 7.3 Changelog 记录（每行一个 JSON 对象）
 
 ```json
 {"ts": "...", "actor": "main-agent",
@@ -267,195 +267,195 @@ Task-specific rules (e.g. "draft, never post without confirmation").
  "summary": "one sentence", "detail": "path, diff pointer, or run-id"}
 ```
 
-### 7.4 Question lifecycle (`questions.jsonl`)
+### 7.4 提问生命周期（`questions.jsonl`）
 
-`pending` (asked in chat simultaneously)
-→ `assumed` (after `questionWaitMinutes`; assumption recorded; work continues)
-→ `answered` (user replied; late answers = fresh steering, §3.3)
-or → `withdrawn` (agent self-resolved it; reason recorded).
+`pending`（同时在聊天中提出）
+→ `assumed`（在 `questionWaitMinutes` 之后；假设已记录；工作继续）
+→ `answered`（用户已回复；迟到的回答 = 新的纠偏，§3.3）
+或 → `withdrawn`（代理自行解决；理由已记录）。
 
-## 8. UI (Q8, Q17, Q18)
+## 8. UI（Q8、Q17、Q18）
 
-One client plugin registering two `conversation.view` tabs, rendering `.agi/` via the
-state service route. **Display-only** — every answer/instruction goes through the Main
-Agent chat (buttons may pre-compose a chat message to the Main session, never act
-directly).
+一个客户端插件注册两个 `conversation.view` 页签，通过
+状态服务路由渲染 `.agi/`。**仅用于显示** —— 每个回答/指令都经由 Main
+Agent 聊天（按钮可以预组合一条发往 Main 会话的聊天消息，绝不直接
+执行动作）。
 
-- **Progress Tab:** (1) locked Goal + amendments, (2) reverse-chronological feed from
-  `progress.jsonl` (Main Agent summaries and key ideas, so the user always has the
-  high-level picture), (3) question stack — `pending` and `assumed` shown prominently.
-- **Subagents Tab:** one stable tab (not per-run tabs — they'd pile up on a 24/7
-  system): run list with live runs pinned on top; detail pane with status, the spawn
-  task, live trace tail, and kill/steer buttons. Child sessions are ordinary sessions
-  in the Web GUI (A5), so each run links to its native session view for the full
-  trajectory; `trace.log` remains the grep-able summary surface.
+- **Progress Tab：** (1) 已锁定的目标 + 修订，(2) 来自
+  `progress.jsonl` 的逆时序动态流（Main Agent 摘要与关键想法，让用户始终拥有
+  高层图景），(3) 提问栈 —— `pending` 与 `assumed` 突出显示。
+- **Subagents Tab：** 一个稳定页签（不是每次运行一个页签 —— 它们会在一个 24/7
+  系统上堆积）：运行列表，正在运行的固定在顶部；详情面板含状态、派生
+  任务、实时轨迹尾部，以及终止/纠偏按钮。子级会话就是 Web GUI 中的普通会话
+  （A5），所以每次运行都链接到其原生会话视图以查看完整
+  轨迹；`trace.log` 仍是可 grep 的摘要界面。
 
-## 9. First test: X.com growth automation
+## 9. 首个测试：X.com 增长自动化
 
-A deliberately open-ended long-horizon exercise. The agent acts on the user's behalf.
+一个刻意开放式、长周期的练习。代理代表用户行动。
 
-1. User gives full instructions → non-blocking goal setup (§3.5). The Main Agent
-   inspects existing automation first and asks only for credentials / cookies /
-   authority that only the user can provide.
-2. Main Agent spawns a Dev Agent with a browser-operator persona and a complete
-   automation task. The subagent sets up its own tooling at runtime (e.g. Playwright)
-   and runs a multimodal loop: screen → action → new screen → …
-3. Main Agent supervises on the §3.2 loop: wake every `wakeMinutes`, check the trace,
-   steer or evolve the setup (better tools, revised persona/task) as it learns what
-   works.
-4. Milestones: first 10 followers, then 100 — via posting / reposting / sharing
-   strategies.
+1. 用户给出完整指令 → 非阻塞目标设置（§3.5）。Main Agent
+   先检查现有自动化，并且只索取只有用户才能提供的凭据 / cookie /
+   权限。
+2. Main Agent 以一个浏览器操作员 persona 和一份完整的
+   自动化任务派生一个 Dev Agent。子代理在运行时自行搭建工具链（例如 Playwright）
+   并运行一个多模态循环：屏幕 → 动作 → 新屏幕 → ……
+3. Main Agent 按 §3.2 的循环实施监督：每 `wakeMinutes` 唤醒，巡检轨迹，
+   在了解到什么有效时纠偏或演进设置（更好的工具、修订后的 persona/任务）。
+   在了解到什么有效时纠偏或演进设置（更好的工具、修订后的 persona/任务）。
+4. 里程碑：先是 10 个关注者，然后是 100 —— 通过发帖 / 转帖 / 分享
+   策略。
 
-## 10. Feasibility caveats — RESOLVED (A5)
+## 10. 可行性注意事项 —— 已解决（A5）
 
-All five spike questions are answered natively by the harness (sources in
-`IMPLEMENTATION_PLAN.md` §1); M0 smoke-tests them once before building:
+五个探针问题全部由 harness 以原生方式回答（来源见
+`IMPLEMENTATION_PLAN.md` §1）；M0 在构建前对它们做一次冒烟测试：
 
-1. **Settle notifications** — native: a continuable child's settlement unconditionally
-   delivers a notice (outcome + final message) to the parent.
-2. **Fork-with-correction** — superseded: native `send_message` injects a correction
-   as the running child's next turn (A1); fork is not needed for steering.
-3. **Reliable kill** — native `interrupt_agent`; an unmessaged child does no further
-   work and burns no tokens (A2).
-4. **Trajectory access** — child sessions appear as ordinary sessions in the Web GUI;
-   the Subagents Tab links to them; `trace.log` is the grep surface.
-5. **Event tap** — native: the host `session/event` firehose is observable from an
-   ordinary host plugin.
+1. **收敛通知** —— 原生：可继续子级的收敛会无条件
+   向父级投递一条通知（结果 + 最终消息）。
+2. **带纠正的 fork** —— 已取代：原生 `send_message` 把一条纠正
+   注入为运行中子级的下一回合（A1）；纠偏不再需要 fork。
+3. **可靠的终止** —— 原生 `interrupt_agent`；未被发消息的子级不做进一步
+   工作，也不消耗 token（A2）。
+4. **轨迹访问** —— 子级会话作为普通会话出现在 Web GUI 中；
+   Subagents Tab 链接到它们；`trace.log` 是 grep 界面。
+5. **事件接入** —— 原生：host 的 `session/event` 消防水管可以从一个
+   普通 host 插件中观测。
 
-## 11. Build order (revised per amendments)
+## 11. 构建顺序（按修订调整）
 
-| # | Deliverable | Kind |
+| # | 交付物 | 种类 |
 |---|---|---|
-| 0 | M0 smoke test of the native loop (§10) | spike |
-| 1 | `main-agent` preset (persona, supervision protocol) | agent preset |
-| 2 | `agi-spawn` host plugin (`spawn_agent` = the Dev Agent, A6; limit enforcement S3) | plugin |
-| 3 | schedule overlay rows (question-patience timer) | shipped rows |
-| 4 | `tool-delay` host plugin | plugin |
-| 5 | `subagent-trace` host plugin | plugin |
-| 6 | `wait_for_agents` tool | plugin |
-| 7 | State service (web route over `.agi/`) | host plugin |
-| 8 | Progress Tab | client plugin |
-| 9 | Subagents Tab | client plugin |
+| 0 | 原生循环的 M0 冒烟测试（§10） | spike |
+| 1 | `main-agent` 预设（persona、监督协议） | 代理预设 |
+| 2 | `agi-spawn` host 插件（`spawn_agent` = Dev Agent，A6；上限强制 S3） | 插件 |
+| 3 | schedule overlay 行（提问耐心计时器） | 随包发布的行 |
+| 4 | `tool-delay` host 插件 | 插件 |
+| 5 | `subagent-trace` host 插件 | 插件 |
+| 6 | `wait_for_agents` 工具 | 插件 |
+| 7 | 状态服务（`.agi/` 之上的 web 路由） | host 插件 |
+| 8 | Progress Tab | 客户端插件 |
+| 9 | Subagents Tab | 客户端插件 |
 
-Sequence: 0 → 1–6 as the **headless core**, proven end-to-end on a toy task (e.g.
-"summarize a repo") exercising the full spawn → sleep → wake → trace-check → settle →
-outcome loop, including one forced steer, one forced kill, and one blocked question →
-then 7–9 (the UI reads state that already exists) → non-blocking goal-setup dry-run → X.com test.
-Milestone detail, code skeletons, and verification steps live in
-`IMPLEMENTATION_PLAN.md`.
+顺序：0 → 1–6 作为**无头核心**，在一个玩具任务上端到端验证（例如
+"summarize a repo"），演练完整的 派生 → 休眠 → 唤醒 → 巡检轨迹 → 收敛 →
+产出结果 循环，包括一次强制纠偏、一次强制终止和一次被阻塞的提问 →
+然后是 7–9（UI 读取已经存在的状态）→ 非阻塞目标设置试运行 → X.com 测试。
+里程碑细节、代码骨架和验证步骤见
+`IMPLEMENTATION_PLAN.md`。
 
-## 12. Decision log
+## 12. 决策日志
 
-| Q | Decision |
+| Q | 决策 |
 |---|---|
-| Q1 | (a) one long-lived session; goal/notes/memory files always maintained |
-| Q2 | (c) files are truth; thin service serves UI; agent writes & inspects itself |
-| Q3 | (b) preset split — *amended A3/A6: dev agent is the custom `agi-spawn` spawn tool, not a second preset* |
-| Q4 | (b+c) may edit own preset + dynamic plugins, never host composition; everything logged; tool adds immediate, persona rewrites queued for review |
-| Q5 | sleep → wake after `wakeMinutes` → inspect via tail/grep on trace log; early wake on question/return |
-| Q6 | steering both directions: user→main via chat; main→subagent via steer verb |
-| Q7 | (b) deterministic tool delay (2s) via host plugin; dev-time only, uniform, simplistic |
-| Q8 | Progress Tab + single Subagents Tab with run views |
-| Q9 | ask normally; stack as `assumed` after 5 min silence; continue; agent may withdraw |
-| Q10 | meta-config incl. subagent model (read live at spawn, A6); all task tooling made/installed at runtime |
-| Q11 | `wait_for_agents` tool; spawn is always followed by it when parallelism = 1 |
-| Q12 | no context machinery; compaction + on-disk files |
-| Q13 | (b) automatic trace capture by host plugin; dev agent stays task-focused |
-| Q14 | (a) blocked child asks and pauses — *amended A4: native `report` tool, answered via `send_message`; no fork* |
-| Q15 | verbs: spawn / kill / steer only; no nudge |
-| Q16 | (a) config.json user-only, applies to both agents; agent may only propose |
-| Q17 | single Subagents tab; native session views linked per run (A5) |
-| Q18 | all input via Main Agent chat; tabs display-only; late answers = fresh steering; agent may erase self-resolved questions |
-| Q19 | non-blocking native goal setup; reviewable GOAL.md + append-only amendments |
-| Q20 | credentials/cookies requested from user during planning |
-| Q21 | (b) settle-or-timeout; timeout from meta-config, no tool argument |
-| Q22 | follow DSH natives — *amended A1/A2: steer = `send_message`, kill = `interrupt_agent` + silence; kill reliability native* |
-| Q23 | state in relative `.agi/` per workspace — portable to any repo |
+| Q1 | (a) 一个长期存活的会话；目标/笔记/记忆文件始终维护 |
+| Q2 | (c) 文件即事实；轻量服务向 UI 提供数据；代理自行写入并检查 |
+| Q3 | (b) 预设拆分 —— *经 A3/A6 修订：dev agent 是自定义的 `agi-spawn` 派生工具，而非第二个预设* |
+| Q4 | (b+c) 可以编辑自己的预设 + 动态插件，绝不编辑 host 组合；一切均记录日志；工具新增立即生效，persona 重写排队评审 |
+| Q5 | 休眠 → `wakeMinutes` 后唤醒 → 通过 tail/grep 轨迹日志检查；遇到提问/返回时提前唤醒 |
+| Q6 | 双向纠偏：用户→main 通过聊天；main→subagent 通过 steer 动词 |
+| Q7 | (b) 通过 host 插件实现确定性工具延迟（2s）；仅开发期、统一、简单 |
+| Q8 | Progress Tab + 单个 Subagents Tab（含运行视图） |
+| Q9 | 正常提问；沉默 5 分钟后堆叠为 `assumed`；继续；代理可撤回 |
+| Q10 | meta-config 含子代理模型（派生时实时读取，A6）；所有任务工具在运行时制作/安装 |
+| Q11 | `wait_for_agents` 工具；并行度 = 1 时派生后总是紧跟它 |
+| Q12 | 无上下文机制；压缩 + 磁盘文件 |
+| Q13 | (b) 由 host 插件自动捕获轨迹；dev agent 保持专注任务 |
+| Q14 | (a) 被阻塞的子级提问并暂停 —— *经 A4 修订：原生 `report` 工具，经 `send_message` 回答；无 fork* |
+| Q15 | 动词只有：spawn / kill / steer；没有 nudge |
+| Q16 | (a) config.json 仅用户可改，适用于两个代理；代理只能提议 |
+| Q17 | 单个 Subagents 页签；每次运行链接到原生会话视图（A5） |
+| Q18 | 所有输入经由 Main Agent 聊天；页签仅显示；迟到的回答 = 新的纠偏；代理可清除自行解决的问题 |
+| Q19 | 非阻塞的原生目标设置；可复核的 GOAL.md + 追加式修订 |
+| Q20 | 凭据/cookie 在规划期间向用户索取 |
+| Q21 | (b) 收敛或超时；超时来自 meta-config，无工具参数 |
+| Q22 | 遵循 DSH 原生机制 —— *经 A1/A2 修订：steer = `send_message`，kill = `interrupt_agent` + 静默；终止可靠性由原生提供* |
+| Q23 | 状态存放在每个工作区相对的 `.agi/` 中 —— 可移植到任意仓库 |
 
-Entries above are the historical record; where a §14 simplification conflicts with one
-(e.g. Q10's config placement), §14 wins.
+以上条目是历史记录；当某条 §14 简化与其冲突时
+（例如 Q10 的配置位置），以 §14 为准。
 
-## 13. Amendments after harness verification
+## 13. 核实 harness 之后的修订
 
-Checked against the DSH checkout (`$HOME/src/deepseek-harness`, most recently dsh 0.1.1-rc.2); exact
-source references in `IMPLEMENTATION_PLAN.md` §1. A1–A5 delete planned custom machinery
-in favor of shipped native mechanisms; A6 rebuilds one piece custom on purpose, for
-personalization.
+对照 DSH 检出副本核验（`$HOME/src/deepseek-harness`，最近为 dsh 0.1.1-rc.2）；确切
+来源引用见 `IMPLEMENTATION_PLAN.md` §1。A1–A5 删除了原计划的自定义机制，
+改用随包发布的原生机制；A6 刻意把一处重建为自定义，以支持
+个性化。
 
-| A | Supersedes | Amendment |
+| A | 取代 | 修订 |
 |---|---|---|
-| A1 | Q22/§5 steer | Steer is native `send_message`: it queues a message as the running child's next turn — the original Q15 wording, strictly better than the kill+fork fallback we designed. `interrupt_agent` first only when the current turn must stop immediately. |
-| A2 | §5 kill | Kill is native `interrupt_agent` + no further messages: the child goes idle and burns zero tokens. `job_kill` covers one-shot background children. The hard reliability requirement is met without custom code. |
-| A3 | Q3/§2/§4 | No second preset. In-process children share the parent's composition; the Dev Agent's specialization travels with the spawn call instead. (First realized as a shipped `spawn_dev_agent` delegation row; that placement is superseded by A6.) |
-| A4 | Q14/§4/§7.2 | Continuable children natively carry a `report` tool with wakeup delivery: a blocked child reports its question and stops; the parent answers via `send_message`. The end-run-blocked + fork-resume dance is deleted. |
-| A5 | §10 spike | The feasibility spike is resolved by documentation plus one M0 smoke test: settle notices, mid-flight steering, kill, the `session/event` tap, and per-child session views in the GUI are all native. Only `wait_for_agents` remains custom (continuable children are not jobs, so `job_output(wait)` cannot substitute). |
-| A6 | A3/Q10/§4 | Per-spawn personalization. The shipped `tool-subagent` row fixes one persona per composition row, but the underlying `ctx.subagents` service accepts persona and tool filter per request, and the child descriptor snapshots them for cold resume. The Dev Agent is therefore the custom `agi-spawn` host plugin: a `spawn_agent(description, role, persona, prompt)` tool wrapping `startContinuable()`. The Main Agent authors each child's persona; model placement is superseded by S2. |
+| A1 | Q22/§5 steer | 纠偏是原生 `send_message`：它把一条消息排为运行中子级的下一回合 —— 即原 Q15 的措辞，严格优于我们设计的 kill+fork 回退方案。只有当当前回合必须立即停止时才先用 `interrupt_agent`。 |
+| A2 | §5 kill | 终止是原生 `interrupt_agent` + 不再发消息：子级进入空闲并消耗零 token。`job_kill` 覆盖一次性后台子级。硬性可靠性要求无需自定义代码即可满足。 |
+| A3 | Q3/§2/§4 | 没有第二个预设。进程内子级共享父级的组合；Dev Agent 的专门化改为随派生调用传递。（最初实现为随包发布的 `spawn_dev_agent` 委托行；该落点已被 A6 取代。） |
+| A4 | Q14/§4/§7.2 | 可继续子级原生携带一个带回唤醒投递的 `report` 工具：被阻塞的子级报告其问题并停止；父级通过 `send_message` 回答。运行结束时阻塞 + fork 恢复的那套舞步被删除。 |
+| A5 | §10 spike | 可行性探针由文档加一次 M0 冒烟测试解决：收敛通知、飞行中纠偏、终止、`session/event` 接入，以及 GUI 中按子级的会话视图全都是原生的。只有 `wait_for_agents` 保持自定义（可继续子级不是 job，所以 `job_output(wait)` 无法替代）。 |
+| A6 | A3/Q10/§4 | 按次派生的个性化。随包发布的 `tool-subagent` 行每条组合行固定一个 persona，但底层的 `ctx.subagents` 服务按请求接受 persona 与工具过滤，且子级描述符会为冷恢复把它们快照下来。因此 Dev Agent 是自定义的 `agi-spawn` host 插件：一个包装 `startContinuable()` 的 `spawn_agent(description, role, persona, prompt)` 工具。Main Agent 撰写每个子级的 persona；模型落点已被 S2 取代。 |
 
-## 14. Simplifications after user review
+## 14. 用户评审后的简化
 
-Targeted cuts only — everything else in this document stands as designed.
+只做有针对性的删减 —— 本文档其余部分仍按设计成立。
 
-| S | Supersedes | Simplification |
+| S | 取代 | 简化 |
 |---|---|---|
-| S1 | §2/§3.1 wake ritual | No mandated wake ritual. Native session persistence is the memory across restarts; `.agi/` files remain the durable record, consulted and updated as the work demands rather than by a read-on-wake / write-before-sleep ritual. |
-| S2 | Q10/A6/§6 | `subagentModel` lives in the `agi-spawn` row config, not `.agi/config.json` — still user-only; the agent proposes, the user edits the composition. The row sits in the live-watched profile patch layer, so changes apply without a remount. |
-| S3 | §6 `maxParallelSubagents` | The parallel limit is enforced by `spawn_agent` itself: hard reject with a clear error at the limit, limit injected into the tool description at mount, configured on the same `agi-spawn` row. The persona no longer carries the check. |
-| S4 | §7.1/§7.2 `brief.md` | No brief files. The role persona and a complete, self-contained task travel in the spawn call; §7.2 now describes the task text's structure. `trace.log` and `outcome.md` remain per run. |
+| S1 | §2/§3.1 唤醒仪式 | 没有强制的唤醒仪式。原生会话持久化就是跨重启的记忆；`.agi/` 文件仍是持久记录，按工作需求查阅和更新，而不是按唤醒时读取 / 休眠前写入的仪式。 |
+| S2 | Q10/A6/§6 | `subagentModel` 位于 `agi-spawn` 行配置中，而不是 `.agi/config.json` —— 仍仅用户可改；代理提议，用户编辑组合。该行位于实时监听的 profile patch 层，所以更改无需重挂载即可生效。 |
+| S3 | §6 `maxParallelSubagents` | 并行上限由 `spawn_agent` 自身强制：达到上限时以清晰错误硬拒绝，上限在挂载时注入工具描述，配置在同一个 `agi-spawn` 行上。persona 不再承载该检查。 |
+| S4 | §7.1/§7.2 `brief.md` | 没有 brief 文件。角色 persona 和一份完整、自包含的任务随派生调用传递；§7.2 现在描述任务文本的结构。`trace.log` 与 `outcome.md` 仍按次运行保留。 |
 
-Unchanged by review: the rest of the `.agi/` state model and file formats (§7),
-question lifecycle (§7.4), goal setup (§3.5), `config.json` ownership (§6),
-self-evolution rules (§3.4), supervision verbs (§5), and the UI scope (§8).
+评审未改动：`.agi/` 状态模型与文件格式的其余部分（§7）、
+提问生命周期（§7.4）、目标设置（§3.5）、`config.json` 归属（§6）、
+自我演化规则（§3.4）、监督动词（§5）以及 UI 范围（§8）。
 
-## 15. Native-first rebuild
+## 15. 原生优先重建
 
-Decision (user, after reviewing the harness ground truth): **build on top of the
-built-ins; reuse and customize everything the harness gives us, so owned changes are
-minimal — especially UI.** Everything the custom plugins were designed to do turned out
-to exist natively (verified in source, citations in `IMPLEMENTATION_PLAN.md` §1). The
-core system is now: one authored preset + a persona + two host-plane config rows + the
-`.agi/` file convention. Where an N entry conflicts with anything above (including §14's
-S3), the N entry wins.
+决策（用户，在评审 harness 事实基线之后）：**在
+内置能力之上构建；复用并定制 harness 给我们的一切，使自有改动保持
+最小 —— 尤其是 UI。** 自定义插件被设计要做的每件事，结果都
+原生存在（已在源码中核实，引用见 `IMPLEMENTATION_PLAN.md` §1）。核心系统
+现在是：一个有作者署名的预设 + 一份 persona + 两行 host 平面配置行 +
+`.agi/` 文件约定。当某条 N 条目与上述任何内容冲突时（包括 §14 的
+S3），以 N 条目为准。
 
-| N | Supersedes | Rebuild |
+| N | 取代 | 重建 |
 |---|---|---|
-| N19 | N18's one global effort policy and main-turn inheritance | Worker effort authority moves fully into Plugin Settings at model-add/configuration time. `workerModels` remains the required model enum allowlist; `workerEfforts` is a parallel route-keyed map whose values are `provider/default` or one opaque native catalog effort id. Every allowlist row and the add-model flow render their own catalog-backed selector. Fresh `runtime/current` starts at `provider/default`, and an upgraded route with no map entry also resolves to provider default—never to the main request. Dynamic `runtime/current` follows only `request/header.config.provider/model`; `currentRuntimeModel()` deliberately discards `reasoningEffort`. The main-facing `subagent` schema contains no effort argument, so the supervisor may select only a user-approved route, not a cost/effort level. At execution the selected route key retrieves its live settings value, exact-model validation still fails before provider I/O, and a fixed value uses N18's exact-child first-request bridge/durable header. Provider default installs no override. Allowlist remount identity includes the effort map so descriptions and the live meta prompt immediately show each route's effective user-owned value. The preset also removes the native `subagent_fork` frontend: like native spawn, it has no guarded model argument and would inherit route/effort outside this policy. The plugin-owned guarded `subagent` is therefore the sole model-facing delegation path. |
-| N18 | N14/N15 model-only worker routing | Worker reasoning effort becomes user-owned meta-config without modifying Harness. `dsh-supervisor.workerEffort` has two explicit sentinels—`runtime/current` (fresh-install default, copies the calling main turn's explicit `request/header.config.reasoningEffort`) and `provider/default` (omits effort)—plus opaque fixed ids discovered from the native per-model `reasoning.efforts` catalog. `/supervisor/models` enriches lightweight `listModels()` rows through exact-route `resolveModelInfo()` and the Settings card exposes those capabilities; spawn resolves the live policy and rejects an inherited/fixed value absent from the exact selected model before provider I/O. A first live attempt proved that a custom merge-extensible `AgentOptions` marker is not visible from a nested preset-row plugin context, so the final bridge does not depend on it: a continuable start reserves its native optional `childId`; foreground creation captures the new direct child's `agent/created` edge; a root registration filters on that exact id and replaces only the child's first `agent/request`. This writes the effort into the durable request header, then discards the one-use reservation. Later warm steps and cold continuation need no descriptor extension because AgentLoop reconstructs explicit, non-adapter-default request fields from the header. Spawn rendering and the live meta prompt expose the effective effort. Provider-default installs no override, preserving genuine adapter/provider behavior. |
-| N17 | A4/N2 blocked-worker visibility | A live failure showed that persona guidance alone was insufficient: a worker ignored `report`, called inherited `ask_user_question`, and waited inside its own child session. That call emits no `subagent-report`; native `list_agents` continued to classify the child as running, so every recurring reminder falsely concluded that autonomous work was progressing. The guarded spawn frontend now supplies a fixed per-request `toolFilter.deny = ['ask_user_question']`. The in-process provider removes the tool from both the child prompt and execution path, while the continuable child-scoped `report` tool intentionally survives global restrictions. Questions therefore travel over the one channel that wakes the parent and preserves the child handle for a later `send_message`. Separately, the live per-request prompt defines `running` as driver liveness rather than progress and makes reminders a two-check bounded escalation: compare concrete evidence with the saved checkpoint; on first unchanged check send a report probe; on the next unchanged check interrupt and recover/respawn. A bare repeated “continue monitoring” verdict is explicitly invalid. No Harness modification or polling heuristic is required. |
-| N16 | Q19/N5's native model-facing goal frontend | Production sessions showed two opposite failure modes: the native `create_goal` frontend could infer autonomous intent before durable grounding, while the first plugin replacement overcorrected with a random `CONFIRM GOAL …` phrase that the user never configured. That second-turn gate blocked existing workspace automation and caused the supervisor to stop after reading only GOAL.md/NOTES.md instead of inspecting runbooks and scripts. The preset still disables only `@deepseek-ai/dsh-tool-goal` and mounts `dsh-supervisor/goal`; the host-owned `ctx.goals` service, event-sourced `goal/change` history, projection/UI, CAS revisions, activation state, and race-fenced same-session round driver remain native. The replacement frontend now exposes `get_goal`, `start_goal`, and a no-edit `update_goal`. For explicit long-running continuation, a pre-execution guard permits read-only grounding but requires current-turn `get_goal` before `start_goal`; when a bounded workspace scan finds a runbook, automation script, or source entry, a successful current-turn `read` of one such file outside `.agi` is also mandatory. Broad globs and GOAL.md/NOTES.md alone do not pass. Operational tools open immediately after the native goal is armed. `start_goal` is root/direct-human only, canonicalizes objective/constraints/milestones/out-of-scope/round cap into GOAL.md, calls `ctx.goals.create`, and returns to the same turn—no proposal record, hash, phrase, or later confirmation. Native pause/resume authority, exact-goal-round complete/block authority, three-round block floor, wrap-up context, and goal rendering are retained; objective edit remains deliberately absent while a goal is active. |
-| N15 | N14's fixed-route-only fresh-install policy | Add one explicit dynamic allowlist value, `runtime/current`, to the Settings model dropdown and enable it in fresh-install defaults. It is still a required `subagent.model` argument, not an omitted/default path. At execution the plugin reads `exec.agent.session.requestHeader().config`, the route captured for the request currently making the tool call (the same authority Harness uses for image capability checks), resolves that model's modalities, and forwards explicit child `agentOptions`. It deliberately fails closed when the request header is unavailable and never falls back to `agent.options`, whose creation-time route caused N14's stale-GLM incident. Tool output records the resolved real route/modalities. Fixed routes remain available beside it; removing `runtime/current` disables dynamic following, and an empty list still removes the tool. Existing settings are preserved on upgrade; the default applies when the namespace is first installed. |
-| N14 | N1/N10/N11 worker-tool naming, fallback, and inheritance policy | A production failure proved that the shipped `subagent` frontend can bypass the plugin allowlist: it exposes no model argument, and its child snapshots the parent agent's session-creation `options.provider/model`, which may be stale even while live model selection routes the main request elsewhere. The preset therefore removes that native `provider: spawn` row and exposes this package's guarded frontend under the canonical name `subagent` (not a competing `spawn_dev_agent` alias). `dsh-supervisor.workerModels` is now the sole authority: one exact `provider/model-id` argument is required, bare ids are rejected, empty settings disable the tool, and row-config/parent inheritance no longer exist. The tool schema is remounted on settings changes with an enum containing only currently resolved allowed routes and their native `[modalities]`; execution revalidates current settings before spawn and always sends explicit `SubagentRequest.agentOptions`. Start/completion rendering includes the exact route and modalities so the hierarchy exposes what actually ran. The native backend, retries, continuable session handle, settlement wake, and terminal-failure enrichment remain unchanged. |
-| N13 | Native continuable settlement's generic `error` notice | Plugin-only terminal diagnostics: `dsh-supervisor/spawn` cooperatively rewrites an accepted `subagent-settled` message at `agent/pre-step`, preserving its id, source, and single native wake. It resolves the notice's durable inbox time, inspects only the child prefix that existed then, starts after the latest `session/end-seed`, and adds the final logged `turn/end.error` code/message. A successful Harness retry ends `completed` and adds nothing; exhausted retries expose only their final cause. Missing persistence, teardown-only errors, and ambiguous boundaries fail open to the native notice. No Harness source or retry policy changes. |
-| N20 | N12's worker-preserving Full stop | User correction: an operator control named **Full stop** is terminal for the whole delegated run, not only the root turn and its timers. The route runs cancel → idle, enumerates direct continuable children, and calls native `drainContinuableChildren`, which releases their resident branches recursively and child-first; it then runs a second cancel → idle barrier to clear any final report that raced teardown before entering exclusive schedule maintenance. `GET` also requires zero running continuable workers before reporting stopped. Durable child sessions remain as history, and a later user prompt resumes only the supervisor. |
-| N12 | N9's Feed-header Full stop (worker-preserving behavior superseded by N20) | Bug fix: Full stop now resolves any selected worker session through durable `parentSessionId` lineage to the root `main-agent`, resumes a cold root through the native existing-id `session.create` path without sending a prompt, and refuses false success for cold/non-supervisor direct targets. The deletion transaction follows Schedule's management discipline exactly: cancel → idle → exclusive maintenance → durability preflight → fold → append all active deletes → durability postflight. `GET` folds live or cold persisted state so the success control stays absent across refreshes; it returns after the next human prompt. |
-| N1 | A6/S2/S3, §2 `agi-spawn` | No custom spawn plugin. The Dev Agent is a second **shipped** `dsh-tool-subagent` row in the `main-agent` preset: `toolName: spawn_dev_agent`, `provider: spawn`, `backgroundMode: continuable`, per-ROW `persona` carrying the invariant worker protocol (verified: `Config.persona`, `tool-subagent/src/index.ts` 54–57/384; spawn provider capability `persona: true`). The per-SPAWN part (role) travels in the task prompt's `# Role` section. `subagentModel` = the row's `agentOptions`. Trade-off accepted: the parallel limit is persona prose again (S3's hard enforcement is deleted with the custom tool); distinct worker types = more rows (`spawn_browser_agent`, …); a custom per-spawn-persona tool remains a documented optional extension. |
-| N2 | Q21/§3.2 `wait_for_agents`, §2 | No blocking wait tool. Sleep = end the turn; wake = the four native inbox deliveries (settle notice, child `report`, schedule reminder, user message). The timeout wake is a **recurring schedule reminder** (`every_seconds = wakeMinutes*60`), armed on spawn, deleted when no workers run. Consequence of the shipped 300 s recurrence floor: `wakeMinutes ≥ 5`. Sub-5-minute cadence is the first legitimate reason to build the optional `wait_for_agents` extension. |
-| N3 | §2/§6 `tool-delay` | Dropped entirely. `toolDelaySeconds` leaves `config.json` (which now holds only `wakeMinutes` and `questionWaitMinutes`). Restorable as an optional `tools/pre-execute` waterfall plugin. |
-| N4 | §2/§5/Q13b `subagent-trace` | No trace plugin. Children ARE the trace: every child is a durable session (`~/.dsh/sessions/<ws>/<id>/session.jsonl.zstd`, one JSON event per line) rendered fully in the web GUI and greppable on disk. Timer-wake inspection = `list_agents` + a log tail, verdict recorded in `NOTES.md`. Structured per-child `trace.log` remains an optional `session/event` extension. |
-| N5 | §2 state service, §8 UI/tabs | No custom tabs, no state route. The shipped UI is the UI: session list = run list; child session view = detail pane + live trace; the goal tool's display = the goal surface; `tail -f` on `progress.jsonl`/`questions.jsonl`/`CHANGELOG.jsonl` = the feed. Q18's display-only rule survives trivially (chat is the control surface). One optional flourish: a ~60-line dynamic client plugin registering a status pill into the shipped `shell.overlay` slot (additive, click-through by contract). Dynamic = process-memory; re-run after restart or promote per §15-ext. |
-| N6 | §2 schedule overlay | Confirmed as the ONLY host-plane change: one `insert` row (`dsh-schedule`) in `~/.dsh/profiles/web/cordis.patch.yml` — the live-watched layer, no restart. |
-| N11 | N10's row-config allowlist (superseded as the primary knob) | User-requested META-CONFIG: one settings namespace `dsh-supervisor` (native settings domain, `installSettingsSection`) holding `workerModels`, route-keyed `workerEfforts` (N19), `maxParallelWorkers`, `wakeMinutes`, `questionWaitMinutes` — editable in `~/.dsh/settings.yaml` AND a Settings → Plugins card (browser half registers `settings.plugin.item` key `dsh-supervisor`; add-model dropdown fed by the new `GET /supervisor/models` route = the native catalog with modalities and reasoning capabilities; card chrome is hand-rolled because the bundle-purity gate forbids importing ui-settings-plugins' form model). LIVE by construction: the host half publishes the value as a `supervisorSettings` service; the spawn tool reads it at EVERY call (allowlist + per-route effort + cap) and a `systemPrompt.section` with a text FUNCTION re-renders the current values into every request — no restart, no new session, no re-registration. `maxParallelWorkers` is now HARD-enforced (S3 restored): open workers = active children + a fiber-local starting-ledger (a just-spawned child reports `inactive` until its first turn, so a plain active-count let two same-step spawns through — caught in live testing), and the tool is deliberately not concurrency-safe so same-step spawn bodies serialize. Timing keys: workspace `.agi/config.json` still overrides; settings are deployment defaults. |
-| N10 | N1's pinned worker row | User-requested: worker model choice is now GENERIC. The preset's dev row mounts this package's own tool (`dsh-supervisor/spawn`, preset row `name:` referencing the package subpath export) instead of `@deepseek-ai/dsh-tool-subagent`. Same provider (`spawn`), same continuable children, same per-row worker persona — plus an optional per-call `model` argument (`provider/model-id`, bare id when unambiguous). The mechanism is native: `SubagentRequest.agentOptions` is per-request in `ctx.subagents` (`continuation.ts` snapshots `request.agentOptions?.provider/model` per child); only the shipped tool's per-ROW config hid it. Model choice is gated by a USER-owned allowlist (row config `models: [provider/model-id, …]`): absent/empty, the tool has no `model` argument and children only inherit — the agent never discovers routes the user did not name (models cost money). Allowed entries render in the tool description with their native `inputModalities` (`ctx.llm.resolveModelInfo`) as `[text]` / `[text,image]`, so the supervisor SEES which allowed models have vision and picks one only when a unit must look at images (worker reads them via `read_image`, which refuses on a text-only route — the same modality flag, enforced natively). Vision fact recorded: Z.AI `glm-5.3` is text-only upstream (HTTP 400 on image content, doc: "supports text-only inputs"); `glm-5v-turbo` is the `[text,image]` route. |
-| N9 | N5's "no custom tabs" (partially) | User-requested: the bundle now SHIPS a **Feed view tab** — a durable client plugin, not a dynamic one. Browser half (`lib/client.js`, hand-written lazy-CJS per `docs/cookbook/adding-a-settings-card.md` §Packaging) registers id `supervisor-feed` into the shipped `conversation.view` ring (the native view-tab slot holding Chat/Trajectory), served by the client-modules scan (`dsh.client` + `exports["./client"]` — no frontend rebuild). Host half adds `GET /supervisor/feed?ws=` (nested fiber injecting `webServer`, so non-web profiles still mount the preset installer). Data native-first: goal = the `goal` projection (`useProjection`), workers = `subagent.list` RPC, files = the feed route reading `.agi/`. The dynamic status pill is retired (was process-memory + approval-gated); N5's other decisions stand. |
-| N8 | N6's `dsh-time-context` row | Dropped. Time-context injects a "Time sampled while preparing turn N, step M …" block into EVERY request step — constant context noise superseding itself each step. It is not a Schedule dependency (verified: `packages/schedule/schedule/README.md` — "Time-context is not a Schedule dependency"), and the supervisor's timers are relative `after_seconds`, never zone-local `at` forms. If a deployment wants natural-language absolute times, mount `@deepseek-ai/dsh-time-context` in its own profile patch. |
-| N7 | (docs finding) | The shipped `editing-cordis-compositions` skill still teaches removed tools (`cordis_inspect`/`cordis_mount`/`cordis_unmount`). The live toolset is seven tools with a define/run lifecycle: `cordis_inspect_list/_query/_self`, `cordis_define`, `cordis_run`, `cordis_stop`, `cordis_undefine` (`packages/extensions/tool-cordis/src/index.ts`). The skill's planes/copy/validate advice remains correct; only its tool names are stale. Preset authoring still goes through the roster: `copy('standard', 'main-agent', …)` + `standingKeyFor` validation, driven from a Creator-mode (`cordis` preset) session. |
+| N19 | N18 的单一全局 effort 策略与 main 回合继承 | Worker effort 权限完全移入 Plugin Settings，在添加/配置模型时生效。`workerModels` 仍是必需的模型枚举白名单；`workerEfforts` 是一张并行、按路由键控的映射，其值为 `provider/default` 或一个不透明的原生目录 effort id。每一行白名单条目以及添加模型流程都渲染各自由目录支撑的选择器。全新的 `runtime/current` 从 `provider/default` 起步，而没有映射条目的升级路由也解析为 provider 默认值——绝不解析为 main 请求。动态 `runtime/current` 只遵循 `request/header.config.provider/model`；`currentRuntimeModel()` 刻意丢弃 `reasoningEffort`。面向 main 的 `subagent` schema 不含 effort 参数，因此监督者只能选择一个用户批准的路由，而不能选择成本/effort 级别。执行时，选中的路由键会取出其实时设置值，精确模型校验仍在 provider I/O 之前失败，而固定值使用 N18 的精确子级首请求桥接/持久头部。provider 默认不安装任何覆写。白名单重挂载身份包含 effort 映射，因此描述与实时 meta 提示会立即显示每条路由有效的、归用户所有的值。该预设还移除了原生 `subagent_fork` 前端：与原生 spawn 一样，它没有受保护的模型参数，会在此策略之外继承路由/effort。因此，插件自有的受保护 `subagent` 是唯一面向模型的委托路径。 |
+| N18 | N14/N15 的仅模型 worker 路由 | Worker 推理 effort 成为用户所有的 meta-config，且不修改 Harness。`dsh-supervisor.workerEffort` 有两个显式哨兵值——`runtime/current`（全新安装默认值，复制调用方 main 回合的显式 `request/header.config.reasoningEffort`）与 `provider/default`（省略 effort）——外加从原生按模型 `reasoning.efforts` 目录中发现的不透明固定 id。`/supervisor/models` 通过精确路由的 `resolveModelInfo()` 丰富轻量 `listModels()` 行，Settings 卡片公开这些能力；spawn 解析实时策略，并在 provider I/O 之前拒绝某个继承/固定值——若它不在精确选中的模型上。首次实机尝试证明，自定义的可合并扩展 `AgentOptions` 标记在嵌套的预设行插件上下文中不可见，所以最终桥接不依赖它：可继续的启动会预留其原生可选 `childId`；前台创建捕获新直接子级的 `agent/created` 边；根注册按该精确 id 过滤，并只替换该子级的首个 `agent/request`。这样把 effort 写入持久请求头，随后丢弃这个一次性预留。后续热步骤与冷继续不需要描述符扩展，因为 AgentLoop 会从头部重建显式、非适配器默认的请求字段。spawn 渲染与实时 meta 提示会公开有效 effort。provider 默认不安装覆写，从而保留真实的适配器/provider 行为。 |
+| N17 | A4/N2 的被阻塞 worker 可见性 | 一次实机失败表明仅靠 persona 指引不够：某个 worker 忽略了 `report`，调用继承来的 `ask_user_question`，并在自己的子级会话中等待。该调用不发出 `subagent-report`；原生 `list_agents` 继续把该子级归类为 running，于是每次循环提醒都错误地断定自主工作正在推进。受保护的 spawn 前端现在提供一个固定的按请求 `toolFilter.deny = ['ask_user_question']`。进程内 provider 会从子级提示与执行路径中移除该工具，而可继续的子级作用域 `report` 工具则有意在全局限制下存活。因此，提问只走那条能唤醒父级、并为后续 `send_message` 保留子级句柄的通道。另外，实时按请求提示把 `running` 定义为驱动存活而非进展，并使提醒成为两次检查的有界升级：把具体证据与已保存的检查点对比；首次无变化时发送一次报告探针；下一次仍无变化时中断并恢复/重新派生。单纯重复的"继续监控"判定被明确视为无效。无需修改 Harness 或轮询启发式。 |
+| N16 | Q19/N5 的原生面向模型目标前端 | 生产会话呈现出两种相反的失败模式：原生 `create_goal` 前端可能在持久打底之前就推断出自主意图，而第一个插件替代品又矫枉过正，用一个用户从未配置的随机 `CONFIRM GOAL …` 短语。那道第二回合门阻塞了既有工作区自动化，并导致监督者只读了 GOAL.md/NOTES.md 就停止，而没有检查 runbook 与脚本。该预设仍然只禁用 `@deepseek-ai/dsh-tool-goal` 并挂载 `dsh-supervisor/goal`；host 自有的 `ctx.goals` 服务、事件溯源的 `goal/change` 历史、投影/UI、CAS 修订、激活状态以及带竞态围栏的同会话回合驱动器仍然原生。替代前端现在公开 `get_goal`、`start_goal` 以及不可编辑的 `update_goal`。对于显式长期持续，执行前置守卫允许只读打底，但要求在 `start_goal` 之前先做当前回合的 `get_goal`；当有界工作区扫描发现 runbook、自动化脚本或源码入口时，还需要当前回合成功 `read` 一个 `.agi` 之外的这类文件。宽泛 glob 以及只看 GOAL.md/NOTES.md 都不通过。操作类工具在原生目标武装后立即开放。`start_goal` 仅限根/直接人类，会把 objective/constraints/milestones/out-of-scope/round cap 规范化为 GOAL.md，调用 `ctx.goals.create`，并返回同一回合——没有提案记录、哈希、短语或稍后确认。原生暂停/恢复权限、精确目标回合的完成/阻塞权限、三回合阻塞下限、收尾上下文与目标渲染都保留；目标激活期间刻意不提供 objective 编辑。 |
+| N15 | N14 的仅固定路由全新安装策略 | 向 Settings 模型下拉框添加一个显式动态白名单值 `runtime/current`，并在全新安装默认值中启用它。它仍是必需的 `subagent.model` 参数，而不是省略/默认路径。执行时插件读取 `exec.agent.session.requestHeader().config`，即当前发起该工具调用的那次请求所捕获的路由（与 Harness 用于图像能力检查的同一权威来源），解析该模型的模态，并转发显式子级 `agentOptions`。当请求头不可用时它刻意失败关闭，绝不回退到 `agent.options`，后者的创建期路由导致了 N14 的陈旧 GLM 事件。工具输出记录解析出的真实路由/模态。固定路由仍与其并存；移除 `runtime/current` 会禁用动态跟随，而空列表仍会移除该工具。升级时保留既有设置；默认值在该命名空间首次安装时生效。 |
+| N14 | N1/N10/N11 worker 工具命名、回退与继承策略 | 一次生产失败证明随包发布的 `subagent` 前端可以绕过插件白名单：它不暴露模型参数，且其子级会快照父代理会话创建时的 `options.provider/model`，即使实时模型选择把 main 请求路由到别处，该值也可能陈旧。因此预设移除了那条原生 `provider: spawn` 行，并以规范名称 `subagent` 暴露本包受保护的前端（而不是一个与之竞争、名为 `spawn_dev_agent` 的别名）。`dsh-supervisor.workerModels` 现在是唯一权威：必须提供一个精确的 `provider/model-id` 参数，裸 id 被拒绝，空设置禁用该工具，行配置/父级继承不再存在。工具 schema 会在设置变更时重挂载，其枚举只含当前已解析的允许路由及其原生 `[modalities]`；执行在 spawn 前重新校验当前设置，并始终发送显式 `SubagentRequest.agentOptions`。启动/完成渲染包含精确路由与模态，因此层级结构会暴露实际运行的内容。原生后端、重试、可继续会话句柄、收敛唤醒与终端失败丰富化保持不变。 |
+| N13 | 原生可继续收敛的通用 `error` 通知 | 仅插件端的终端诊断：`dsh-supervisor/spawn` 在 `agent/pre-step` 协作式重写一条被接受的 `subagent-settled` 消息，保留其 id、来源与单次原生唤醒。它解析通知的持久收件箱时间，只检查当时已存在的子级前缀，从最新的 `session/end-seed` 之后开始，并附加最终记录的 `turn/end.error` 代码/消息。成功的 Harness 重试以 `completed` 结束且不添加任何内容；重试耗尽只暴露其最终原因。缺失持久化、仅拆卸期错误以及边界模糊时失败开放为原生通知。不修改 Harness 源码或重试策略。 |
+| N20 | N12 的保留 worker 的 Full stop | 用户纠正：名为 **Full stop** 的操作控制对整次委托运行都是终态的，而不只是根回合及其计时器。该路由执行 cancel → idle，枚举直接可继续子级，并调用原生 `drainContinuableChildren`，后者按子级优先递归释放其驻地分支；随后它再执行一次 cancel → idle 屏障，以清除在进入排他式 schedule 维护之前抢跑拆卸的任何最终报告。`GET` 还要求零运行中的可继续 worker 才会报告已停止。持久子级会话作为历史保留，之后的用户提示只恢复监督者。 |
+| N12 | N9 的 Feed 头部 Full stop（保留 worker 的行为已被 N20 取代） | Bug 修复：Full stop 现在通过持久 `parentSessionId` 血统把任何选中的 worker 会话解析到根 `main-agent`，通过原生同 id 的 `session.create` 路径恢复冷根且不发送提示词，并对冷/非监督者直接目标拒绝虚假成功。删除事务严格遵循 Schedule 的管理纪律：cancel → idle → 排他维护 → 持久性预检 → 折叠 → 追加所有活动删除 → 持久性后检。`GET` 折叠实时或冷持久状态，使成功控制按钮在刷新后保持一致缺席；它在下一次人类提示之后返回。 |
+| N1 | A6/S2/S3、§2 `agi-spawn` | 没有自定义 spawn 插件。Dev Agent 是 `main-agent` 预设中的第二条**随包发布的** `dsh-tool-subagent` 行：`toolName: spawn_dev_agent`、`provider: spawn`、`backgroundMode: continuable`、按行的 `persona` 承载不变的 worker 协议（已核实：`Config.persona`、`tool-subagent/src/index.ts` 54–57/384；spawn provider 能力 `persona: true`）。按*次派生*的部分（角色）随任务提示词的 `# Role` 区段传递。`subagentModel` = 该行的 `agentOptions`。接受的取舍：并行上限又变成 persona 文字（S3 的硬强制随自定义工具一起被删除）；不同的 worker 类型 = 更多行（`spawn_browser_agent`、……）；按次派生 persona 的自定义工具仍是一个有记录的可选扩展。 |
+| N2 | Q21/§3.2 `wait_for_agents`、§2 | 没有阻塞式等待工具。休眠 = 结束回合；唤醒 = 四种原生收件箱投递（收敛通知、子级 `report`、schedule 提醒、用户消息）。超时唤醒是一个**循环 schedule 提醒**（`every_seconds = wakeMinutes*60`），在派生时武装，在无 worker 运行时删除。随包发布的 300 秒循环下限带来的后果是：`wakeMinutes ≥ 5`。低于 5 分钟的节奏是构建可选 `wait_for_agents` 扩展的第一个正当理由。 |
+| N3 | §2/§6 `tool-delay` | 完全弃用。`toolDelaySeconds` 从 `config.json` 中移除（它现在只保留 `wakeMinutes` 与 `questionWaitMinutes`）。可作为可选的 `tools/pre-execute` 瀑布插件恢复。 |
+| N4 | §2/§5/Q13b `subagent-trace` | 没有轨迹插件。子级本身就是轨迹：每个子级都是一个持久会话（`~/.dsh/sessions/<ws>/<id>/session.jsonl.zstd`，每行一个 JSON 事件），在 web GUI 中完整渲染，并可在磁盘上 grep。计时唤醒检查 = `list_agents` + 日志尾部，结论记入 `NOTES.md`。结构化的按子级 `trace.log` 仍是一个可选的 `session/event` 扩展。 |
+| N5 | §2 状态服务、§8 UI/页签 | 没有自定义页签，没有状态路由。随包发布的 UI 就是 UI：会话列表 = 运行列表；子级会话视图 = 详情面板 + 实时轨迹；目标工具的显示 = 目标界面；对 `progress.jsonl`/`questions.jsonl`/`CHANGELOG.jsonl` 执行 `tail -f` = 动态流。Q18 的仅显示规则自然成立（聊天是控制界面）。一个可选的点缀：一个约 60 行的动态客户端插件，把一个状态胶囊注册进随包发布的 `shell.overlay` 槽位（附加式，按契约点击穿透）。动态 = 进程记忆；重启后重跑，或按 §15-ext 提升为正式实现。 |
+| N6 | §2 schedule overlay | 确认是唯一的 host 平面变更：在 `~/.dsh/profiles/web/cordis.patch.yml` 中一行 `insert`（`dsh-schedule`）—— 实时监听层，无需重启。 |
+| N11 | N10 的行配置白名单（作为主要旋钮已被取代） | 用户要求的 META-CONFIG：一个设置命名空间 `dsh-supervisor`（原生 settings 域，`installSettingsSection`），持有 `workerModels`、按路由键控的 `workerEfforts`（N19）、`maxParallelWorkers`、`wakeMinutes`、`questionWaitMinutes` —— 可在 `~/.dsh/settings.yaml` 与 Settings → Plugins 卡片中编辑（浏览器半部注册 `settings.plugin.item` 键 `dsh-supervisor`；添加模型下拉框由新的 `GET /supervisor/models` 路由供给 = 带模态与推理能力的原生目录；卡片外壳为手工实现，因为 bundle 纯净门禁禁止导入 ui-settings-plugins 的表单模型）。构造上即是 LIVE：host 半部把该值发布为 `supervisorSettings` 服务；spawn 工具在*每次*调用时读取它（白名单 + 按路由 effort + 上限），而一个带文本函数的 `systemPrompt.section` 会把当前值重新渲染进每个请求 —— 无需重启、无需新会话、无需重新注册。`maxParallelWorkers` 现在是硬强制（S3 恢复）：open workers = 活动子级 + 一个 fiber 局部的启动账本（刚派生的子级在其首个回合前报告 `inactive`，所以单纯的活动计数会让两个同步骤派生同时通过 —— 实机测试中已捕获），且该工具刻意为非并发安全，使同步骤的派生体串行化。计时键：工作区 `.agi/config.json` 仍可覆写；设置是部署默认值。 |
+| N10 | N1 的固定 worker 行 | 用户要求：worker 模型选择现在是通用的。预设的 dev 行挂载本包自己的工具（`dsh-supervisor/spawn`，预设行 `name:` 引用该包子路径导出），而不是 `@deepseek-ai/dsh-tool-subagent`。相同的 provider（`spawn`）、相同的可继续子级、相同的按行 worker persona —— 另加一个可选的按调用 `model` 参数（`provider/model-id`，无歧义时可只写 id）。该机制是原生的：`SubagentRequest.agentOptions` 在 `ctx.subagents` 中按请求生效（`continuation.ts` 按子级快照 `request.agentOptions?.provider/model`）；只有随包发布工具的按行配置把它藏了起来。模型选择由用户所有的白名单把关（行配置 `models: [provider/model-id, …]`）：缺失/为空时，该工具没有 `model` 参数，子级只能继承 —— 代理绝不会发现用户未点名的路由（模型是要花钱的）。允许的条目会连同其原生 `inputModalities`（`ctx.llm.resolveModelInfo`）以 `[text]` / `[text,image]` 渲染进工具描述，因此监督者*能看见*哪些允许的模型具备视觉能力，并只在某个单元必须看图时才选择它（worker 通过 `read_image` 读图，该工具在纯文本路由上会拒绝 —— 同一个模态标志，原生强制）。记录的视觉事实：Z.AI `glm-5.3` 上游为纯文本（图像内容返回 HTTP 400，文档："supports text-only inputs"）；`glm-5v-turbo` 是 `[text,image]` 路由。 |
+| N9 | N5 的"无自定义页签"（部分） | 用户要求：bundle 现在**随包发布一个 Feed 视图页签** —— 一个持久客户端插件，而非动态插件。浏览器半部（`lib/client.js`，按 `docs/cookbook/adding-a-settings-card.md` §Packaging 手写的惰性 CJS）把 id `supervisor-feed` 注册进随包发布的 `conversation.view` 环（即承载 Chat/Trajectory 的原生视图页签槽位），由客户端模块扫描供给（`dsh.client` + `exports["./client"]` —— 无需前端重建）。host 半部添加 `GET /supervisor/feed?ws=`（嵌套 fiber 注入 `webServer`，因此非 web profile 仍会挂载预设安装器）。数据原生优先：目标 = `goal` 投影（`useProjection`），worker = `subagent.list` RPC，文件 = 读取 `.agi/` 的 feed 路由。动态状态胶囊已退役（曾是进程记忆 + 审批门控）；N5 的其他决策仍成立。 |
+| N8 | N6 的 `dsh-time-context` 行 | 已弃用。time-context 会向*每个*请求步骤注入一个"Time sampled while preparing turn N, step M …"块 —— 恒定上下文噪声，且每步都自我取代。它不是 Schedule 的依赖（已核实：`packages/schedule/schedule/README.md` —— "Time-context is not a Schedule dependency"），并且监督者的计时器都是相对的 `after_seconds`，从不是时区本地的 `at` 形式。如果某个部署想要自然语言的绝对时间，就在它自己的 profile patch 中挂载 `@deepseek-ai/dsh-time-context`。 |
+| N7 | （文档发现） | 随包发布的 `editing-cordis-compositions` 技能仍在教已移除的工具（`cordis_inspect`/`cordis_mount`/`cordis_unmount`）。实时工具集是七个具备 define/run 生命周期的工具：`cordis_inspect_list/_query/_self`、`cordis_define`、`cordis_run`、`cordis_stop`、`cordis_undefine`（`packages/extensions/tool-cordis/src/index.ts`）。该技能关于平面/复制/校验的建议仍然正确；只有工具名称过时。预设创作仍走名册：`copy('standard', 'main-agent', …)` + `standingKeyFor` 校验，由 Creator 模式（`cordis` 预设）的会话驱动。 |
 
-Optional extensions (ext): when native stops being enough, the old custom pieces are
-built as ONE out-of-tree package installed into the profile as a `file:` dependency +
-bundle (`dsh.bundle.patch` manifest field), using this repository's buildless package as the
-installed template; no unrelated third-party checkout is assumed. Corrected
-skeletons for delay / trace / wait / state-route live in tutorial chapter 13.
+可选扩展（ext）：当原生能力不再够用时，旧的自定义部件会
+构建为一个树外包，作为 `file:` 依赖 + bundle（`dsh.bundle.patch` 清单字段）
+安装进 profile，并使用本仓库的无构建包作为
+安装模板；不假设存在任何无关的第三方检出副本。delay / trace / wait / state-route 的
+修正骨架在教程第 13 章。
 
-Packaging (post-N6 refinement): this repo is itself such a bundle (`dsh-supervisor`).
-Its `cordis.patch.yml` carries the N6 schedule row (id `agi-schedule`; the
-time-context row was dropped per N8), and a buildless setup plugin (`lib/index.js`) installs the bundled
-`main-agent` preset into the user preset root at boot (non-destructive;
-`syncPreset: if-absent | always | never`). Install on any machine:
-`dsh plugin --profile web add <git-or-path>` + one restart. The manual patch-layer
-route remains as `scripts/install-manual.sh`; the two routes are mutually exclusive
-because the schedule service registers once per process.
+打包（N6 之后的细化）：本仓库本身就是这样一个 bundle（`dsh-supervisor`）。
+它的 `cordis.patch.yml` 承载 N6 的 schedule 行（id `agi-schedule`；time-context
+行已按 N8 弃用），并且在启动时有一个无构建的设置插件（`lib/index.js`）把随包的
+`main-agent` 预设安装进用户预设根目录（非破坏性；
+`syncPreset: if-absent | always | never`）。在任意机器上安装：
+`dsh plugin --profile web add <git-or-path>` + 一次重启。手工 patch 层
+路径保留为 `scripts/install-manual.sh`；两条路径互斥，
+因为 schedule 服务每个进程只注册一次。
 
-## 16. Grounding amendment
+## 16. 打底修订
 
-| G | Supersedes | Amendment |
+| G | 取代 | 修订 |
 |---|---|---|
-| G1 | §1/§3 phrasing "does no implementation work itself" | The Main Agent is a **grounded manager, not a blind dispatcher**. The delegation boundary is **mutation, not curiosity**: writing code and changing systems go to workers; reading, searching, inspecting, judging, and verifying are the supervisor's own job, with its own full tools. Rules now in the persona (GROUNDING section): never delegate a question a 30-second read answers; for surveys too large for its context, spawn an **explorer** worker whose whole deliverable is a report, folded into `NOTES.md`; grounding is recorded in `NOTES.md` so it survives restarts; a worker's "done" is a claim, a file existing is a fact — deliverables are verified with the supervisor's own eyes before progress is recorded. Loop step 1 is now "ground, then plan." |
+| G1 | §1/§3 的措辞"自身不做实现工作" | Main Agent 是一个**有事实打底的管理者，而不是盲目的派发器**。委托边界是**变更，而非好奇心**：写代码和更改系统交给 worker；读取、搜索、检查、判断与核实是监督者自己的工作，用它自己的全套工具完成。规则现已写入 persona（GROUNDING 段落）：绝不为一个 30 秒阅读就能回答的问题发起委托；对于超出其上下文的大范围勘察，派生一个**调研型 worker**，其全部交付物就是一份报告，并归并入 `NOTES.md`；打底结果记入 `NOTES.md`，以便在重启后仍然存活；worker 说"完成"只是一个声称，文件存在才是事实 —— 交付物要用监督者自己的眼睛核实后才记录进展。循环第 1 步现在是"先打底，再规划"。 |

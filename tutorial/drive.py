@@ -1,22 +1,21 @@
 #!/usr/bin/env python3
-"""Course helper: drive dsh web over its HTTP RPC API (POST /api/<method>).
+"""课程辅助工具：通过 dsh web 的 HTTP RPC API（POST /api/<method>）驱动它。
 
-A thin console for supervising the supervisor: send prompts, wait for the turn
-to finish, and print a readable tail of what happened. Used by the course's
-test runs; also handy interactively.
+一台用来监督监督者的瘦命令行：发提示词、等一轮跑完、打印一段可读的过程尾巴。
+课程的测试运行在用；交互式手用也方便。
 
-Usage:
+用法：
     drive.py create --cwd "$HOME/agi-lab" [--preset main-agent]
-    drive.py send  <sessionId> "message"            # prompt + wait + tail
+    drive.py send  <sessionId> "message"            # 发提示词 + 等待 + 打尾巴
     drive.py steer <sessionId> "message"            # mode=steer
-    drive.py wait  <sessionId> [--timeout 900]      # wait until not running
-    drive.py tail  <sessionId> [--n 25]             # last N events, readable
-    drive.py watch <sessionId> [--timeout 900]      # wait, then tail
-    drive.py sessions --cwd "$HOME/agi-lab"         # list sessions
-    drive.py children <sessionId>                   # subagent.list for parent
+    drive.py wait  <sessionId> [--timeout 900]      # 等到不再运行
+    drive.py tail  <sessionId> [--n 25]             # 最后 N 个事件，可读
+    drive.py watch <sessionId> [--timeout 900]      # 等，然后打尾巴
+    drive.py sessions --cwd "$HOME/agi-lab"         # 列出会话
+    drive.py children <sessionId>                   # 对父会话做 subagent.list
 
-The wire envelope (verified: packages/host/apiproxy/src/fetch/handler.ts):
-POST /api/<method> with {"type":"client-request","rpcId","method","payload"}.
+线上信封格式（已核实：packages/host/apiproxy/src/fetch/handler.ts）：
+POST /api/<method>，body 为 {"type":"client-request","rpcId","method","payload"}。
 """
 
 from __future__ import annotations
@@ -27,6 +26,12 @@ import sys
 import time
 import urllib.request
 import uuid
+
+# Windows 上 stdout 一旦是管道或重定向文件，Python 会用区域代码页（本机 gbk）编码，
+# 而下面那几个排版符号（▸ ◦ ● ——）编不出来，进程会直接崩；显式钉成 UTF-8。
+# 真控制台不受影响：PEP 528 下控制台本就是 UTF-8 通道。
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = "http://127.0.0.1:3080"
 
@@ -41,7 +46,7 @@ def rpc(method: str, payload: dict, timeout: float = 60.0) -> dict:
         answer = json.loads(resp.read())
     result = answer.get("result", {})
     if not result.get("ok"):
-        raise SystemExit(f"RPC {method} failed: {json.dumps(result.get('error'))}")
+        raise SystemExit(f"RPC {method} 失败：{json.dumps(result.get('error'))}")
     return result["value"]
 
 
@@ -67,7 +72,7 @@ def wait_idle(session_id: str, timeout: float = 900.0, settle: float = 6.0) -> N
         elif now - idle_since >= settle:
             return
         time.sleep(3)
-    print(f"[drive] wait timed out after {timeout}s (still running)", file=sys.stderr)
+    print(f"[drive] 等待 {timeout}s 后超时（仍在运行）", file=sys.stderr)
 
 
 def _text_of(content) -> str:
@@ -85,20 +90,20 @@ def render_event(ev: dict) -> str | None:
         src = msg.get("source", {}) if isinstance(msg, dict) else {}
         kind = src.get("kind", "?")
         text = _text_of(msg.get("content")) if isinstance(msg, dict) else ""
-        label = {"user": "YOU", "subagent-settled": "SETTLE",
-                 "subagent-report": "REPORT", "schedule": "TIMER"}.get(kind, kind.upper())
+        label = {"user": "你", "subagent-settled": "收敛",
+                 "subagent-report": "报告", "schedule": "定时"}.get(kind, kind.upper())
         if kind == "subagent-settled":
             text = src.get("summary", text)
         return f"  ◦ {label}: {text[:220]}"
     if t == "assistant/message":
         text = _text_of(data.get("message", {}).get("content"))
-        return f"  ● AGENT: {text[:400]}" if text.strip() else None
+        return f"  ● 监督者：{text[:400]}" if text.strip() else None
     if t == "tool/call":
         name = data.get("name", "?")
         args = str(data.get("arguments", ""))[:160]
-        return f"  ▸ tool {name}({args})"
+        return f"  ▸ 工具 {name}({args})"
     if t == "turn/end":
-        return "  — turn end —"
+        return "  —— 一轮结束 ——"
     return None
 
 
@@ -154,14 +159,14 @@ def main() -> None:
             "mode": "queue" if args.cmd == "send" else "steer",
             "content": [{"type": "text", "text": args.message}],
         })
-        print(f"[drive] sent ({args.cmd}); waiting for idle…")
+        print(f"[drive] 已发送（{args.cmd}）；等待空闲…")
         if not args.no_wait:
             time.sleep(4)
             wait_idle(args.session, timeout=args.timeout)
             tail(args.session)
     elif args.cmd == "wait":
         wait_idle(args.session, timeout=args.timeout)
-        print("[drive] idle")
+        print("[drive] 空闲")
     elif args.cmd == "tail":
         tail(args.session, n=args.n)
     elif args.cmd == "watch":

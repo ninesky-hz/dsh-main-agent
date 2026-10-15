@@ -1,47 +1,44 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2 · Cordis from scratch — Supervisor on DSH</title>
+<title>第 2 章 · 从零开始学 Cordis — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part I · Chapter 2</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 I 部分 · 第 2 章</span>
   <span class="spacer"></span>
   <a href="01-big-picture.html">←</a>
   <a href="03-harness.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part I — Foundations</p>
-  <h1>Cordis from scratch</h1>
-  <p class="lede">The harness’s slogan is “everything is a plugin.” This chapter teaches the
-  plugin framework underneath — Cordis — well enough that when you later read a real plugin,
-  every line means something. It also quietly teaches you the JavaScript and TypeScript
-  you need along the way.</p>
+  <p class="kicker">第 I 部分 —— 基础</p>
+  <h1>从零开始学 Cordis</h1>
+  <p class="lede">harness 的口号是「一切都是插件」。本章讲解它底下的插件框架 —— Cordis —— 讲到当你日后阅读一个真实插件时，每一行都有意义的程度。它还会顺带教你一路上需要的 JavaScript 与 TypeScript。</p>
 </header>
 
-<h2>Why a plugin framework at all?</h2>
+<h2>为什么非要有插件框架？</h2>
 <p>
-  Imagine building an AI agent product the ordinary way: a big program where the model client,
-  the tool registry, the session log, and the UI all import each other. Every new capability means
-  editing the core. DeepSeek Harness refuses that: there is <em>no privileged core to patch</em>. The
-  model adapter is a plugin. The tool registry is a plugin. The agent loop itself is a plugin. You
-  extend the product by <em>mounting another plugin beside the others</em>, and you remove your extension
-  by unmounting it — nothing else changes.
+  想象用寻常方式构建一个 AI agent 产品：一个大程序，模型客户端、
+  工具注册表、会话日志和 UI 全都互相 import。每增加一项能力都意味着
+  修改核心。DeepSeek Harness 拒绝这种做法：<em>不存在需要打补丁的特权核心</em>。模型
+  适配器是插件。工具注册表是插件。agent 循环本身就是插件。你
+  通过<em>在其它插件旁边再挂载一个插件</em>来扩展产品，通过卸载它来移除你的扩展 —— 其它东西一概
+  不变。
 </p>
 <p>
-  Cordis is the framework that makes this composable. The harness vendors it (a pinned copy lives at
-  <code>$HOME/src/deepseek-harness/vendor/cordis/</code>), and its primer condenses the whole thing into five
-  ideas. Here they are, verbatim from the harness docs, then unpacked one by one:
+  Cordis 就是让这一切可组合的框架。harness 把它内嵌进来（一份锁定版本的副本位于
+  <code>$HOME/src/deepseek-harness/vendor/cordis/</code>），它的入门文档把整套东西浓缩成五个
+  想法。下面是直接引自 harness 文档的原文，然后逐条拆解：
 </p>
 
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/cordis-primer.md (lines 7–13)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/docs/cordis-primer.md（第 7–13 行）</figcaption>
 <pre><code>- A plugin is a object that implements Service. It can be a function with optional
   `inject` and `apply(ctx)` fields, or a `Service` subclass ...
 - A context is a repository of services. A service claims a stable `ctx.&lt;key&gt;` such as
@@ -56,10 +53,10 @@
   and teardown unwind them predictably.</code></pre>
 </figure>
 
-<h2>Idea 1 — A plugin is a small object with an <code>apply</code> function</h2>
-<p>Here is the smallest possible plugin, in plain JavaScript:</p>
+<h2>想法 1 —— 插件是一个带有 <code>apply</code> 函数的小对象</h2>
+<p>下面是用纯 JavaScript 写的最小插件：</p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>the smallest plugin</figcaption>
+<figcaption><span class="badge you">你的</span>最小的插件</figcaption>
 <pre><code>export const name = 'hello'
 
 export function apply(ctx) {
@@ -67,38 +64,38 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 <p>
-  That’s it. A plugin is a module (or object) exposing a <code>name</code> and an <code>apply</code>
-  function. When the framework <em>mounts</em> the plugin, it calls <code>apply(ctx)</code> exactly once,
-  handing it a <strong>context</strong> — the plugin’s window into everything else. When the plugin is
-  <em>unmounted</em>, everything it registered through that context is automatically torn down
-  (idea 5 explains how).
+  就这样。一个插件就是一个模块（或对象），它暴露 <code>name</code> 与 <code>apply</code>
+  函数。当框架<em>挂载</em>这个插件时，它只调用一次 <code>apply(ctx)</code>，
+  并交给它一个<strong>上下文</strong> —— 这是插件窥视其它一切的窗口。当插件被
+  <em>卸载</em>时，它通过那个上下文注册的一切都会被自动清理
+  （想法 5 解释其原理）。
 </p>
 
 <div class="box ts">
-  <span class="box-title">TypeScript corner · reading <code>export</code>, <code>const</code>, <code>function</code></span>
+  <span class="box-title">TypeScript 角落 · 读懂 <code>export</code>、<code>const</code>、<code>function</code></span>
   <p>
-    JavaScript files are modules: <code>export</code> marks what other files may import. <code>const</code>
-    declares a variable that cannot be reassigned. TypeScript is JavaScript plus <em>type
-    annotations</em> — notes about what shape a value has, checked before the code runs and then erased.
-    The same plugin in the harness’s own TypeScript style looks like:
+    JavaScript 文件就是模块：<code>export</code> 标出其它文件可以 import 的内容。<code>const</code>
+    声明一个不可重新赋值的变量。TypeScript 是 JavaScript 加上<em>类型
+    标注</em> —— 关于某个值具有什么形状的说明，在代码运行前被检查，然后被擦除。
+    同一个插件用 harness 自己的 TypeScript 风格写就是这样：
   </p>
 <pre><code>export function apply(ctx: Context): void { ... }</code></pre>
   <p>
-    Read <code>ctx: Context</code> as “<code>ctx</code> is a <code>Context</code>” and <code>: void</code> as
-    “returns nothing.” When you skim harness source, you can mentally delete everything after a
-    colon in a parameter list and still understand the runtime behavior.
+    把 <code>ctx: Context</code> 读作「<code>ctx</code> 是一个 <code>Context</code>」，把 <code>: void</code> 读作
+    「不返回任何东西」。当你快速浏览 harness 源码时，可以在心里删掉参数列表里冒号
+    之后的一切，仍然理解运行时行为。
   </p>
 </div>
 
-<h2>Idea 2 — A context is a repository of services</h2>
+<h2>想法 2 —— 上下文是服务的仓库</h2>
 <p>
-  A <strong>service</strong> is a long-lived object that claims a stable key on the context. The tool
-  registry claims <code>ctx.tools</code>; the session store claims <code>ctx.sessions</code>; the subagent
-  runtime claims <code>ctx.subagents</code>. Any plugin can then reach a capability <em>by key</em>, without
-  importing (or even knowing) the package that implements it:
+  一个<strong>服务</strong>是一个长期存活的对象，它在上下文上占据一个稳定的键。工具
+  注册表占据 <code>ctx.tools</code>；会话存储占据 <code>ctx.sessions</code>；subagent
+  运行时占据 <code>ctx.subagents</code>。任何插件随后都可以<em>按键</em>取用某项能力，
+  无需 import（甚至无需知道）实现它的那个包：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>consuming a service by key</figcaption>
+<figcaption><span class="badge you">你的</span>按键取用一个服务</figcaption>
 <pre><code>export function apply(ctx) {
   const store = ctx.get('sessions')     // may be undefined if nothing provides it
   if (store === undefined) return
@@ -106,21 +103,21 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 <p>
-  This indirection is what makes providers swappable. The filesystem service, the shell service,
-  the subagent providers — each is “whoever registered under this key.” Point the keys at a remote
-  sandbox implementation and the whole product moves there, no callers edited. The harness
-  architecture doc calls a swappable capability like this a <em>seam</em>
-  (<code>docs/architecture.md</code>, “Capability seams”).
+  正是这种间接性让提供者可以替换。文件系统服务、shell 服务、
+  subagent 提供者 —— 每一个都是「在这个键下注册的那个东西」。把这些键指向一个远程
+  沙箱实现，整个产品就搬到了那里，无需修改任何调用方。harness
+  架构文档把这种可替换的能力称为<em>接缝（seam）</em>
+  （<code>docs/architecture.md</code>，「Capability seams」）。
 </p>
 
-<h2>Idea 3 — <code>inject</code>: declaring dependencies instead of ordering boot</h2>
+<h2>想法 3 —— <code>inject</code>：声明依赖，而不是安排启动顺序</h2>
 <p>
-  What if your plugin <em>requires</em> a service? You could call <code>ctx.get()</code> and hope it’s
-  there — but load order would then matter, and with hundreds of plugins that is unmanageable.
-  Instead a plugin <em>declares</em> its requirements:
+  如果你的插件<em>需要</em>某个服务怎么办？你可以调用 <code>ctx.get()</code> 并指望它
+  在那儿 —— 但这样一来加载顺序就变得重要，而有成百上千个插件时这根本管不过来。
+  于是插件改为<em>声明</em>它的要求：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>declaring a hard dependency</figcaption>
+<figcaption><span class="badge you">你的</span>声明一个硬依赖</figcaption>
 <pre><code>export const name = 'session-counter'
 export const inject = ['sessions']          // ← I need ctx.sessions
 
@@ -130,43 +127,43 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 <p>
-  A plugin naming services in <code>inject</code> simply <em>waits</em> — Cordis keeps it pending until every
-  named service exists, then activates it. If a service later disappears (its provider unmounts),
-  dependents are deactivated. Load order becomes a property the framework computes, not something
-  you sequence by hand. This is also your first debugging lever: a plugin that “never ran” is
-  usually a plugin waiting on a service nobody provides, and the harness reports exactly that
-  (“<code>N row(s) did not activate: waiting for &lt;service&gt;</code>” — you will meet this message in
-  chapter 6’s validation step).
+  在 <code>inject</code> 中列出服务名的插件只是<em>等待</em> —— Cordis 让它保持挂起，直到每个
+  被点名的服务都存在，然后激活它。如果某个服务后来消失（它的提供者被卸载），
+  依赖它的插件会被停用。加载顺序变成框架计算出来的属性，而不是
+  你手工排序的东西。这也是你的第一根调试杠杆：一个「从未运行」的插件，
+  通常是在等待一个没人提供的服务，而 harness 会如实报告这一点
+  （「<code>N row(s) did not activate: waiting for &lt;service&gt;</code>」—— 你会在第 6 章的校验
+  步骤遇到这条消息）。
 </p>
-<p>For a real example, the Cordis toolset plugin you’ll use in chapter 5 declares:</p>
+<p>举一个真实的例子：你将在第 5 章使用的 Cordis 工具集插件声明了：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/extensions/tool-cordis/src/index.ts (line 28)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/packages/extensions/tool-cordis/src/index.ts（第 28 行）</figcaption>
 <pre><code>export const inject = ['tools', 'systemPrompt', 'dynamicCordisRunner', 'cordisInspect']</code></pre>
 </figure>
 <p>
-  Read it as a manifest: “I register model tools (<code>tools</code>), I add a prompt section
-  (<code>systemPrompt</code>), and I need the dynamic-plugin runner and the inspect registry.” You can
-  often understand a plugin’s role from its <code>inject</code> line alone.
+  把它当作一份清单来读：「我注册模型工具（<code>tools</code>）、我添加一个提示词段落
+  （<code>systemPrompt</code>），并且我需要动态插件运行器与 inspect 注册表。」你常常只看
+  <code>inject</code> 这一行就能明白一个插件的作用。
 </p>
 
 <div class="box ts">
-  <span class="box-title">TypeScript corner · arrays and strings</span>
+  <span class="box-title">TypeScript 角落 · 数组与字符串</span>
   <p>
-    <code>['tools', 'systemPrompt']</code> is an array literal of strings. TypeScript infers its type as
-    <code>string[]</code> (“array of strings”). You will also see <code>readonly string[]</code> — same thing,
-    but the compiler forbids mutating it. Neither annotation exists at runtime.
+    <code>['tools', 'systemPrompt']</code> 是一个字符串数组字面量。TypeScript 推断它的类型为
+    <code>string[]</code>（「字符串数组」）。你还会看到 <code>readonly string[]</code> —— 同一回事，
+    但编译器禁止修改它。这两种标注在运行时都不存在。
   </p>
 </div>
 
-<h2>Idea 4 — Typed events, and the four dispatch modes</h2>
+<h2>想法 4 —— 类型化事件与四种派发模式</h2>
 <p>
-  Services expose <em>methods</em> for direct calls (“start a subagent”), and <em>events</em> for
-  interception and observation (“a tool is about to execute”). A plugin listens with
-  <code>ctx.on(name, listener)</code>. What makes Cordis events unusual is that every event declares a
-  <strong>dispatch mode</strong> — part of its public contract:
+  服务暴露<em>方法</em>用于直接调用（「启动一个 subagent」），也暴露<em>事件</em>用于
+  拦截与观察（「某个工具即将执行」）。插件用
+  <code>ctx.on(name, listener)</code> 监听。Cordis 事件的不同寻常之处在于：每个事件都声明了一个
+  <strong>派发模式</strong> —— 它公开契约的一部分：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/cordis-primer.md (lines 19–24)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/docs/cordis-primer.md（第 19–24 行）</figcaption>
 <pre><code>| Mode      | Awaited? | Dispatch Order                        | Has Return Value? |
 |-----------|----------|---------------------------------------|-------------------|
 | emit      | No       | listeners observe in registration order| No                |
@@ -175,24 +172,24 @@ export function apply(ctx) {
 | serial    | Yes      | listeners observe in registration order| Yes               |</code></pre>
 </figure>
 <ul>
-  <li><strong>emit</strong> — fire-and-forget observation. Example: <code>session/event</code>, the firehose that
-      announces every appended session-log event. Listeners can watch; they cannot change anything.</li>
-  <li><strong>waterfall</strong> — <em>around-middleware</em>. Each listener receives the arguments plus a
-      <code>next</code> function and wraps the rest of the chain. This is how policy is written: the tool
-      pipeline’s <code>tools/pre-execute</code> is a waterfall where a listener can allow, deny, delay, or
-      transform a tool call.</li>
-  <li><strong>parallel / serial</strong> — awaited fan-out, in parallel or in order.</li>
+  <li><strong>emit</strong> —— 发后即忘的观察。例如 <code>session/event</code>，这条「消防水带」
+      会宣告每一条被追加的会话日志事件。监听者可以看，但改变不了任何东西。</li>
+  <li><strong>waterfall</strong> —— <em>环绕式中间件</em>。每个监听者收到参数外加一个
+      <code>next</code> 函数，并包裹链条的其余部分。策略就是这样写的：工具
+      流水线的 <code>tools/pre-execute</code> 是一个 waterfall，监听者可以在其中允许、拒绝、延迟或
+      改写一次工具调用。</li>
+  <li><strong>parallel / serial</strong> —— 被 await 的扇出，并行执行或按顺序执行。</li>
 </ul>
 
 <div class="box warn">
-  <span class="box-title">The waterfall rule that catches everyone</span>
+  <span class="box-title">那条人人都会踩的 waterfall 规则</span>
   <p>
-    A waterfall listener <strong>must call and return <code>next()</code></strong> to delegate. Returning without
-    it short-circuits the chain — deliberately when a policy owns the decision, catastrophically when
-    you just forgot. The harness conventions state it in bold
-    (<code>AGENTS.md</code>: “Waterfall listeners MUST call <code>next()</code>”). A dropped <code>next()</code> on
-    <code>tools/pre-execute</code> silently blocks <em>every tool in the process</em>. Burn this in now; it
-    will matter if you build chapter 13’s delay plugin.
+    waterfall 监听者<strong>必须调用并返回 <code>next()</code></strong> 才算委派下去。不返回它就会把
+    链条短路 —— 当某个策略本就拥有这个决定权时这是刻意的，而当你只是忘了时就是灾难。
+    harness 的约定用粗体写明了这一点
+    （<code>AGENTS.md</code>：「Waterfall listeners MUST call <code>next()</code>」）。在 <code>tools/pre-execute</code> 上
+    漏掉 <code>next()</code> 会静默地阻塞<em>进程里的每一个工具</em>。现在就把它记牢；如果你
+    要构建第 13 章的延迟插件，它会很重要。
   </p>
 <pre><code>ctx.on('some/waterfall', (payload, next) =&gt; {
   // observe or annotate payload here ...
@@ -201,26 +198,25 @@ export function apply(ctx) {
 </div>
 
 <div class="box ts">
-  <span class="box-title">TypeScript corner · arrow functions and callbacks</span>
+  <span class="box-title">TypeScript 角落 · 箭头函数与回调</span>
   <p>
-    <code>(payload, next) =&gt; { ... }</code> is an <em>arrow function</em> — a compact anonymous function.
-    JavaScript passes functions around like values, so “register a listener” literally means “hand
-    this function to <code>ctx.on</code>, to be called later.” <code>async</code> before a function makes it
-    return a <em>promise</em> (a value that arrives later); inside one, <code>await expr</code> pauses until
-    <code>expr</code> resolves. You will see <code>async execute(args, exec) { ... await ... }</code> in every
-    tool definition.
+    <code>(payload, next) =&gt; { ... }</code> 是一个<em>箭头函数</em> —— 一种紧凑的匿名函数。
+    JavaScript 像传递值一样传递函数，所以「注册一个监听者」字面上就是「把这个
+    函数交给 <code>ctx.on</code>，稍后调用它」。函数前的 <code>async</code> 让它返回一个
+    <em>promise</em>（一个稍后才会到达的值）；在它内部，<code>await expr</code> 会暂停直到
+    <code>expr</code> 落定。你会在每个工具定义里看到 <code>async execute(args, exec) { ... await ... }</code>。
   </p>
 </div>
 
-<h2>Idea 5 — Registrations are reversible effects</h2>
+<h2>想法 5 —— 注册是可撤销的副作用</h2>
 <p>
-  Here is the question that makes or breaks a hot-reloadable system: when a plugin unmounts, how does
-  the framework undo everything it did? Cordis’s answer: every contribution goes through the context,
-  and every one returns (or is wrapped in) a <strong>disposer</strong> — a cleanup function. Registering and
-  cleaning up are one act:
+  这个问题决定了一个可热重载系统的成败：当插件卸载时，框架如何
+  撤销它做过的一切？Cordis 的答案：每一份贡献都经由上下文，
+  并且每一份都返回（或被包在）一个<strong>清理器（disposer）</strong> —— 一个清理函数。注册与
+  清理是同一个动作：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>effects and disposers</figcaption>
+<figcaption><span class="badge you">你的</span>副作用与清理器</figcaption>
 <pre><code>export function apply(ctx) {
   // ctx.on() is already an effect — the listener unregisters on unmount.
   ctx.on('session/event', (session, event) =&gt; { /* observe */ })
@@ -233,21 +229,21 @@ export function apply(ctx) {
 }</code></pre>
 </figure>
 <p>
-  Because <em>everything</em> follows this discipline, the harness can hot-reload a plugin, a preset, or
-  your profile’s patch file while sessions run, and nothing leaks. The repo states the convention as
-  a hard rule: “Registrations are effects: every contribution goes through <code>ctx.effect()</code> /
-  <code>ctx.on()</code>; a registry’s <code>register()</code> returns the disposer”
-  (<code>$HOME/src/deepseek-harness/AGENTS.md</code>, Conventions).
+  因为<em>一切</em>都遵守这条纪律，harness 可以在会话运行期间热重载插件、preset 或
+  你 profile 的 patch 文件，而不会有任何泄漏。仓库把这条约定定为
+  硬规则：「Registrations are effects: every contribution goes through <code>ctx.effect()</code> /
+  <code>ctx.on()</code>; a registry's <code>register()</code> returns the disposer」
+  （<code>$HOME/src/deepseek-harness/AGENTS.md</code>，Conventions）。
 </p>
 
-<h2>Composition: plugins are mounted from YAML</h2>
+<h2>组合：插件由 YAML 挂载</h2>
 <p>
-  So far, plugins in isolation. Who decides which plugins run? In this harness: <strong>configuration
-  files, not code</strong>. A <code>cordis.yml</code> is a list of <em>rows</em>, each naming a plugin package and
-  its config. Here are two real rows from the standard preset on which the packaged supervisor is based:
+  到目前为止都是孤立的插件。谁来决定哪些插件运行？在这个 harness 里：<strong>是配置文件，
+  不是代码</strong>。<code>cordis.yml</code> 是一列<em>行</em>，每行点名一个插件包及其
+  配置。下面是随包携带的监督者所基于的 standard preset 里的两行真实内容：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml (lines 24–33, 44–46)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml（第 24–33、44–46 行）</figcaption>
 <pre><code>- id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
@@ -264,34 +260,33 @@ export function apply(ctx) {
   name: '@deepseek-ai/dsh-tool-bash'
   disabled: !!js process.platform === 'win32'</code></pre>
 </figure>
-<p>Reading a row:</p>
+<p>如何读一行：</p>
 <ul>
-  <li><code>id</code> — the row’s stable address. Patches (next chapter) target rows by id.</li>
-  <li><code>name</code> — the npm package whose plugin gets mounted.</li>
-  <li><code>config</code> — passed to the plugin, validated against its schema. Invalid config fails loud at mount.</li>
-  <li><code>disabled: !!js …</code> — the one place executable expressions are allowed: <code>!!js</code> lets a row
-      switch on the environment (here: skip bash on Windows). Everything else in the file is literal data.</li>
-  <li><code>{{model}}</code>, <code>{{cwd}}</code> — template variables some plugins (like the persona) resolve per-agent.</li>
+  <li><code>id</code> —— 该行的稳定地址。patch（下一章）按 id 定位行。</li>
+  <li><code>name</code> —— 被挂载插件的 npm 包名。</li>
+  <li><code>config</code> —— 传给该插件，并按它的 schema 校验。非法配置会在挂载时大声失败。</li>
+  <li><code>disabled: !!js …</code> —— 唯一允许可执行表达式的地方：<code>!!js</code> 让一行
+      随环境切换（此处：在 Windows 上跳过 bash）。文件里其它一切都是字面数据。</li>
+  <li><code>{{model}}</code>、<code>{{cwd}}</code> —— 模板变量，某些插件（如人格）会按 agent 解析它们。</li>
 </ul>
 <p>
-  This is the deepest thing to understand about the harness: <strong>changing what an agent can do means
-  changing which rows are composed for it.</strong> Not editing core code — editing a list. The
-  <code>editing-cordis-compositions</code> skill that ships with Creator mode opens with exactly that
-  sentence (<code>apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md</code>).
+  这是关于 harness 最需要理解的一点：<strong>改变一个 agent 能做什么，就是改变为它组合了
+  哪些行。</strong>不是修改核心代码 —— 而是编辑一份列表。随 Creator mode 一起提供的
+  <code>editing-cordis-compositions</code> skill 开头正是这句话
+  （<code>apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md</code>）。
 </p>
 
-<h2>Groups and isolate realms (the collision rule, previewed)</h2>
+<h2>分组与 isolate 领域（冲突规则的预告）</h2>
 <p>
-  One more composition construct you will inspect in chapter 6: rows can be nested in a
-  <strong>group</strong>, and a group can carry an <code>isolate</code> realm. Why: some plugins <em>provide a
-  service</em>, and a service key registers once per realm. If a preset row provided a service into the
-  global realm, the <em>second</em> session mounting that preset would collide with the first. So a preset
-  that owns a service wraps the provider and its consumers in a group with <code>isolate: {thatService: true}</code>,
-  giving each session a private instance. The <code>standard</code> preset does this for its
-  workflow engine:
+  还有一个组合构造你会在第 6 章检视：行可以嵌套进一个<strong>分组</strong>，而分组可以携带一个
+  <code>isolate</code> 领域。原因：有些插件<em>提供一项服务</em>，而一个服务键在每个领域里
+  只能注册一次。如果某个 preset 行把服务提供到全局领域里，那么<em>第二个</em>会话挂载该 preset
+  时就会与第一个冲突。因此，拥有服务的 preset 会把提供者与其消费者一起包进一个带
+  <code>isolate: {thatService: true}</code> 的分组，让每个会话得到一份私有实例。<code>standard</code> preset 就为它的
+  工作流引擎这样做了：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml (lines 174–179)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml（第 174–179 行）</figcaption>
 <pre><code>- id: delegation
   name: cordis:group
   group: true
@@ -303,16 +298,15 @@ export function apply(ctx) {
     # ... more rows ...</code></pre>
 </figure>
 <p>
-  You do not need to design realms in this course — the packaged preset preserves the correct groups
-  inherited from <code>standard</code>. But you must recognize the pattern, because the mount validator names it when
-  something is wrong (“a preset service must sit behind an isolate realm or move to the host
-  composition”), and chapter 6 verifies that two sessions mount without a realm collision.
+  本课程里你不需要设计领域 —— 随包携带的 preset 保留了从 <code>standard</code> 继承来的正确分组。
+  但你必须认得这个模式，因为出问题时挂载校验器会点名它（「a preset service must sit behind an isolate realm or move to the host
+  composition」），而第 6 章会验证两个会话的挂载不会发生领域冲突。
 </p>
 
-<h2>What you now know how to read</h2>
-<p>Test yourself on this real row from the base host composition — the one that will spawn your workers:</p>
+<h2>你现在已经会读什么了</h2>
+<p>用基础宿主组合里的这一行真实内容自测 —— 就是将来派生你的 worker 的那一行：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/bundle/base/cordis.patch.yml (lines 313–318)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/packages/bundle/base/cordis.patch.yml（第 313–318 行）</figcaption>
 <pre><code>- id: tool-subagent
   name: '@deepseek-ai/dsh-tool-subagent'
   config:
@@ -321,38 +315,38 @@ export function apply(ctx) {
     backgroundMode: continuable</code></pre>
 </figure>
 <p>
-  You should be able to say: “mount the package <code>@deepseek-ai/dsh-tool-subagent</code> as a row
-  addressed <code>tool-subagent</code>; configure it to register a model tool named <code>subagent</code>,
-  backed by the provider registered under the name <code>spawn</code>, creating continuable background
-  children.” If that sentence parses, you are ready for the harness itself.
+  你应该能说出：「把包 <code>@deepseek-ai/dsh-tool-subagent</code> 作为一个地址为
+  <code>tool-subagent</code> 的行挂载；把它配置为注册一个名为 <code>subagent</code> 的模型工具，
+  由注册在 <code>spawn</code> 名下的提供者支撑，创建可续行的后台
+  子级。」如果这句话你能解析，就准备好进入 harness 本身了。
 </p>
 
 <div class="box test">
-  <span class="box-title">Check your understanding (no machine needed)</span>
+  <span class="box-title">自检理解（不需要机器）</span>
   <ol>
-    <li>A plugin’s <code>apply</code> never ran and the mount report says <em>“waiting for schedule.”</em>
-        What is wrong, and why is it not a bug in the plugin? <span class="muted">(It declared
-        <code>inject: ['schedule']</code> and nothing in the composition provides that service —
-        the fix is a composition change, not a code change.)</span></li>
-    <li>A <code>tools/pre-execute</code> listener logs every call and then returns nothing. What breaks?
-        <span class="muted">(Every tool call in the process silently stops — the listener short-circuited
-        the waterfall by not returning <code>next()</code>.)</span></li>
-    <li>Why does a preset row providing a service need an isolate realm?
-        <span class="muted">(A service registers once per realm; two sessions mounting the preset would
-        collide in the global realm.)</span></li>
+    <li>某插件的 <code>apply</code> 从未运行，挂载报告说<em>「waiting for schedule.」</em>
+        哪里出了问题，为什么这不是该插件的 bug？<span class="muted">（它声明了
+        <code>inject: ['schedule']</code>，而组合里没有任何东西提供那个服务 ——
+        修法是改组合，不是改代码。）</span></li>
+    <li>一个 <code>tools/pre-execute</code> 监听者记录每一次调用，然后什么都不返回。什么会坏？
+        <span class="muted">（进程里的每一次工具调用都会静默停止 —— 该监听者因为没有返回
+        <code>next()</code> 而短路了 waterfall。）</span></li>
+    <li>为什么提供服务的 preset 行需要一个 isolate 领域？
+        <span class="muted">（一个服务在每个领域只能注册一次；两个挂载该 preset 的会话会在
+        全局领域里冲突。）</span></li>
   </ol>
 </div>
 
-<h2>Where to go deeper (optional)</h2>
+<h2>想更深入时去哪里（可选）</h2>
 <ul>
-  <li><code>$HOME/src/deepseek-harness/docs/cordis-primer.md</code> — the five ideas, dispatch table, loader config.</li>
-  <li><code>$HOME/src/deepseek-harness/docs/cordis-tutorial/index.md</code> — the framework’s own hands-on walk.</li>
-  <li><code>$HOME/src/deepseek-harness/vendor/cordis/README.md</code> — the vendored framework’s package map.</li>
+  <li><code>$HOME/src/deepseek-harness/docs/cordis-primer.md</code> —— 五个想法、派发表、加载器配置。</li>
+  <li><code>$HOME/src/deepseek-harness/docs/cordis-tutorial/index.md</code> —— 框架自带的上手演练。</li>
+  <li><code>$HOME/src/deepseek-harness/vendor/cordis/README.md</code> —— 内嵌框架的包地图。</li>
 </ul>
 
 <nav class="pager">
-  <a class="prev" href="01-big-picture.html">← Chapter 1 — The big picture</a>
-  <a class="next" href="03-harness.html">Chapter 3 — Anatomy of the harness →</a>
+  <a class="prev" href="01-big-picture.html">← 第 1 章 —— 大局观</a>
+  <a class="next" href="03-harness.html">第 3 章 —— 拆开 harness 看内部 →</a>
 </nav>
 </main>
 </body>

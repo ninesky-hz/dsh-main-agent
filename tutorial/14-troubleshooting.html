@@ -1,146 +1,146 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>14 · Troubleshooting & reference — Supervisor on DSH</title>
+<title>第 14 章 · 故障排查与参考 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part III · Chapter 14</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 III 部分 · 第 14 章</span>
   <span class="spacer"></span>
   <a href="13-extensions.html">←</a>
   <a href="index.html">⌂</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part III — Beyond native</p>
-  <h1>Troubleshooting &amp; reference</h1>
-  <p class="lede">The failure catalog for everything this course had you do, a glossary of every
-  term it leaned on, and the map of harness documentation worth your next weekend.</p>
+  <p class="kicker">第 III 部分 —— 超越原生</p>
+  <h1>故障排查与参考</h1>
+  <p class="lede">这门课让你做的每件事，出问题时的清单都在这儿；还有它依赖过的每个术语的词汇表，
+  以及一份值得你下个周末去读的 harness 文档地图。</p>
 </header>
 
-<h2>Failure catalog</h2>
+<h2>故障清单</h2>
 
-<h3>Preset problems (chapters 6–7)</h3>
+<h3>preset 的问题（第 6–7 章）</h3>
 <table>
-  <tr><th>Symptom</th><th>Likely cause → fix</th></tr>
-  <tr><td>Preset missing from the picker</td><td>Directory not in <code>$HOME/.dsh/.agent-presets/</code>, or <code>agent.cordis.yml</code> misnamed. <code>agentPresets.list()</code> (via Creator mode) shows what the roster actually sees, with real paths.</td></tr>
-  <tr><td>Picker shows the raw id, no description</td><td><code>preset.yml</code> missing/empty — chapter 6 step 2.</td></tr>
-  <tr><td><code>standingKeyFor</code>: <code>invalid config: $.persona …</code> or similar</td><td>YAML indentation under the named row — usually the <code>persona: |</code> block. Validate the file: <code>python3 -c "import yaml,sys; yaml.safe_load(open('$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml'))"</code></td></tr>
-  <tr><td><code>N row(s) did not activate: waiting for &lt;service&gt;</code></td><td>Consumer row inside the wrong realm, or a host service that genuinely isn’t mounted (e.g. you referenced schedule before chapter 8).</td></tr>
-  <tr><td><code>published process-global service(s) […]</code></td><td>You added a provider row loose in the preset. Wrap provider + consumers in one <code>isolate</code> group, or move it host-side. (Chapters 2–3.)</td></tr>
-  <tr><td>Second session on the preset fails; first was fine</td><td>Same realm bug — the collision fires on the second mount. Same fix.</td></tr>
-  <tr><td><code>subagent</code> missing from the tool list</td><td>The Worker model allowlist is empty (spawning intentionally disabled), the guarded row landed outside the delegation group’s <code>config:</code> list, or the file didn’t save. Add an allowed route, then re-validate.</td></tr>
-  <tr><td>Workers behave like generic coders (no report, no outcome.md)</td><td>The row’s <code>persona:</code> didn’t take (indentation), or your spawn prompts omit the protocol — check the tool call’s persona in the child’s session view.</td></tr>
+  <tr><th>症状</th><th>可能的原因 → 修法</th></tr>
+  <tr><td>preset 在挑选器里找不到</td><td>目录不在 <code>$HOME/.dsh/.agent-presets/</code> 里，或者 <code>agent.cordis.yml</code> 名字不对。<code>agentPresets.list()</code>（在 Creator 模式里）会显示 roster 实际看到的东西，以及真实路径。</td></tr>
+  <tr><td>挑选器只显示裸 id，没有描述</td><td><code>preset.yml</code> 缺失或为空 —— 第 6 章第 2 步。</td></tr>
+  <tr><td><code>standingKeyFor</code>：<code>invalid config: $.persona …</code> 或类似错误</td><td>具名行下面的 YAML 缩进有问题 —— 通常是 <code>persona: |</code> 块。校验这个文件： <code>python3 -c "import yaml,sys; yaml.safe_load(open('$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml'))"</code></td></tr>
+  <tr><td><code>N row(s) did not activate: waiting for &lt;service&gt;</code></td><td>消费方行处在错误的领域里，或者那个宿主服务确实没被挂载（比如你在第 8 章之前就引用了 schedule）。</td></tr>
+  <tr><td><code>published process-global service(s) […]</code></td><td>你在 preset 里随手加了一个 provider 行。把 provider 和消费方包进同一个 <code>isolate</code> 组，或者把它挪到宿主一侧。（第 2–3 章。）</td></tr>
+  <tr><td>用这个 preset 开第二个会话失败；第一个却没事</td><td>还是领域（realm）那个 bug —— 冲突在第二次挂载时才触发。修法同上。</td></tr>
+  <tr><td>工具列表里没有 <code>subagent</code></td><td>worker 模型白名单是空的（派生被有意关掉了）、受保护的那一行落到了委派组的 <code>config:</code> 列表之外，或者文件没保存。加一条被允许的路由，然后重新校验。</td></tr>
+  <tr><td>worker 表现得像普通写码助手（不 report、没有 outcome.md）</td><td>那一行的 <code>persona:</code> 没生效（缩进问题），或者你的 spawn 提示词漏了协议 —— 到子级会话视图里看这次工具调用用的 persona。</td></tr>
 </table>
 
-<h3>Profile-patch problems (chapters 8, 13)</h3>
+<h3>profile patch 的问题（第 8、13 章）</h3>
 <table>
-  <tr><th>Symptom</th><th>Likely cause → fix</th></tr>
-  <tr><td>Edited the patch; nothing changed</td><td>Watch the <code>dsh web</code> log for <code>hmr/config-update-failed</code> — parse error keeps the last good tree. Duplicate row ids are fatal; an “empty” file must be <code>[]</code>.</td></tr>
-  <tr><td><code>schedule_create</code> still unknown after chapter 8</td><td>Row names typo’d, or you edited the wrong file. <code>dsh --profile web --dump-config | grep -n schedule</code> settles it.</td></tr>
-  <tr><td>Bundle plugin (ch. 13) never mounts</td><td>Bundle list is boot-time — did you restart once? Is the package listed in <em>both</em> <code>dependencies</code> and <code>dsh.profile.bundles</code>? Does its manifest carry <code>dsh.bundle.patch</code>?</td></tr>
-  <tr><td>Whole tree fails at boot after your change</td><td>Restore the backup: <code>cp $HOME/.dsh/profiles/web/cordis.patch.yml{.bak,}</code> and restart. This is why chapter 4 made you take it.</td></tr>
+  <tr><th>症状</th><th>可能的原因 → 修法</th></tr>
+  <tr><td>改了 patch，却什么都没变</td><td>盯着 <code>dsh web</code> 的日志看有没有 <code>hmr/config-update-failed</code> —— 解析出错时会沿用上一棵好树。重复的行 id 是致命的；“空”文件必须写成 <code>[]</code>。</td></tr>
+  <tr><td>第 8 章之后 <code>schedule_create</code> 还是未知工具</td><td>行名拼错了，或者你改错了文件。<code>dsh --profile web --dump-config | grep -n schedule</code> 能一锤定音。</td></tr>
+  <tr><td>bundle 插件（第 13 章）一直没挂载</td><td>bundle 列表是启动期的事 —— 你重启过一次了吗？这个包在 <code>dependencies</code> <em>和</em> <code>dsh.profile.bundles</code> 里都列了吗？它的 manifest 里带 <code>dsh.bundle.patch</code> 吗？</td></tr>
+  <tr><td>你改完之后整棵树在启动时就挂了</td><td>恢复备份：<code>cp $HOME/.dsh/profiles/web/cordis.patch.yml{.bak,}</code>，然后重启。第 4 章让你做备份就是为了这个。</td></tr>
 </table>
 
-<h3>Dynamic-plugin problems (chapter 5 and chapter 11's historical exercise)</h3>
+<h3>动态插件的问题（第 5 章，以及第 11 章里那段历史练习）</h3>
 <table>
-  <tr><th>Symptom</th><th>Likely cause → fix</th></tr>
-  <tr><td><code>service "x" is not declared</code></td><td><code>ctx.x</code> without <code>inject</code>. Use <code>ctx.get('x')</code> + undefined check, or declare the hard dependency.</td></tr>
-  <tr><td>Client half parse failure</td><td>JSX / TypeScript / <code>import</code> in dynamic code. Plain JS, <code>React.createElement</code> only.</td></tr>
-  <tr><td>Run “succeeded” but no UI appeared</td><td>Rendering happens after the run answers. <code>cordis_inspect_self(pluginId, packageId)</code> → <code>renderFailure</code> carries the crash for the exact run.</td></tr>
-  <tr><td><code>awaiting-approval</code> forever</td><td>That’s you — approve the card in the conversation. Never have the agent re-request after you reject.</td></tr>
-  <tr><td>Plugin gone after restart</td><td>By design: process memory only. Re-run it (grants persist), or package it (chapter 13).</td></tr>
-  <tr><td><code>@pluginId</code> reference “unavailable”</td><td>Other session’s plugin, undefined, or lost to a restart. Don’t recreate silently — the toolset’s prompt forbids it for good reason.</td></tr>
+  <tr><th>症状</th><th>可能的原因 → 修法</th></tr>
+  <tr><td><code>service "x" is not declared</code></td><td>用了 <code>ctx.x</code> 却没声明 <code>inject</code>。改用 <code>ctx.get('x')</code> 加一个 undefined 检查，或者声明这个硬依赖。</td></tr>
+  <tr><td>客户端那一半解析失败</td><td>动态代码里用了 JSX / TypeScript / <code>import</code>。只能用纯 JS 和 <code>React.createElement</code>。</td></tr>
+  <tr><td>run 显示“成功”，但界面没出现</td><td>渲染发生在 run 给出答复之后。<code>cordis_inspect_self(pluginId, packageId)</code> → <code>renderFailure</code> 里带着那一次 run 的崩溃信息。</td></tr>
+  <tr><td>一直停在 <code>awaiting-approval</code></td><td>那是在等你 —— 去对话里批准那张卡片。你拒绝之后，绝不要让 agent 再去重新申请。</td></tr>
+  <tr><td>重启后插件没了</td><td>设计如此：它只在进程内存里。重新跑一遍它（授权会保留），或者把它打包（第 13 章）。</td></tr>
+  <tr><td><code>@pluginId</code> 引用显示“unavailable”</td><td>那是别的会话的插件、未定义，或者被重启弄丢了。不要默默重建 —— 工具集的提示词禁止这么做，是有正当理由的。</td></tr>
 </table>
 
-<h3>Supervisor-behavior problems (chapters 7, 10, 12)</h3>
+<h3>监督者行为的问题（第 7、10、12 章）</h3>
 <table>
-  <tr><th>Symptom</th><th>Class → fix</th></tr>
-  <tr><td>Starts a goal without inspecting existing scripts</td><td>Protocol violation → strengthen GOAL SETUP so durable state and relevant runbooks/scripts are read before <code>start_goal</code>.</td></tr>
-  <tr><td>Blocks forever on a question</td><td>Check chapter 8’s patience path actually works (reminder created? schedule mounted?), then strengthen QUESTIONS wording.</td></tr>
-  <tr><td>Worker calls <code>ask_user_question</code> and waits silently</td><td>Spawn-policy regression: the guarded request must deny that tool; <code>report</code> remains the sole upward question channel.</td></tr>
-  <tr><td>Repeats “still running” on every timer wake</td><td>Protocol violation: <code>running</code> is driver liveness only. Compare concrete evidence; first unchanged check probes, the next interrupts and recovers/respawns.</td></tr>
-  <tr><td>Steers healthy workers on every timer wake</td><td>Protocol gap → define fresh evidence concretely and prescribe recording the checkpoint without gratuitous steering.</td></tr>
-  <tr><td>Kills where a steer would do</td><td>Persona: “interrupt_agent first ONLY if the current turn must stop now” — move it adjacent to the steer rule; models read locally.</td></tr>
-  <tr><td>Worker spawn rejects reasoning effort</td><td>The exact selected model does not advertise that route's configured fixed effort. Choose a supported catalog id on the model row or <code>provider/default</code>; the plugin never clamps.</td></tr>
-  <tr><td>Settle notice is generic after a failed request</td><td>Intermediate failures are intentionally silent during native retries. Only an exhausted final error gains <code>Terminal failure [CODE]</code>; a successful retry settles normally.</td></tr>
-  <tr><td>Native stop square “didn't stick”</td><td>It aborts one turn, not workers or durable reminders. Use Feed's <strong>■ Full stop</strong>; it recursively stops delegated workers, deletes reminders after the agent is idle, and persists the stopped fold.</td></tr>
-  <tr><td>CHANGELOG has gaps</td><td>Fuse logging into each verb’s sentence (“Steer = send_message + one CHANGELOG line, always together”).</td></tr>
-  <tr><td>After restart it re-interviews</td><td>It didn’t consult <code>.agi/</code>/goal state — check GOAL.md exists and the goal tool shows the goal; if yes, strengthen STATE’s “restart must cost nothing.”</td></tr>
-  <tr><td>Duplicate workers for done work</td><td>Outcome discipline: settle-notice triage must read outcome.md <em>before</em> planning; make step 4’s first bullet explicit.</td></tr>
+  <tr><th>症状</th><th>类别 → 修法</th></tr>
+  <tr><td>还没巡检已有脚本就开始一个目标</td><td>协议违反 → 强化 GOAL SETUP，要求在 <code>start_goal</code> 之前先读持久状态和相关的 runbook/脚本。</td></tr>
+  <tr><td>在一个提问上永远卡住</td><td>检查第 8 章那条耐心路径是否真的工作（提醒建了吗？schedule 挂上了吗？），然后强化 QUESTIONS 的措辞。</td></tr>
+  <tr><td>worker 调用 <code>ask_user_question</code> 然后默默干等</td><td>spawn 策略回归：受保护的请求必须禁掉那个工具；<code>report</code> 仍是唯一的向上提问通道。</td></tr>
+  <tr><td>每次定时器唤醒都重复一句“还在运行”</td><td>协议违反：<code>running</code> 只表示驱动还开着。要比对具体证据；第一次检查发现没变化就做一次探针，下一次仍然没变化就 interrupt 并恢复/重新派生。</td></tr>
+  <tr><td>每次定时器唤醒都去纠偏健康的 worker</td><td>协议缺口 → 把“新证据”定义清楚，并规定：只记录检查点，不做无谓的纠偏。</td></tr>
+  <tr><td>该纠偏的地方却直接终止</td><td>人格问题：缺少“只有在当前回合必须立刻停止时才先用 interrupt_agent”这一句 —— 把它挪到 steer 规则旁边；模型是就近读的。</td></tr>
+  <tr><td>worker 派生时拒绝了推理强度</td><td>所选的那个模型没有公示该路由配置的固定推理强度。在模型那一行改选目录里支持的值，或选 <code>provider/default</code>；插件从不做截断。</td></tr>
+  <tr><td>一次失败的请求之后，收敛通知很笼统</td><td>原生重试期间，中间失败是有意保持沉默的。只有重试彻底耗尽后的最终错误才会带上 <code>Terminal failure [CODE]</code>；重试成功则正常收敛。</td></tr>
+  <tr><td>原生的停止方块“按了没用”</td><td>它只中止一个回合，不管 worker，也不管持久提醒。要用监督动态 Feed 里的 <strong>■ Full stop</strong>；它会递归停掉被委派的 worker、在 agent 空闲后删掉提醒，并把停止折叠持久化。</td></tr>
+  <tr><td>CHANGELOG 有断档</td><td>把记录熔进每个动作的句子里（“Steer = send_message + 一行 CHANGELOG，永远一起出现”）。</td></tr>
+  <tr><td>重启之后它又开始重新盘问</td><td>它没去查 <code>.agi/</code> 和目标状态 —— 确认 GOAL.md 是否存在、目标工具里有没有这个目标；如果都有，就强化 STATE 那句“重启不该有任何代价”。</td></tr>
+  <tr><td>已经做完的工作又派生了重复的 worker</td><td>outcome 纪律：分诊收敛通知时必须<em>先</em>读 outcome.md 再规划；把第 4 步的第一条写明确。</td></tr>
 </table>
 
-<h2>Glossary</h2>
+<h2>术语表</h2>
 <table>
-  <tr><th>Term</th><th>Meaning (chapter)</th></tr>
-  <tr><td><strong>Plugin</strong></td><td>Object with <code>name</code>/<code>inject</code>/<code>apply(ctx)</code>, mounted into the tree (2).</td></tr>
-  <tr><td><strong>Service</strong></td><td>Long-lived capability on a stable <code>ctx.&lt;key&gt;</code> (2).</td></tr>
-  <tr><td><strong>inject</strong></td><td>Declared hard dependencies; plugin waits until they exist (2).</td></tr>
-  <tr><td><strong>Waterfall</strong></td><td>Around-middleware event; listeners must return <code>next()</code> to delegate (2).</td></tr>
-  <tr><td><strong>Effect / disposer</strong></td><td>Reversible registration; the returned function undoes it (2).</td></tr>
-  <tr><td><strong>Row</strong></td><td>One entry in a <code>cordis.yml</code>: id + package + config (2).</td></tr>
-  <tr><td><strong>Profile / bundle / patch layer</strong></td><td>Directory choosing bundles; distributable row-stack; id-targeted overrides applied in order (3).</td></tr>
-  <tr><td><strong>Host plane vs. agent preset</strong></td><td>Process-shared rows vs. one session’s rows (3).</td></tr>
-  <tr><td><strong>Isolate realm</strong></td><td>Group-scoped service namespace preventing preset collisions (2, 6).</td></tr>
-  <tr><td><strong>Roster</strong></td><td><code>ctx.agentPresets</code>: list/copy/validate presets (3, 6).</td></tr>
-  <tr><td><strong>Session / turn / step</strong></td><td>Durable event log / one wake-to-quiescence unit / one model request + its tools (3).</td></tr>
-  <tr><td><strong>Inbox</strong></td><td>The agent’s FIFO of incoming turns; supervisor steering to a running direct child deliberately joins at the next model step (3, 9).</td></tr>
-  <tr><td><strong>Continuable subagent</strong></td><td>Durable child session, messageable/resumable across restarts (9).</td></tr>
-  <tr><td><strong>Activation</strong></td><td>The period a child agent is resident in memory (9).</td></tr>
-  <tr><td><strong>Settle notice</strong></td><td>Unconditional parent notification when a child’s activation ends (9).</td></tr>
-  <tr><td><strong>Report</strong></td><td>Child-to-parent message tool; wakeup delivery by default (9).</td></tr>
-  <tr><td><strong>Plugin / Package / Run (dynamic)</strong></td><td>Stable id / immutable code version / one activation attempt (5).</td></tr>
-  <tr><td><strong>Slot</strong></td><td>Named UI seat a client plugin registers React components into (11).</td></tr>
+  <tr><th>术语</th><th>含义（章节）</th></tr>
+  <tr><td><strong>插件</strong></td><td>带 <code>name</code>/<code>inject</code>/<code>apply(ctx)</code> 的对象，被挂载进树里（2）。</td></tr>
+  <tr><td><strong>服务</strong></td><td>挂在稳定的 <code>ctx.&lt;key&gt;</code> 上的长生命周期能力（2）。</td></tr>
+  <tr><td><strong>inject</strong></td><td>声明出来的硬依赖；插件会等到它们存在才生效（2）。</td></tr>
+  <tr><td><strong>waterfall</strong></td><td>环绕中间件式的事件；监听器必须返回 <code>next()</code> 才算委托下去（2）。</td></tr>
+  <tr><td><strong>Effect / disposer</strong></td><td>可撤销的注册；返回的那个函数就是用来撤销它的（2）。</td></tr>
+  <tr><td><strong>Row（行）</strong></td><td><code>cordis.yml</code> 里的一条条目：id + 包名 + config（2）。</td></tr>
+  <tr><td><strong>Profile / bundle / patch 层</strong></td><td>挑选 bundle 的目录；可分发的行栈；按 id 定位、按顺序叠加的覆盖（3）。</td></tr>
+  <tr><td><strong>宿主平面 vs. agent preset</strong></td><td>进程共享的行 vs. 某一个会话自己的行（3）。</td></tr>
+  <tr><td><strong>isolate 领域</strong></td><td>按组划分的服务命名空间，用来避免 preset 之间的冲突（2、6）。</td></tr>
+  <tr><td><strong>Roster</strong></td><td><code>ctx.agentPresets</code>：列出/复制/校验 preset（3、6）。</td></tr>
+  <tr><td><strong>会话 / 回合 / 步骤</strong></td><td>持久事件日志 / 一次“从唤醒到静止”的单位 / 一次模型请求连同它的工具调用（3）。</td></tr>
+  <tr><td><strong>收件箱（Inbox）</strong></td><td>agent 收到的回合排成的 FIFO；监督者对一个正在运行的直接子级做纠偏时，是有意让它到下一次模型步骤才接上（3、9）。</td></tr>
+  <tr><td><strong>可续用的子代理（continuable subagent）</strong></td><td>持久的子会话，跨重启也能给它发消息、能把它恢复起来（9）。</td></tr>
+  <tr><td><strong>驻留期（activation）</strong></td><td>子 agent 驻留在内存里的那段时间（9）。</td></tr>
+  <tr><td><strong>收敛通知</strong></td><td>子级的驻留期结束时，无条件发给父会话的通知（9）。</td></tr>
+  <tr><td><strong>report</strong></td><td>子级发给父级的消息工具；默认以唤醒方式投递（9）。</td></tr>
+  <tr><td><strong>插件 / 包 / Run（动态）</strong></td><td>稳定的 id / 不可变的代码版本 / 一次性的激活尝试（5）。</td></tr>
+  <tr><td><strong>槽位（slot）</strong></td><td>具名的 UI 座位，客户端插件把 React 组件注册进去（11）。</td></tr>
 </table>
 
-<h2>The documentation map</h2>
-<p>All under <code>$HOME/src/deepseek-harness/</code>. Ordered by when they will next matter:</p>
+<h2>文档地图</h2>
+<p>都在 <code>$HOME/src/deepseek-harness/</code> 下面。按“下次什么时候会用到”排序：</p>
 <table>
-  <tr><th>Read</th><th>When</th></tr>
-  <tr><td><code>docs/cordis-primer.md</code> → <code>docs/cordis-tutorial/</code></td><td>Consolidate chapter 2; the tutorial is hands-on.</td></tr>
-  <tr><td><code>docs/architecture.md</code></td><td>The 30-minute whole-picture read; its tables answer “where does X go.”</td></tr>
-  <tr><td><code>docs/subsystems/subagent.md</code></td><td>Before any advanced worker behavior (tool filters, output schemas, descendants).</td></tr>
-  <tr><td><code>docs/subsystems/schedule.md</code></td><td>Time-zone forms, catch-up rules for missed reminders.</td></tr>
-  <tr><td><code>docs/tool-catalog.md</code> / <code>docs/config-catalog.md</code></td><td>Generated references: every tool schema; every row config. When in doubt, these outrank prose docs.</td></tr>
-  <tr><td><code>docs/subsystems/tools.md</code> + <code>docs/tool-execution-pipeline.md</code></td><td>Before chapter 13’s delay/wait plugins.</td></tr>
-  <tr><td><code>docs/subsystems/session.md</code></td><td>Before the trace plugin; also the deepest explanation of the log invariants.</td></tr>
-  <tr><td><code>apps/cli/config/agent-presets/cordis/skills/*/SKILL.md</code></td><td>Re-read both skills after chapter 12 — they compress everything this course taught (mind the stale tool names in the compositions one).</td></tr>
-  <tr><td><code>packages/boot/app-boot/README.md</code></td><td>Profiles/bundles mechanics before shipping chapter 13’s package.</td></tr>
-  <tr><td><code>docs/defensive-patterns.md</code></td><td>Before writing any host plugin that touches lifecycle or teardown.</td></tr>
+  <tr><th>读什么</th><th>什么时候</th></tr>
+  <tr><td><code>docs/cordis-primer.md</code> → <code>docs/cordis-tutorial/</code></td><td>拿来巩固第 2 章；那个 tutorial 是动手型的。</td></tr>
+  <tr><td><code>docs/architecture.md</code></td><td>用 30 分钟读完全景的那一篇；它的表格回答“X 该放哪儿”。</td></tr>
+  <tr><td><code>docs/subsystems/subagent.md</code></td><td>在碰任何高级 worker 行为之前（工具过滤、输出 schema、后代子级）。</td></tr>
+  <tr><td><code>docs/subsystems/schedule.md</code></td><td>时区的写法、错过提醒后的补课规则。</td></tr>
+  <tr><td><code>docs/tool-catalog.md</code> / <code>docs/config-catalog.md</code></td><td>自动生成的参考：每个工具的 schema、每一行的 config。拿不准的时候，它们比散文式的文档更有权威。</td></tr>
+  <tr><td><code>docs/subsystems/tools.md</code> + <code>docs/tool-execution-pipeline.md</code></td><td>写第 13 章那两个 delay/wait 插件之前。</td></tr>
+  <tr><td><code>docs/subsystems/session.md</code></td><td>写 trace 插件之前；它也是对日志不变式解释得最深的一篇。</td></tr>
+  <tr><td><code>apps/cli/config/agent-presets/cordis/skills/*/SKILL.md</code></td><td>第 12 章之后把那两个 skill 重读一遍 —— 它们把整门课教的东西压缩了（注意 compositions 那个里面过期的工具名）。</td></tr>
+  <tr><td><code>packages/boot/app-boot/README.md</code></td><td>发布第 13 章那个包之前，先看 profile/bundle 的机制。</td></tr>
+  <tr><td><code>docs/defensive-patterns.md</code></td><td>写任何涉及生命周期或销毁的宿主插件之前。</td></tr>
 </table>
 
-<h2>Where you are, and what’s next</h2>
+<h2>你在哪儿，接下来是什么</h2>
 <p>
-  You built an always-on supervisor out of one authored preset, protocol prose, one schedule row,
-  narrow bundled policy/UI plugins, and a file convention — and you can explain every mechanism it stands on: the plugin tree,
-  the two planes, the inbox, the continuable child, the settle notice. That understanding is the
-  durable artifact; the supervisor is just its first proof.
+  你用一份自己写的 preset、一段协议文字、一行 schedule、几个窄口径的打包策略/UI 插件，
+  以及一套文件约定，搭出了一个常驻的监督者 —— 而且它站着的每一个机制你都能讲清楚：插件树、
+  两个平面、收件箱、可续用的子级、收敛通知。那份理解才是
+  持久的产物；监督者只是它的第一个证明。
 </p>
-<p>Natural next steps, in rough order of ambition:</p>
+<p>顺理成章的下一步，大致按野心从小到大：</p>
 <ul>
-  <li><strong>Raise the parallel limit</strong> — the persona’s one-worker rule is a sentence; the machinery
-    already handles many children (interleaved settle notices and all). Try two.</li>
-  <li><strong>Give workers richer capabilities per task</strong> — the spawn row supports
-      a settings-approved image-capable route can inspect screenshots, while the fixed supervisor
-      filter keeps <code>ask_user_question</code> out of every worker.</li>
-  <li><strong>Run the real mission</strong> — non-blocking goal setup scales to “grow this X.com account”;
-      credentials are requested only when the existing workspace setup cannot supply them safely.</li>
-  <li><strong>Self-evolution (design §3.4)</strong> — let the supervisor propose persona diffs as questions,
-      applied by you. Ordinary chat remains the steering and stop surface.</li>
-  <li><strong>Contribute upstream</strong> — you found the stale skill (chapter 5). The repo takes issues and
-      discussions; <code>CONTRIBUTING.md</code> is short.</li>
+  <li><strong>提高并行上限</strong> —— 人格里“一次一个 worker”的规则只是一句话；机器本身
+    已经能处理很多子级（交织出现的收敛通知之类都不在话下）。试试两个。
+  <li><strong>按任务给 worker 更丰富的能力</strong> —— spawn 那一行支持
+      在设置里批准一条能看图的路由，于是它可以去看截图；而固定的监督者
+      过滤器会让 <code>ask_user_question</code> 进不了任何 worker。</li>
+  <li><strong>跑真实任务</strong> —— 非阻塞的目标设置可以放大到“把这个 X.com 账号做起来”；
+      只有当现有工作区的配置无法安全地提供凭证时，它才会开口要凭证。</li>
+  <li><strong>自我演化（设计 §3.4）</strong> —— 让监督者以提问的形式提出人格改动，
+      由你来应用。日常聊天仍然是纠偏和停止的操作面。</li>
+  <li><strong>回馈上游</strong> —— 你发现了那个过期的 skill（第 5 章）。这个仓库接受 issue 和
+      discussion；<code>CONTRIBUTING.md</code> 很短。</li>
 </ul>
 
-<p class="center muted" style="margin-top:3rem">— end of course —</p>
+<p class="center muted" style="margin-top:3rem">— 课程结束 —</p>
 
 <nav class="pager">
-  <a class="prev" href="13-extensions.html">← Chapter 13 — Optional extensions</a>
-  <a class="next" href="index.html">Contents ⌂</a>
+  <a class="prev" href="13-extensions.html">← 第 13 章 —— 可选扩展</a>
+  <a class="next" href="index.html">目录 ⌂</a>
 </nav>
 </main>
 </body>

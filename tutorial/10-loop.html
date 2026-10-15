@@ -1,182 +1,182 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>10 · Milestone 5: the supervision loop — Supervisor on DSH</title>
+<title>第 10 章 · 里程碑 5：监督循环 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 10</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 10 章</span>
   <span class="spacer"></span>
   <a href="09-delegation.html">←</a>
   <a href="11-ui.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 5</p>
-  <h1>The supervision loop</h1>
-  <p class="lede">Everything assembles here. The supervisor now runs the full cycle unattended:
-  spawn → sleep → wake (settle / report / timer / you) → triage → repeat — with every action
-  logged. You force each branch once and watch it hold.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 5</p>
+  <h1>监督循环</h1>
+  <p class="lede">一切都在这里拼合。监督者现在能无人值守地跑完整个循环：
+  派生 → 休眠 → 唤醒（收敛 / report / 定时器 / 你）→ 分诊 → 重复 —— 而每个动作都被
+  记录。你把每个分支都强制走一遍，看着它站得住。</p>
 </header>
 
-<h2>The loop, restated as wake sources</h2>
+<h2>把循环重述为唤醒源</h2>
 <p>
-  After chapters 8 and 9 there is nothing left to build — only behavior to verify. The supervisor’s
-  “loop” is really four independent wake sources feeding one inbox, each carrying its own triage
-  rule from your persona:
+  走完第 8、9 章之后，已经没有东西要造了 —— 只剩下要验证的行为。监督者的
+  “循环”其实是四个独立的唤醒源汇入同一个收件箱，每个都自带一条来自你人格的
+  分诊规则：
 </p>
 <table>
-  <tr><th>Wake source</th><th>Native mechanism</th><th>Persona’s triage rule</th></tr>
-  <tr><td>Worker finished</td><td>Settle notice (unconditional; terminal failure enriched after retries)</td><td>Read <code>outcome.md</code> + final message, <strong>verify the deliverable with its own eyes</strong> → progress line → next unit, recovery, or done.</td></tr>
-  <tr><td>Worker blocked</td><td><code>report</code> (wakeup delivery; <code>ask_user_question</code> denied in workers)</td><td>Answer via <code>send_message</code>, or ask the user and keep unblocked work moving.</td></tr>
-  <tr><td>Timer</td><td>Recurring reminder (<code>every_seconds = wakeMinutes*60</code>)</td><td>Compare concrete evidence with the prior checkpoint; first unchanged check → probe, second unchanged check → interrupt and recover/respawn.</td></tr>
-  <tr><td>You spoke</td><td>Ordinary user message</td><td>Overrides everything; it is steering.</td></tr>
+  <tr><th>唤醒源</th><th>原生机制</th><th>人格里的分诊规则</th></tr>
+  <tr><td>worker 完成</td><td>收敛通知（无条件；重试耗尽后的终局失败会被充实）</td><td>读 <code>outcome.md</code> + 最终消息，<strong>用自己的眼睛核验交付物</strong> → 写进展行 → 下一个工作单元、恢复，或收工。</td></tr>
+  <tr><td>worker 被阻塞</td><td><code>report</code>（wakeup 投递；worker 内 <code>ask_user_question</code> 被拒绝）</td><td>通过 <code>send_message</code> 回答，或去问用户，同时让不受阻塞的工作继续推进。</td></tr>
+  <tr><td>定时器</td><td>周期性提醒（<code>every_seconds = wakeMinutes*60</code>）</td><td>把具体证据与先前的检查点比对；第一次检查无变化 → 探针，第二次仍无变化 → interrupt 并恢复/重新派生。</td></tr>
+  <tr><td>你说话了</td><td>普通的用户消息</td><td>覆盖一切；它是纠偏。</td></tr>
 </table>
 
-<h2>Inspection without a trace plugin</h2>
+<h2>没有 trace 插件也能巡检</h2>
 <p>
-  The timer-wake rule says “inspect the worker.” Give the supervisor a concrete, cheap way to do
-  that. Two native surfaces:
+  定时器唤醒规则说“巡检 worker”。给监督者一个具体又廉价的办
+  法，靠两个原生表面：
 </p>
 <ol>
-  <li><strong><code>list_agents</code></strong> — is its driver still open? This is liveness only, never
-      evidence of useful progress.</li>
-  <li><strong>The child’s session log on disk.</strong> The child id names its session directory; the
-      logical JSONL is zstd-compressed by default. Its last few <code>tool/call</code> events answer
-      “what has it done?” independently of the model's claim.</li>
+  <li><strong><code>list_agents</code></strong> —— 它的驱动器还开着吗？这只证明活着，绝不是
+      有实际进展的证据。</li>
+  <li><strong>子级在磁盘上的会话日志。</strong>子级 id 就是它的会话目录名；
+      逻辑 JSONL 默认用 zstd 压缩。它最后几个 <code>tool/call</code> 事件能独立于模型的
+      自述，回答“它做了什么”。</li>
 </ol>
 <p>
-  Encode this as an addition to the persona’s triage step — worth doing now that you’ve seen the
-  logs yourself (chapter 4). Append to the persona’s step 4, “Scheduled check-in” branch:
+  把它作为人格分诊步骤的补充写进去 —— 既然你已经亲自看过那些
+  日志（第 4 章），这就值得做。追加到人格第 4 步的“Scheduled check-in”分支：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>persona addition (inside the scheduled check-in branch)</figcaption>
-<pre><code>  To inspect a worker cheaply: list_agents for driver liveness; then tail its
-  recent activity from its session log —
+<figcaption><span class="badge you">YOURS</span>人格追加（位于 Scheduled check-in 分支内）</figcaption>
+<pre><code>  廉价地查看一个 worker：用 list_agents 看驱动器是否活着；
+  再从它的会话日志里看它最近的活动 ——
     LOG=$(find "$HOME/.dsh/sessions" -path '*&lt;child-id&gt;*' \
       -name 'session.jsonl.zstd' | head -1)
     zstd -dc "$LOG" | grep '"type":"tool/call"' | tail -20
-  Compare a concrete report, artifact/log change, or completed step with the
-  previous NOTES.md checkpoint. Fresh evidence: record it. No fresh evidence:
-  send_message asking for a concise progress/blocker report and record the
-  probe. Still unchanged at the next check: interrupt_agent, log the stall,
-  then recover or respawn with a revised task. Never repeat a bare “still
-  running / continue monitoring” verdict.</code></pre>
+  把一份具体的报告、产物/日志变化或已完成的步骤，与上一次
+  NOTES.md 检查点对比。有新鲜证据：记下来。没有新鲜证据：
+  用 send_message 要一份简明的进展/阻塞报告，并记下这次探针。
+  下一次巡检仍然毫无变化：interrupt_agent，记录这次停滞，
+  然后恢复，或用修订后的任务重新派生。绝不重复一句空洞的
+  “仍在运行 / 继续监控”结论。</code></pre>
 </figure>
 <p class="muted">
-  (Exact filenames under a session directory vary; let the agent discover them with <code>ls</code> once
-  and note the pattern in NOTES.md. If you later want structured per-child traces instead, that is
-  chapter 13’s trace plugin.)
+  （会话目录下的确切文件名会变；让 agent 用 <code>ls</code> 自己发现一次，
+  并把规律记进 NOTES.md。如果你后来想要结构化的逐子级 trace，那就是
+  第 13 章的 trace 插件。）
 </p>
 
-<h2>Arming and disarming the timer</h2>
+<h2>武装与解除定时器</h2>
 <p>
-  One more persona refinement, so timers don’t leak: the check-in reminder exists <em>only while
-  workers run</em>. Append to the LOOP section:
+  再打磨一处人格，好让定时器不漏：巡检提醒<em>只在
+  worker 运行时</em>存在。追加到 LOOP 一节：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>persona addition (LOOP)</figcaption>
-<pre><code>  Timer discipline: after a spawn, and after a user message while workers
-  remain, ensure exactly one recurring check-in exists for wakeMinutes. A user
-  message after Full stop explicitly resumes the supervisor, but Full stop has
-  drained its old worker branches; re-arm only after new running work exists.
-  Worker settle/report wakes alone do not. Delete the check-in when no workers remain
-  only after another durable continuation path exists or the goal is complete,
-  paused, or blocked.</code></pre>
+<figcaption><span class="badge you">YOURS</span>人格追加（LOOP）</figcaption>
+<pre><code>  Timer discipline（定时器纪律）：在派生之后，以及在用户消息之后、
+  而仍有 worker 在运行时，确保只存在一条周期性巡检提醒，间隔为 wakeMinutes。
+  Full stop 之后的一条用户消息是显式的监督者恢复，但 Full stop 已经
+  排空了它旧的 worker 分支；只有在存在新的运行中工作之后才重新武装循环。
+  单独的 worker 收敛/报告唤醒不算。当没有 worker 仍在运行时，
+  只有在另一条持久续行路径已经存在，或者目标已完成、已暂停或已阻塞之后，
+  才删除这条巡检提醒。</code></pre>
 </figure>
-<p>Re-validate the preset after both edits (<code>standingKeyFor</code>, chapter 6 step 4) and start a fresh session for testing.</p>
+<p>两处编辑之后都要重新校验 preset（<code>standingKeyFor</code>，第 6 章第 4 步），并开一个全新会话来测试。</p>
 
 <div class="box why">
-  <span class="box-title">Field note: idle workers are a resource, not a corpse</span>
+  <span class="box-title">实战笔记：空闲的 worker 是资源，不是尸体</span>
   <p>
-    Observed live: given an amendment after a worker settled, the supervisor did <em>not</em> spawn a
-    fresh worker — it reasoned “idle, not dead — a <code>send_message</code> starts its next turn” and
-    reused the settled worker with its context intact (chapter 9’s cold-resume semantics, applied
-    spontaneously). That is legitimate and often better: the worker already holds the grounding for
-    its deliverable. Let the supervisor make this call; only force a fresh spawn when the old
-    context is poisoned — which is what the kill verb is for.
+    实测观察到：在一个 worker 收敛之后又来了新指示时，监督者<em>没有</em>派生
+    新 worker —— 它推断“空闲，不是死了 —— 一条 <code>send_message</code> 就能开启它的下一个回合”，
+    于是带着完好的上下文复用了那个已收敛的 worker（第 9 章的冷恢复语义，自发地
+    被应用了）。这完全正当，而且常常更好：这个 worker 本来就握着它交付物的
+    打底。让监督者自己做这个判断；只有当旧上下文被污染时才强制重新派生 ——
+    那正是 kill 这个动作的用途。
   </p>
 </div>
 
-<h2>The full-loop rehearsal</h2>
+<h2>全循环演练</h2>
 <p>
-  Now run a real, multi-worker mission and force every branch. Use a goal small enough to finish in
-  one sitting but big enough to need two workers. The script below is your design’s M6 acceptance,
-  minus the pieces you moved to chapter 12.
+  现在跑一次真实的、多 worker 的任务，并强制走完每个分支。用一个目标：小到一次
+  坐下就能做完，又大到需要两个 worker。下面的脚本就是你设计里的 M6 验收，
+  减掉你已经挪到第 12 章的部分。
 </p>
 <div class="box test">
-  <span class="box-title">Test it live — milestone 5 acceptance: one mission, every branch</span>
-  <p><strong>Auto-grade after the mission:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m5</code> — grades the
-     CHANGELOG verb coverage, the assumption, NOTES verdicts, the progress feed, the deliverable,
-     worker count, and timer hygiene.</p>
-  <p><strong>Setup:</strong> fresh <code>main-agent</code> session in <code>$HOME/agi-lab</code>;
-  <code>config.json</code>: <code>wakeMinutes: 5</code>, <code>questionWaitMinutes: 2</code>.</p>
+  <span class="box-title">实机验证 —— 里程碑 5 验收：一个任务，走遍每个分支</span>
+  <p><strong>任务结束后自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m5</code> —— 评
+     CHANGELOG 的动作覆盖、那条假设、NOTES 里的判定、进展 Feed、交付物、
+     worker 数量，以及定时器的卫生。</p>
+  <p><strong>准备：</strong>在 <code>$HOME/agi-lab</code> 里开一个全新的 <code>main-agent</code> 会话；
+  <code>config.json</code>：<code>wakeMinutes: 5</code>、<code>questionWaitMinutes: 2</code>。</p>
   <ol>
-    <li><strong>Goal setup:</strong> mission — <em>“Produce SUMMARY.md describing the layout of
-        $HOME/src/deepseek-harness/docs — delegate the work, supervise, deliver.”</em> Expect
-        <code>get_goal</code> → workspace inspection → <code>start_goal</code>/GOAL.md → same-turn work.
-        <span class="muted">(Deliberately omit where SUMMARY.md should go — seed for step 4.)</span></li>
-    <li><strong>Spawn + timer:</strong> expect a guarded <code>subagent</code> call with an explicit allowed model and a complete task prompt
-        (Role/Objective/Scope/Context/Protocol/Constraints — read the tool call in the UI and grade
-        it), a <code>spawn</code> line in CHANGELOG, and a recurring check-in created.</li>
-    <li><strong>Timer wake with a verdict:</strong> when the 5-minute reminder fires while the worker runs,
-        expect: <code>list_agents</code> + a log/artifact comparison + a concrete checkpoint in NOTES.md.
-        If unchanged, expect an immediate status probe; if still unchanged at the following check,
-        expect interrupt and recovery rather than another monitoring-only verdict.</li>
-    <li><strong>Unanswered question:</strong> at some point the output-location ambiguity should surface
-        (the worker reports, or the supervisor asks you). Stay silent. Expect: pending →
-        patience reminder → <code>assumed</code> with a sensible recorded assumption → work continues.</li>
-    <li><strong>Forced steer:</strong> while a worker runs, say — <em>“have it also count the .zh.md
-        files.”</em> Expect <code>send_message</code> to join at the worker's next model step (not a kill,
-        not a respawn) + a <code>steer</code> CHANGELOG line.</li>
-    <li><strong>Forced kill:</strong> say — <em>“that worker’s approach is wrong; kill it and respawn with a
-        tighter scope.”</em> Expect <code>interrupt_agent</code> + <code>kill</code> line + a fresh spawn whose
-        task visibly narrowed.</li>
-    <li><strong>Settle → next unit:</strong> when a worker settles, expect: outcome.md read, progress.jsonl
-        line, and either the next spawn or goal completion — without you prompting.</li>
-    <li><strong>Finish:</strong> SUMMARY.md exists where the assumption said; goal marked complete; the
-        check-in reminder deleted (<code>schedule_list</code> shows none).</li>
+    <li><strong>目标设置：</strong>任务 —— <em>“产出 SUMMARY.md，描述
+        $HOME/src/deepseek-harness/docs 的目录结构 —— 委派工作、监督、交付。”</em> 预期
+        <code>get_goal</code> → 巡检工作区 → <code>start_goal</code>/GOAL.md → 同一回合内继续工作。
+        <span class="muted">（刻意不提 SUMMARY.md 该放在哪里 —— 给第 4 步埋的种子。）</span></li>
+    <li><strong>派生 + 定时器：</strong>预期出现一次受保护的 <code>subagent</code> 调用：显式指定被允许的模型，任务提示词完整
+        （Role/Objective/Scope/Context/Protocol/Constraints —— 在 UI 里读这次工具调用并给
+        它打分）、CHANGELOG 里一行 <code>spawn</code>，以及创建了一条周期性巡检。</li>
+    <li><strong>带判定的定时器唤醒：</strong>当 worker 在跑而 5 分钟提醒到点时，
+        预期：<code>list_agents</code> + 日志/产物比对 + NOTES.md 里一条具体的检查点。
+        如果没变化，预期立刻做一次状态探针；如果在下一次检查时仍无变化，
+        预期是 interrupt 与恢复，而不是又一条“只是在监控”的判定。</li>
+    <li><strong>未获回答的提问：</strong>某个时刻，输出位置的含糊之处应当浮出水面
+        （worker 报告，或监督者来问你）。保持沉默。预期：pending →
+        耐心提醒 → 记为 <code>assumed</code> 并附一条合理的假设 → 工作继续。</li>
+    <li><strong>强制纠偏：</strong>趁某个 worker 在跑，说 —— <em>“让它也统计 .zh.md
+        文件。”</em> 预期 <code>send_message</code> 在 worker 的下一个模型步骤加入（不是 kill，
+        也不是重新派生）+ CHANGELOG 里一行 <code>steer</code>。</li>
+    <li><strong>强制终止：</strong>说 —— <em>“那个 worker 的路子不对；终止它，用更紧的
+        范围重新派生。”</em> 预期 <code>interrupt_agent</code> + 一行 <code>kill</code> + 一次新的派生，且其
+        任务明显收窄。</li>
+    <li><strong>收敛 → 下一个单元：</strong>当某个 worker 收敛时，预期：读 outcome.md、progress.jsonl
+        里一行记录，以及要么下一次派生、要么目标完成 —— 全程不用你开口。</li>
+    <li><strong>收尾：</strong>SUMMARY.md 出现在假设所说的位置；目标被标记为完成；
+        巡检提醒已删除（<code>schedule_list</code> 显示没有）。</li>
   </ol>
-  <p><strong>Grade the artifacts, not the vibes:</strong> at the end,
-  <code>cat .agi/CHANGELOG.jsonl</code> should read as a faithful diary of steps 2–7. If an action
-  happened without its line, tighten the persona’s STATE section and re-run — the changelog’s
-  completeness is what makes the 24/7 version auditable.</p>
+  <p><strong>评分看产物，不看感觉：</strong>结束时，
+  <code>cat .agi/CHANGELOG.jsonl</code> 读起来应当像第 2–7 步的忠实日记。如果某个动作
+  发生了却没有对应的行，就收紧人格的 STATE 一节然后重跑 —— changelog
+  的完整度，正是 24/7 版本可审计的前提。</p>
 </div>
 
-<h2>Restart resilience (the cheap version)</h2>
+<h2>重启韧性（廉价版）</h2>
 <p>
-  The full restart test belongs to chapter 12, but do the cheap half now: close the browser tab,
-  reopen the session, and say “continue.” Expect the supervisor to pick up from its files and the
-  goal tool — no re-interviewing, no lost workers (they are durable sessions; <code>list_agents</code>
-  still sees them).
+  完整重启测试属于第 12 章，但现在先做廉价的那一半：关掉浏览器标签页，
+  重新打开该会话，说“继续”。预期监督者从它的文件和目标工具
+  接着干 —— 不重新盘问，不丢 worker（它们是持久会话；<code>list_agents</code>
+  仍然能看到它们）。
 </p>
 
 <div class="box why">
-  <span class="box-title">Why persona iteration is the real work of this chapter</span>
+  <span class="box-title">为什么人格迭代才是本章真正的工作</span>
   <p>
-    Every failure you see in the rehearsal is one of three kinds: a <em>protocol gap</em> (the persona
-    never said what to do — add a rule), a <em>protocol violation</em> (it said so, but the model skipped
-    it — strengthen the wording, move it earlier, or make it a numbered step), or a
-    <em>mechanism failure</em> (a tool errored — re-validate the preset/bundle and run its tests). Fix in
-    that order. Native lifecycle machinery and the bundle's narrow policy frontends are separately
-    testable; behavioral debugging still has a durable paper trail.
+    你在演练里看到的每一次失败都属三类之一：<em>协议缺口</em>（人格
+    从没说该怎么做 —— 补一条规则）、<em>协议违反</em>（说了，但模型跳过了
+    —— 措辞加重、往前提，或者改成编号步骤），或者
+    <em>机制故障</em>（某个工具报错 —— 重新校验 preset/bundle 并跑它的测试）。就按
+    这个顺序修。原生生命周期机器与 bundle 里那些窄口径策略前端各自
+    可测；而行为调试仍然留着一条持久的纸面痕迹。
   </p>
 </div>
 
-<h2>What exists now</h2>
+<h2>现在有了什么</h2>
 <p>
-  A working supervisor. Left: seeing and stopping it well (chapter 11’s Feed + Full stop), and the formal
-  acceptance + restart drill (chapter 12).
+  一个能工作的监督者。剩下：好好看见它、好好停住它（第 11 章的监督动态 Feed，以及 Full stop 完全停止控件），以及正式的
+  验收 + 重启演练（第 12 章）。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="09-delegation.html">← Chapter 9 — Milestone 4: workers</a>
-  <a class="next" href="11-ui.html">Chapter 11 — Milestone 6: UI →</a>
+  <a class="prev" href="09-delegation.html">← 第 9 章 —— 里程碑 4：worker</a>
+  <a class="next" href="11-ui.html">第 11 章 —— 里程碑 6：UI →</a>
 </nav>
 </main>
 </body>

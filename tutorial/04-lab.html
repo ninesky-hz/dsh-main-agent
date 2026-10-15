@@ -1,59 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>4 · Your lab — Supervisor on DSH</title>
+<title>第 4 章 · 你的实验场 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part I · Chapter 4</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 I 部分 · 第 4 章</span>
   <span class="spacer"></span>
   <a href="03-harness.html">←</a>
   <a href="05-creator-mode.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part I — Foundations</p>
-  <h1>Your lab</h1>
-  <p class="lede">A guided tour of the clean deployment you started on the setup page — the process, the home
-  directory, the sessions on disk, the web UI — and the short list of safety rules that keep it
-  healthy while you experiment on it for the rest of this course.</p>
+  <p class="kicker">第 I 部分 —— 基础</p>
+  <h1>你的实验场</h1>
+  <p class="lede">带你走一遍你在安装页启动的那套干净部署 —— 进程、home 目录、磁盘上的会话、Web UI ——
+  再给你一张很短的安全规则清单，让你接下来整门课拿它做实验时，它还能好好的。</p>
 </header>
 
-<h2>The running process</h2>
+<h2>正在跑的进程</h2>
 <p>
-  The setup page started one <code>dsh web</code> process. Verify that process and its HTTP endpoint from
-  another terminal:
+  安装页启动了一个 <code>dsh web</code> 进程。在另一个终端里核实这个进程和它的 HTTP
+  端点：
 </p>
 <pre><code>pgrep -af 'dsh web'
 curl -I http://127.0.0.1:3080/</code></pre>
 <p>
-  It serves the web UI at <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> (the default —
-  <code>$HOME/src/deepseek-harness/README.md</code>, “Run”). The left sidebar lists workspaces and their
-  sessions; clicking a session shows its full conversation; the composer at the bottom talks to that
-  session’s agent. When you start a new session you pick a <em>preset</em> — this picker is where your
-  <code>main-agent</code> will appear after chapter 6.
+  它在 <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> 上提供 Web UI（这是默认值 ——
+  <code>$HOME/src/deepseek-harness/README.md</code>，“Run”）。左侧边栏列出各个工作区及其会话；点一个
+  会话就能看到完整对话；底部的输入框直接和这个会话的 agent 对话。新建会话时要选一个 <em>preset</em>
+  —— 第 6 章之后，你的 <code>main-agent</code> 就会出现在这个选择器里。
 </p>
 
 <div class="box warn">
-  <span class="box-title">Rule 1 — never start a second dsh against the same home</span>
+  <span class="box-title">规则 1 —— 绝不对着同一个 home 起第二个 dsh</span>
   <p>
-    One <code>$DSH_HOME</code>, one process. A second <code>dsh</code> pointed at the same home corrupts live
-    session logs. If you need the process restarted (rare in this course — the profile patch is
-    hot-reloaded), return to the terminal running it, press <kbd>Ctrl-C</kbd>, wait for shutdown, and
-    start it again in that same terminal:
+    一个 <code>$DSH_HOME</code>，只能有一个进程。第二个 <code>dsh</code> 指向同一个 home，会把正在写的
+    会话日志搞坏。如果你确实需要重启这个进程（在这门课里很罕见 —— profile 补丁是热加载的），就回到
+    跑着它的那个终端，按 <kbd>Ctrl-C</kbd>，等它退干净，然后在同一个终端里重新启动：
   </p>
 <pre><code>dsh web</code></pre>
 </div>
 
-<h2>The harness home: <code>$HOME/.dsh</code></h2>
+<h2>harness 的 home：<code>$HOME/.dsh</code></h2>
 <p>
-  Unless you deliberately exported <code>DSH_HOME</code>, Harness defaults to <code>$HOME/.dsh</code>.
-  This course uses that clean-machine default. Everything mutable lives here:
+  除非你刻意导出过 <code>DSH_HOME</code>，否则 Harness 默认就是 <code>$HOME/.dsh</code>。这门课用的
+  就是这个干净机器的默认值。所有会变的东西都住在这儿：
 </p>
 <pre><code>$HOME/.dsh/
   profiles/web/
@@ -64,118 +61,114 @@ curl -I http://127.0.0.1:3080/</code></pre>
   settings.yaml         ← user settings (model routes etc.)
   .credentials.yaml     ← managed credentials
   storages/             ← small JSON caches (session projections, workspaces)</code></pre>
-<p>Four of these matter directly in this course:</p>
+<p>这里有四样跟本课程直接相关：</p>
 <ul>
-  <li><code>profiles/web/package.json</code> — chapter 6's plugin command safely adds the supervisor
-      dependency and bundle entry; do not hand-edit it.</li>
-  <li><code>profiles/web/cordis.patch.yml</code> — normally untouched; it is only for explicit overrides.</li>
-  <li><code>.agent-presets/</code> — chapter 6's bundle setup creates <code>main-agent/</code> here via the roster.</li>
-  <li><code>sessions/</code> — read-only for you, but <em>very</em> instructive. Next section.</li>
+  <li><code>profiles/web/package.json</code> —— 第 6 章的 plugin 命令会安全地加上 supervisor 的依赖和
+      bundle 条目；不要手工编辑它。</li>
+  <li><code>profiles/web/cordis.patch.yml</code> —— 通常不用动；它只用于明确的覆盖。</li>
+  <li><code>.agent-presets/</code> —— 第 6 章装 bundle 时会通过 roster 在这里创建 <code>main-agent/</code>。</li>
+  <li><code>sessions/</code> —— 对你来说只读，但信息量<em>极大</em>。下一节细说。</li>
 </ul>
 
-<h2>Sessions on disk — your free trace viewer</h2>
+<h2>磁盘上的会话 —— 你免费的 trace 查看器</h2>
 <p>
-  Chapter 3 claimed a session is a logical JSONL log on disk. By default it is frame-compressed as
-  <code>session.jsonl.zstd</code>. Sessions are grouped by workspace directory:
+  第 3 章说，会话在磁盘上是一份逻辑上的 JSONL 日志。默认它按帧压缩成
+  <code>session.jsonl.zstd</code>。会话按工作区目录分组：
 </p>
 <pre><code>find "$HOME/.dsh/sessions" -name 'session.jsonl.zstd' | head
 
 LOG=$(find "$HOME/.dsh/sessions" -name 'session.jsonl.zstd' | head -1)
 zstd -dc "$LOG" | head -3</code></pre>
 <p>
-  Open any of those files and you will recognize the vocabulary from chapter 3: <code>turn/start</code>,
-  <code>user/message</code>, <code>tool/call</code>, <code>tool/result</code>, <code>assistant/message</code>,
-  <code>turn/end</code> — one JSON object per line, append-only. Two consequences for your supervisor:
+  随便打开其中一个文件，你就会认出第 3 章那套词汇：<code>turn/start</code>、
+  <code>user/message</code>、<code>tool/call</code>、<code>tool/result</code>、<code>assistant/message</code>、
+  <code>turn/end</code> —— 一行一个 JSON 对象，只追加。对你的监督者来说有两个后果：
 </p>
 <ul>
-  <li><strong>Worker inspection is grep.</strong> When the Main Agent wants to know what a worker has been
-      doing, it can read the worker’s session log with the same shell tools it already has. No custom
-      trace plugin required — this is the native-first replacement for the plan’s
-      <code>subagent-trace</code>.</li>
-  <li><strong>The web UI shows the same thing, rendered.</strong> Every child session appears in the
-      sidebar like any other session, with its full conversation and tool calls. Your “Subagents tab”
-      already exists; it is called the session list.</li>
+  <li><strong>查看 worker 靠 grep 就够了。</strong>Main Agent 想知道某个 worker 一直在干什么，用它本来
+      就有的那些 shell 工具去读这个 worker 的会话日志就行。不需要自定义 trace 插件 —— 这是对原方案里
+      <code>subagent-trace</code> 的原生优先替代。</li>
+  <li><strong>Web UI 把同样的东西渲染出来给你看。</strong>每一个子会话都会像别的会话一样出现在边栏里，
+      带着完整对话和工具调用。你想要的那个“子代理标签页”已经有了，它叫会话列表。</li>
 </ul>
 
 <div class="box test">
-  <span class="box-title">Test it live — read a real session log</span>
+  <span class="box-title">动手试 —— 读一份真实的会话日志</span>
   <ol>
-    <li>In the web UI, open any existing session and note roughly what happened in it.</li>
-    <li>Choose its <code>session.jsonl.zstd</code> file from the workspace directory shown above.</li>
-    <li><code>zstd -dc &lt;that-file&gt; | grep -c 'tool/call'</code> — count its tool calls; skim one with
-        <code>zstd -dc &lt;that-file&gt; | grep -m1 'tool/call' | head -c 400</code>.</li>
+    <li>在 Web UI 里随便打开一个已有会话，大致记一下里面发生了什么。</li>
+    <li>在上面那个工作区目录里，找到它对应的 <code>session.jsonl.zstd</code> 文件。</li>
+    <li><code>zstd -dc &lt;that-file&gt; | grep -c 'tool/call'</code> —— 数一下它有多少次工具调用；再用
+        <code>zstd -dc &lt;that-file&gt; | grep -m1 'tool/call' | head -c 400</code> 随便看一眼其中一次。</li>
   </ol>
-  <p><strong>Expected:</strong> the JSONL mirrors the rendered conversation event for event. When this feels
-  obvious, you understand the harness’s single most important data structure.</p>
+  <p><strong>预期结果：</strong>这份 JSONL 和渲染出来的对话一个事件一个事件地对得上。等你觉得这事
+  理所当然的时候，你就已经搞懂了 harness 里头最重要的那个数据结构。</p>
 </div>
 
-<h2>The workspace for this course</h2>
+<h2>本课程用的工作区</h2>
 <p>
-  Agents run <em>in a workspace</em> (the session’s <code>cwd</code>). Your supervisor is portable — all its
-  state lives in <code>&lt;workspace&gt;/.agi/</code> — so pick a scratch workspace for the build and testing
-  chapters. The setup page created it; verify it now:
+  agent 是在<em>某个工作区里</em>运行的（也就是会话的 <code>cwd</code>）。你的监督者是可搬的 —— 它的
+  状态全在 <code>&lt;workspace&gt;/.agi/</code> 里 —— 所以给后面那些构建和测试的章节挑一个随手用的
+  工作区。安装页已经建好了；现在核实一下：
 </p>
 <pre><code>test -f "$HOME/agi-lab/.agi/config.json"
 find "$HOME/agi-lab/.agi" -maxdepth 2 -type f -print
 cd "$HOME/agi-lab" &amp;&amp; git init -q .   # optional: makes state changes diffable</code></pre>
 <p>
-  In the web UI, “new session” lets you choose this directory as the workspace. Everything the
-  supervisor and its workers write lands under it. On the clean baseline there are no earlier
-  supervisor experiments to rely on.
+  在 Web UI 里，“新建会话”时可以把这个目录选作工作区。监督者和它的 worker 写下的所有东西，都落在它
+  下面。在干净基线上，你没有以前做过的监督者实验可以依赖。
 </p>
 
-<h2>The safety rules</h2>
-<p>All of them, in one place. They come from the shipped skills and the deployment’s own comments, not from caution theater:</p>
+<h2>安全规则</h2>
+<p>全部规则，集中放在这儿。它们来自随附的技能和部署自己的注释，不是出于“谨慎表演”：</p>
 <table>
-  <tr><th>Rule</th><th>Why</th></tr>
-  <tr><td><strong>Never edit the shipped presets or the harness checkout.</strong> The <code>agent-presets</code> directory beside the install and <code>$HOME/src/deepseek-harness</code> are read-only for you. Copy, then edit the copy.</td>
-      <td>An upgrade overwrites the install; corrupting the <code>cordis</code> preset disables Creator mode itself. (<code>editing-cordis-compositions</code>, “Off-limits”.)</td></tr>
-  <tr><td><strong>Never start a second dsh on the same <code>$DSH_HOME</code>.</strong></td>
-      <td>Corrupts live session logs.</td></tr>
-  <tr><td><strong>Host-plane changes go in <code>profiles/web/cordis.patch.yml</code>, nowhere else.</strong> Mind the YAML: duplicate row ids are fatal at compose time.</td>
-      <td>It is the one live-watched, user-owned layer; mistakes are undoable by reverting the file.</td></tr>
-  <tr><td><strong>Treat Creator-mode sessions like shell access.</strong></td>
-      <td>The <code>cordis</code> preset’s own header says so: its tools evaluate model-written JavaScript against the live runtime. (<code>apps/cli/config/agent-presets/cordis/agent.cordis.yml</code>, “TRUST”.)</td></tr>
-  <tr><td><strong>Back up before big edits:</strong> <code>cp $HOME/.dsh/profiles/web/cordis.patch.yml{,.bak}</code></td>
-      <td>A broken patch layer leaves the last good tree running, but you want the easy way back.</td></tr>
+  <tr><th>规则</th><th>为什么</th></tr>
+  <tr><td><strong>绝不要改随附的 preset，也不要改 harness 检出目录。</strong>安装目录旁边的 <code>agent-presets</code> 目录和 <code>$HOME/src/deepseek-harness</code> 对你都是只读的。要改就先复制，改副本。</td>
+      <td>升级会覆盖安装目录；把 <code>cordis</code> preset 弄坏，等于把 Creator mode 本身弄没了。（<code>editing-cordis-compositions</code>，“Off-limits”。）</td></tr>
+  <tr><td><strong>绝不在同一个 <code>$DSH_HOME</code> 上起第二个 dsh。</strong></td>
+      <td>会把正在写的会话日志搞坏。</td></tr>
+  <tr><td><strong>宿主平面的改动只写进 <code>profiles/web/cordis.patch.yml</code>，别处都不行。</strong>注意 YAML：重复的行 id 在组装时是致命的。</td>
+      <td>它是唯一被实时监听、又归用户所有的层；改错了，把文件还原回去就能撤销。</td></tr>
+  <tr><td><strong>把 Creator mode 的会话当成 shell 权限来对待。</strong></td>
+      <td><code>cordis</code> preset 自己的文件头就是这么说的：它的工具会把模型写的 JavaScript 拿到活着的运行时里执行。（<code>apps/cli/config/agent-presets/cordis/agent.cordis.yml</code>，“TRUST”。）</td></tr>
+  <tr><td><strong>大改之前先备份：</strong><code>cp $HOME/.dsh/profiles/web/cordis.patch.yml{,.bak}</code></td>
+      <td>补丁层坏掉时，最后一棵好用的树还在跑，但你总得有条方便的路回去。</td></tr>
 </table>
 
-<h2>Meet the API key reality</h2>
+<h2>面对 API key 的现实</h2>
 <p>
-  Model calls need the route you configured on the setup page. Harness stores managed credentials and
-  settings under <code>$HOME/.dsh</code>; you never hardcode keys in a preset, workspace, or tutorial
-  command. If a route fails, return to Settings → Models and make a standard-session prompt succeed
-  before debugging the supervisor.
+  模型调用需要你在安装页配置过的那条路由。Harness 把托管凭证和设置都存在 <code>$HOME/.dsh</code> 下；
+  你绝不要把 key 硬写进 preset、工作区或教程命令里。如果某条路由不通，先回 Settings → Models，
+  把标准会话里的一次提问跑通，再去调试你的监督者。
 </p>
 
-<h2>Your dashboard habits</h2>
-<p>Three habits worth forming now, since every later “Test it live” uses them:</p>
+<h2>该养成的看板习惯</h2>
+<p>有三个习惯现在就该养成，因为后面每一个“动手试”都要用到它们：</p>
 <ol>
-  <li><strong>Watch the process:</strong> keep the terminal running <code>dsh web</code> visible. Mount errors,
-      patch reload failures, and plugin crashes print there.</li>
-  <li><strong>Watch the tree:</strong> <code>dsh --profile web --dump-config | grep -n &lt;row-id&gt;</code> to confirm
-      a row you added actually composes. (Run it from a normal shell; it does not boot a second server.)</li>
-  <li><strong>Watch the disk:</strong> <code>find "$HOME/.dsh/sessions" -maxdepth 2 -type f | tail</code> to
-      see session storage appear as you work.</li>
+  <li><strong>盯着进程：</strong>让跑着 <code>dsh web</code> 的那个终端一直看得见。挂载错误、补丁重载失败、
+      插件崩溃都打在那里。</li>
+  <li><strong>盯着树：</strong><code>dsh --profile web --dump-config | grep -n &lt;row-id&gt;</code>，确认你加的
+      行真的被组装进去了。（在普通 shell 里跑就行；它不会起第二个服务器。）</li>
+  <li><strong>盯着磁盘：</strong><code>find "$HOME/.dsh/sessions" -maxdepth 2 -type f | tail</code>，
+      看着会话存储在干活的过程中冒出来。</li>
 </ol>
 
 <div class="box test">
-  <span class="box-title">Test it live — lab checklist</span>
-  <p><strong>Auto-grade:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m0 --ws "$HOME/agi-lab"</code>
-     (see <code>$HOME/src/dsh-supervisor/tutorial/GRADING.md</code>; each milestone box in this course has a matching grader).</p>
-  <p>Before moving on, confirm all five:</p>
+  <span class="box-title">动手试 —— 实验场检查清单</span>
+  <p><strong>自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m0 --ws "$HOME/agi-lab"</code>
+     （见 <code>$HOME/src/dsh-supervisor/tutorial/GRADING.md</code>；本课程里每个里程碑框都配了一个对应的评分器）。</p>
+  <p>继续往下之前，确认这五条：</p>
   <ol>
-    <li>Exactly one <code>dsh web</code> process is running, and <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> loads.</li>
-    <li><code>$HOME/.dsh/profiles/web/package.json</code> and <code>cordis.patch.yml</code> exist.</li>
-    <li><code>test ! -e "$HOME/.dsh/.agent-presets/main-agent"</code> succeeds.</li>
-    <li><code>$HOME/agi-lab</code> exists.</li>
-    <li>You opened one session JSONL and recognized the event types.</li>
+    <li>只有一个 <code>dsh web</code> 进程在跑，并且 <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> 能打开。</li>
+    <li><code>$HOME/.dsh/profiles/web/package.json</code> 和 <code>cordis.patch.yml</code> 都在。</li>
+    <li><code>test ! -e "$HOME/.dsh/.agent-presets/main-agent"</code> 返回成功。</li>
+    <li><code>$HOME/agi-lab</code> 存在。</li>
+    <li>你打开过一份会话 JSONL，并且认出了那些事件类型。</li>
   </ol>
 </div>
 
 <nav class="pager">
-  <a class="prev" href="03-harness.html">← Chapter 3 — Anatomy of the harness</a>
-  <a class="next" href="05-creator-mode.html">Chapter 5 — Creator mode →</a>
+  <a class="prev" href="03-harness.html">← 第 3 章 —— 拆开 harness 看内部</a>
+  <a class="next" href="05-creator-mode.html">第 5 章 —— Creator mode 与 Cordis 工具集 →</a>
 </nav>
 </main>
 </body>

@@ -230,3 +230,52 @@ test('the pre-step hook enriches only after downstream accepts the final notice'
   }, async () => ({ kind: 'reject' }))
   assert.deepEqual(rejected, { kind: 'reject' })
 })
+
+test('a settlement notice on a declared 0.2 Session never fails the turn', async () => {
+  const listeners = new Map()
+  const message = settledMessage()
+  const log = logger()
+  const ctx = {
+    logger: log,
+    get: name => name === 'sessionPersistence'
+      ? {
+          inspect: async () => ({
+            events: [event('turn/end', 20, { reason: { kind: 'error', error: quota } })],
+          }),
+        }
+      : undefined,
+    on: (name, listener) => listeners.set(name, listener),
+  }
+  installSettlementDiagnostics(ctx)
+  const listener = listeners.get('agent/pre-step')
+
+  // The declared dsh Session surface: the log is reachable only through
+  // snapshotEvents(), so `agent.session.events` is undefined.
+  const session = {
+    header: { version: 4, agentPreset: 'main-agent' },
+    inheritedEventCount: 0,
+    snapshotEvents: () => [event('agent/inbox/spliced', 30, { inserted: [message] })],
+  }
+  const decision = await listener(
+    { agent: { session }, messages: [message], signal: new AbortController().signal },
+    async () => ({ kind: 'enter', messages: [message] }),
+  )
+  assert.match(decision.messages[0].content[1].text, /^Terminal failure \[QUOTA\]/)
+
+  // A Session whose log cannot be read at all keeps the native notice.
+  const unreadable = { session: { header: { version: 4 } } }
+  const blind = await enrichSettlementMessages(
+    { inspect: async () => { throw new Error('must not inspect') } },
+    unreadable,
+    [message],
+    new AbortController().signal,
+    log,
+  )
+  assert.equal(blind[0], message)
+  const passedThrough = await listener(
+    { agent: unreadable, messages: [message], signal: new AbortController().signal },
+    async () => ({ kind: 'enter', messages: [message] }),
+  )
+  assert.deepEqual(passedThrough.messages, [message])
+  assert.deepEqual(log.warnings, [])
+})

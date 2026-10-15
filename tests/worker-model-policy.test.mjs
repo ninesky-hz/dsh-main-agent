@@ -47,11 +47,11 @@ test('an exact settings-approved route produces explicit child agent options', (
 })
 
 test('omission and bare ids cannot fall through to parent-model inheritance', () => {
-  assert.throws(() => selectWorkerModel(undefined, allowed), /model is required/)
-  assert.throws(() => selectWorkerModel('', allowed), /model is required/)
+  assert.throws(() => selectWorkerModel(undefined, allowed), /必须指定 model/)
+  assert.throws(() => selectWorkerModel('', allowed), /必须指定 model/)
   assert.throws(
     () => selectWorkerModel('gemini-3.7-flash', allowed),
-    /not on the user's worker allowlist/,
+    /不在用户的 worker 白名单中/,
   )
 })
 
@@ -59,7 +59,7 @@ test('a removed or otherwise unapproved route is rejected with only current choi
   assert.throws(
     () => selectWorkerModel('zai123/glm-5.3', [allowed[0]]),
     error => {
-      assert.match(error.message, /zai123\/glm-5\.3.*not on the user's worker allowlist/s)
+      assert.match(error.message, /zai123\/glm-5\.3.*不在用户的 worker 白名单中/s)
       assert.match(error.message, /antigravity\/gemini-3\.7-flash  \[text,image; effort low\/medium\/high\]/)
       assert.doesNotMatch(error.message, /zai\/glm-5\.3/)
       return true
@@ -70,7 +70,7 @@ test('a removed or otherwise unapproved route is rejected with only current choi
 test('an empty settings allowlist disables worker selection', () => {
   assert.throws(
     () => selectWorkerModel('antigravity/gemini-3.7-flash', []),
-    /user allows no worker models/,
+    /用户未允许任何 worker 模型/,
   )
 })
 
@@ -125,12 +125,12 @@ test('worker effort fails closed when the exact selected model does not advertis
   const selected = selectWorkerModel('antigravity/gemini-3.7-flash', allowed)
   assert.throws(
     () => resolveWorkerEffort('max', selected),
-    /effort "max".*not supported.*supported: low, medium, high/,
+    /推理强度 "max".*不被.*支持.*可用值：low, medium, high/,
   )
   const noReasoning = selectWorkerModel('zai/glm-5.3', allowed)
   assert.throws(
     () => resolveWorkerEffort('high', noReasoning),
-    /advertises no selectable reasoning efforts; use provider\/default/,
+    /未公布任何可选的推理强度；请使用 provider\/default/,
   )
 })
 
@@ -150,7 +150,7 @@ test('runtime/current fails closed instead of using stale agent options', () => 
       options: { provider: 'zai123', model: 'glm-5.3' },
       session: { requestHeader: () => undefined },
     }),
-    /never falls back to the session-creation model/,
+    /绝不回退到会话创建时的模型/,
   )
 })
 
@@ -185,9 +185,9 @@ test('workers cannot open a child-local user question that the supervisor cannot
   assert.match(spawnSource, /pendingEfforts\.set\(childId, effort\.reasoningEffort\)/)
   assert.match(spawnSource, /childId,\n\s+request,/)
   assert.match(spawnSource, /effort: effort\.label/)
-  assert.match(spawnSource, /status `running` proves only that a driver is open, NOT that useful progress/)
-  assert.match(spawnSource, /Never repeat a bare .*still running \/ continue monitoring.* verdict/)
-  assert.match(spawnSource, /If the next check-in is still unchanged after that probe, `interrupt_agent`/)
+  assert.match(spawnSource, /`list_agents` 的 `running` 状态只能证明驱动还开着，不能证明有实际进展在发生/)
+  assert.match(spawnSource, /绝不重复一句空洞的「仍在运行 \/ 继续监控」结论/)
+  assert.match(spawnSource, /若探针之后的下一次巡检仍然毫无变化，就 `interrupt_agent`/)
 
   // The main-facing schema may choose only an allowed route. Effort appears in
   // the result for observability, but never in the input parameter block.
@@ -196,7 +196,7 @@ test('workers cannot open a child-local user question that the supervisor cannot
     spawnSource.indexOf('\n      output: {'),
   )
   assert.doesNotMatch(parameterBlock, /\beffort\s*:/)
-  assert.match(spawnSource, /The tool exposes no effort argument/)
+  assert.match(spawnSource, /本工具不暴露任何推理强度参数/)
   assert.doesNotMatch(spawnSource, /reasoningEffort === 'string'/)
 })
 
@@ -219,10 +219,10 @@ test('the bundled preset has one guarded spawn frontend and no native fallback r
   assert.doesNotMatch(preset, /toolName: subagent_fork/)
   assert.doesNotMatch(preset, /toolName: spawn_dev_agent/)
   assert.doesNotMatch(preset, /\n\s+models:\n/)
-  assert.match(preset, /You have no direct user-question channel/)
-  assert.match(preset, /The report tool is your\s+ask-supervisor channel/)
-  assert.match(preset, /call report with the precise question/)
-  assert.match(preset, /status `running`\s+proves only that a driver is open, NOT that useful progress is\s+happening/)
-  assert.match(preset, /Never repeat a bare "still running \/ continue\s+monitoring" verdict/)
-  assert.match(preset, /Still unchanged at the next check-in after the\s+probe: interrupt_agent/)
+  assert.match(preset, /你没有直接向用户提问的渠道/)
+  assert.match(preset, /report 工具就是你向监督者提问的渠道/)
+  assert.match(preset, /调用 report 并给出准确的问题/)
+  assert.match(preset, /`list_agents` 的状态 `running` 只能证明驱动还开着，\n\s+不能证明有实际进展在发生/)
+  assert.match(preset, /绝不重复一句空洞的\n\s+「仍在运行 \/ 继续监控」结论/)
+  assert.match(preset, /探针之后的下一次巡检仍然毫无变化：\n\s+interrupt_agent/)
 })

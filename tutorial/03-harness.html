@@ -1,34 +1,32 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3 · Anatomy of the harness — Supervisor on DSH</title>
+<title>第 3 章 · 拆开 harness 看内部 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part I · Chapter 3</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 I 部分 · 第 3 章</span>
   <span class="spacer"></span>
   <a href="02-cordis.html">←</a>
   <a href="04-lab.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part I — Foundations</p>
-  <h1>Anatomy of the harness</h1>
-  <p class="lede">How a running <code>dsh</code> is assembled from layers, where sessions and agents
-  live, what a “turn” actually is, and — most important for you — the two-plane rule that decides
-  where every change belongs.</p>
+  <p class="kicker">第 I 部分 —— 基础</p>
+  <h1>拆开 harness 看内部</h1>
+  <p class="lede">一个运行中的 <code>dsh</code> 是怎么一层层拼出来的；会话和 agent 住在哪里；
+  所谓“一轮（turn）”究竟是什么；以及对你最重要的那条 —— 判断一处改动该落在哪个平面的两平面规则。</p>
 </header>
 
-<h2>From nothing to a running product: layers</h2>
+<h2>从零到一个跑起来的产品：分层</h2>
 <p>
-  A running <code>dsh</code> is one big Cordis plugin tree, and that tree is <em>composed at boot from
-  ordered layers of patches applied to an empty list</em>. Nothing is hardcoded; even “the product” is
-  just the result of the layering:
+  一个运行中的 <code>dsh</code> 就是一棵很大的 Cordis 插件树，而这棵树是<em>在启动时，把一串排好序的补丁层
+  叠加到一个空列表上组装出来的</em>。没有任何东西是写死的；连“这个产品”本身，都只是分层的产物：
 </p>
 <pre><code>[]                                  ← the profile root: literally an empty list
  + @deepseek-ai/dsh-base            ← bundle: model adapters, tools, persistence,
@@ -37,23 +35,23 @@
  + profiles/web/cordis.patch.yml    ← your profile override layer
  + ~/.dsh/cordis.patch.yml          ← home-level patch layer (if present)
  + --patch overlays                 ← command-line extras</code></pre>
-<p>Each concept, precisely:</p>
+<p>每个概念，精确地说：</p>
 <ul>
-  <li>A <strong>profile</strong> is a directory under <code>$DSH_HOME/profiles/&lt;name&gt;</code> holding a
-      <code>package.json</code> (which bundles to stack, plus out-of-tree plugin dependencies) and your
-      own <code>cordis.patch.yml</code>. Templates <code>web</code> and <code>headless</code> auto-initialize.
-      <span class="muted">(Source: <code>packages/boot/app-boot/README.md</code>, “Profiles”.)</span></li>
-  <li>A <strong>bundle</strong> is an npm package whose manifest declares
-      <code>"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }</code> — a distributable stack of
-      config rows plus the code they mount.</li>
-  <li>A <strong>patch</strong> targets a row <em>by id</em> and replaces its whole config, or <code>insert</code>s new
-      rows. Your profile’s patch file is watched live: edit it and the tree recomposes without a
-      restart. <span class="muted">(Same source: “Every profile boot keeps <code>cordis.patch.yml</code> live
-      through <code>watchUserPatches</code>.”)</span></li>
+  <li><strong>profile（配置档）</strong>是 <code>$DSH_HOME/profiles/&lt;name&gt;</code> 下的一个目录，里面放一个
+      <code>package.json</code>（说明要叠哪些 bundle，以及树外的插件依赖），还有你自己的
+      <code>cordis.patch.yml</code>。模板 <code>web</code> 和 <code>headless</code> 会自动初始化。
+      <span class="muted">（出处：<code>packages/boot/app-boot/README.md</code>，“Profiles”。）</span></li>
+  <li><strong>bundle</strong>是一个 npm 包，它的 manifest 里声明了
+      <code>"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }</code> —— 也就是一整套可分发的一串
+      配置行，外加这些行所挂载的代码。</li>
+  <li><strong>patch（补丁）</strong>按 <em>id</em> 定位到某一行并整块替换它的配置，或者 <code>insert</code> 出新行。
+      你 profile 的补丁文件是被实时监听的：改完不用重启，整棵树就会重新组装。
+      <span class="muted">（同一出处：“Every profile boot keeps <code>cordis.patch.yml</code> live
+      through <code>watchUserPatches</code>.”）</span></li>
 </ul>
-<p>Your clean web profile — worth reading before chapter 6 adds its first external bundle:</p>
+<p>你现在这个干净的 web profile —— 在第 6 章给它加上第一个外部 bundle 之前，值得先读一遍：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/.dsh/profiles/web/package.json</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/.dsh/profiles/web/package.json</figcaption>
 <pre><code>{
   "name": "dsh-profile-web",
   "private": true,
@@ -68,25 +66,23 @@
 }</code></pre>
 </figure>
 <p>
-  On the supported baseline there is no external dependency yet. Chapter 6 runs the supported
-  <code>dsh plugin</code> command, which adds <code>dsh-supervisor</code> to both the dependency map and this
-  ordered bundle list. You inspect the before/after rather than hand-editing this manifest.
+  在受支持的基线上，这里还没有任何外部依赖。第 6 章会运行受支持的
+  <code>dsh plugin</code> 命令，它会把 <code>dsh-supervisor</code> 同时加进依赖表和这个有序的 bundle 列表。
+  你要做的是对比改动前后，而不是手工编辑这份 manifest。
 </p>
-<p>To see the fully composed tree your machine boots, there is a dump command (read-only, safe):</p>
+<p>想看你机器启动时最终组装出来的整棵树，有专门的 dump 命令（只读，安全）：</p>
 <pre><code>dsh --profile web --dump-config</code></pre>
 <p>
-  Any row it prints can be replaced or disabled by a patch of your own. That single sentence is the
-  harness’s entire “configuration API.”
+  它打印出来的任何一行，都可以用你自己的补丁替换或禁用。就这一句话，就是 harness 全部的“配置 API”。
 </p>
 
-<h2>The two planes: host composition vs. agent preset</h2>
+<h2>两个平面：宿主组装（host composition）与 agent preset</h2>
 <p>
-  Within that one process tree there are two kinds of place a plugin row can live, and choosing
-  correctly is the most consequential decision you will make in this course. The Creator-mode skill
-  states the criterion crisply:
+  在这一棵进程树里，插件行可以待的地方分两种，而选对地方，是你在本课程里能做的最有分量的一个决定。
+  Creator mode 那个技能把判断标准说得非常干脆：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md (lines 17–23)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/cordis/skills/editing-cordis-compositions/SKILL.md（第 17–23 行）</figcaption>
 <pre><code>Two planes, and the choice is not about how "agent-related" something feels —
 it is about whether the thing must be shared.
 
@@ -100,42 +96,41 @@ AGENT PRESET. What one session contributes to those registries: its tool
 plugins, its persona and prompt sections, its compaction policy. One instance
 per session, mounted under that session's scope and unwound with it.</code></pre>
 </figure>
-<p>Applied to your supervisor, once and for all:</p>
+<p>套到你的监督者身上，一次说清：</p>
 <table>
-  <tr><th>Thing</th><th>Plane</th><th>Why</th></tr>
-  <tr><td>Supervisor persona, protocol text</td><td>Preset</td><td>One session’s identity.</td></tr>
-  <tr><td><code>subagent</code>, <code>send_message</code>, <code>goal</code>, <code>todo</code> tools</td><td>Preset rows (consuming host services)</td><td>The preset decides <em>whether this agent can call them</em>; the machinery behind them is host-side.</td></tr>
-  <tr><td>The subagent registry + spawn/fork backends</td><td>Host (already there)</td><td>Cross-session singleton; the browser queries it too.</td></tr>
-  <tr><td>Schedule service + tools (chapter 8)</td><td>Host — one row in the supervisor bundle</td><td>Not mounted by default; chapter 6's bundle install adds it process-wide without the optional time-context row.</td></tr>
-  <tr><td>Any future custom plugin (chapter 13)</td><td>Host, via profile dependency</td><td>Must observe every session / register process-wide capability.</td></tr>
+  <tr><th>东西</th><th>平面</th><th>为什么</th></tr>
+  <tr><td>监督者的 persona、协议文本</td><td>Preset</td><td>属于单个会话的身份。</td></tr>
+  <tr><td><code>subagent</code>、<code>send_message</code>、<code>goal</code>、<code>todo</code> 这些工具</td><td>Preset 行（消费宿主服务）</td><td>preset 决定<em>这个 agent 能不能调用它们</em>；它们背后的机制在宿主侧。</td></tr>
+  <tr><td>subagent 注册表 + spawn/fork 后端</td><td>宿主（本来就在）</td><td>跨会话的单例；浏览器也要查它。</td></tr>
+  <tr><td>schedule 服务 + 相关工具（第 8 章）</td><td>宿主 —— supervisor bundle 里的某一行</td><td>默认不挂载；第 6 章装 bundle 时会把它进程级地加上，但不带可选的那行时间上下文。</td></tr>
+  <tr><td>以后任何自定义插件（第 13 章）</td><td>宿主，通过 profile 依赖</td><td>它要能观察每一个会话 / 注册进程级能力。</td></tr>
 </table>
 
 <div class="box warn">
-  <span class="box-title">The collision rule, now in full</span>
+  <span class="box-title">冲突规则，完整版</span>
   <p>
-    A preset row that <em>publishes a service</em> without an isolate realm publishes it process-globally —
-    and the second session mounting the preset collides with the first. The preset mounter
-    <em>rejects</em> this instead of letting it blow up later, with a message that names the offending
-    service. You met the fix in chapter 2 (wrap provider + consumers in one
-    <code>isolate</code> group); the practical consequence is simpler: <strong>preserve the groups inherited
-    from <code>standard</code></strong>. The packaged preset does so, and chapter 6 proves it with two sessions.
+    一个 preset 行如果<em>发布一个服务</em>却没有 isolate realm，那它就是进程级全局发布的 ——
+    于是第二个挂载这个 preset 的会话就会和第一个撞上。preset 的挂载器会<em>直接拒绝</em>这种写法，
+    而不是留到以后再炸，报错信息里会点名是哪个服务。修法你在第 2 章见过（把 provider 和消费者
+    包进同一个 <code>isolate</code> 组）；实际结论更简单：<strong>保留从 <code>standard</code> 继承来的那些组</strong>。
+    打包好的 preset 就是这么做的，第 6 章会用两个会话来验证。
   </p>
 </div>
 
-<h2>Agent presets: sessions choose their composition</h2>
+<h2>Agent preset：每个会话自己选组装方式</h2>
 <p>
-  A <strong>preset</strong> is a directory holding one <code>agent.cordis.yml</code> (the rows) and a
-  <code>preset.yml</code> (display name, description). When you start a session in the web UI, you pick a
-  preset; the roster mounts that composition for the session. Four ship with the deployment —
-  <code>standard</code>, <code>code</code>, <code>minimal</code>, <code>cordis</code> (Creator mode) — living beside the
-  install, and locally authored ones live under <code>$DSH_HOME/.agent-presets/&lt;id&gt;/</code>.
+  <strong>preset</strong>是一个目录，里面有一个 <code>agent.cordis.yml</code>（配置行）和一个
+  <code>preset.yml</code>（显示名、描述）。你在 Web UI 里开会话时选一个 preset；roster 就为这个会话挂载
+  那套装组。随部署出厂的有四个 —— <code>standard</code>、<code>code</code>、<code>minimal</code>、
+  <code>cordis</code>（Creator mode）—— 它们就放在安装目录旁边；本地自己写的则放在
+  <code>$DSH_HOME/.agent-presets/&lt;id&gt;/</code> 下。
 </p>
 <p>
-  A service called the <strong>roster</strong> (<code>ctx.agentPresets</code>) owns discovery, authoring, and
-  validation. The package setup uses it to install <code>main-agent</code>; these verbs also support later variants:
+  有个服务叫 <strong>roster</strong>（<code>ctx.agentPresets</code>），负责 preset 的发现、编写和校验。
+  包的安装流程就是用它装上 <code>main-agent</code> 的；下面这些动词，以后写变体也用得上：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/preset/agent-presets/src/index.ts (abridged signatures)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/packages/preset/agent-presets/src/index.ts（节选的签名）</figcaption>
 <pre><code>async list(): Promise&lt;AgentPreset[]&gt;        // every preset: id, trust, real path
 async resolve(id?): Promise&lt;AgentPreset&gt;    // one preset, with the file path to edit
 async read(id): Promise&lt;string&gt;             // its composition text
@@ -146,31 +141,30 @@ async standingKeyFor(id?): Promise&lt;ScopeKey&gt;
      // exactly like a session start minus the agent — the check.</code></pre>
 </figure>
 <div class="box why">
-  <span class="box-title">Why <code>copy()</code> instead of writing YAML from scratch</span>
+  <span class="box-title">为什么用 <code>copy()</code>，而不是从零手写 YAML</span>
   <p>
     “A composition written from scratch usually forgets a group realm or a consumer row; a copy
-    starts loadable” (<code>editing-cordis-compositions</code> skill). <code>copy()</code> also validates the
-    id, lands the copy in the writable root wherever this deployment configured it, and rolls back on
-    failure. This repository already ships the finished preset so its rows cannot drift from its plugin
-    version. If you author a variant, copy the installed <code>main-agent</code> to a new id through this API.
+    starts loadable”（<code>editing-cordis-compositions</code> 技能）。<code>copy()</code> 还会校验
+    id、把副本落到这次部署所配置的可写根目录里，失败时回滚。本仓库已经把成品 preset 一起发了出去，
+    这样它的配置行就不会和插件版本脱节。你要写变体的话，就用这套 API 把装好的 <code>main-agent</code>
+    复制成一个新 id。
   </p>
 </div>
 
-<h2>Inside a session: the log, the turn, the step</h2>
+<h2>走进一个会话：日志、轮、步</h2>
 <p>
-  Now zoom into one running agent. Three nouns carry everything:
+  现在把镜头拉近到一个正在跑的 agent。三个名词就撑起了全部：
 </p>
 <ul>
-  <li>A <strong>session</strong> is an append-only log of durable events (<code>user/message</code>,
-      <code>assistant/message</code>, <code>tool/call</code>, <code>tool/result</code>, <code>turn/start</code>…), plus a
-      header (workspace <code>cwd</code>, parent lineage, creation time). It is literally a JSONL file on
-      disk — you will open one in chapter 4.</li>
-  <li>A <strong>step</strong> is one model request plus the tool calls it makes.</li>
-  <li>A <strong>turn</strong> is zero or more steps: it opens when input is claimed and closes when nothing
-      more is owed.</li>
+  <li><strong>session（会话）</strong>是一份只追加的持久事件日志（<code>user/message</code>、
+      <code>assistant/message</code>、<code>tool/call</code>、<code>tool/result</code>、<code>turn/start</code>……），
+      外加一个头部（工作区 <code>cwd</code>、父系血缘、创建时间）。它在磁盘上就是一个如假包换的 JSONL
+      文件 —— 第 4 章你会亲手打开一个。</li>
+  <li><strong>step（步）</strong>是一次模型请求，加上这次请求引发的那些工具调用。</li>
+  <li><strong>turn（轮）</strong>是零个或多个 step：有输入被认领时开启，不再欠任何东西时关闭。</li>
 </ul>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/architecture.md (“Turn flow”, abridged)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/docs/architecture.md（“Turn flow”，节选）</figcaption>
 <pre><code>turn/start
   claim next-step input plus one queued message
   assemble prompt sections + tool schemas
@@ -183,21 +177,19 @@ async standingKeyFor(id?): Promise&lt;ScopeKey&gt;
   -&gt; agent/turn-stopping
 turn/end</code></pre>
 </figure>
-<p>Two rules fall out of this that your supervisor design leans on:</p>
+<p>由此推出两条规则，你的监督者设计正是靠它们撑着：</p>
 <ul>
-  <li><strong>Model-visible means logged.</strong> Anything that reaches a model request must be
-      reconstructable from the session log — a runtime invariant. This is why a child agent’s entire
-      behavior is inspectable after the fact from its log alone, which is your native replacement for
-      the plan’s custom <code>trace.log</code>.</li>
-  <li><strong>Input arrives through one inbox.</strong> An agent has a single FIFO inbox; every message —
-      yours, a schedule reminder, a child’s report, a settle notice — becomes a turn in one observable
-      order. “Sleep” is an empty inbox; “wake” is a delivery. There is no other scheduler.</li>
+  <li><strong>模型能看见的，就一定记进了日志。</strong>任何进入模型请求的东西，都必须能从会话日志里还原出来
+      —— 这是一条运行时不变量。也正因如此，一个子 agent 的全部行为，事后光靠它自己的日志就能查，
+      这正好原生替代了原方案里自定义的 <code>trace.log</code>。</li>
+  <li><strong>输入只从一个收件箱进来。</strong>一个 agent 只有一个 FIFO 收件箱；每一条消息 ——
+      你发的、定时提醒、子 agent 的报告、收敛通知 —— 都会变成一轮，而且顺序是可观察的。
+      “休眠”就是收件箱为空；“唤醒”就是来了一次投递。没有别的调度器。</li>
 </ul>
 
-<h2>The tool pipeline (where policy lives)</h2>
+<h2>工具流水线（策略住在哪儿）</h2>
 <p>
-  When a model asks to run a tool, the call travels a guarded pipeline — all waterfalls, all
-  extensible by plugins:
+  当模型要求运行一个工具时，这次调用会走一条带关卡的流水线 —— 全是 waterfall，全都可以由插件扩展：
 </p>
 <pre><code>tools/pre-execute   → allow / deny / ask / transform / delay   (policy seat)
 guards              → monotonic checks
@@ -205,17 +197,16 @@ tools/execute       → around-dispatch wrappers (timeouts live here)
 tools/post-execute  → inspect or replace the result
 tools/result        → the immutable outcome</code></pre>
 <p>
-  The current bundle uses this policy seat narrowly: its goal frontend guards operational tools until
-  a long-running continuation has checked native goal state, inspected relevant workspace material,
-  and armed <code>start_goal</code>. Chapter 13’s optional tool-delay plugin is another example
-  (<code>docs/tool-execution-pipeline.md</code>). The same pipeline also explains sandbox/approval prompts
-  in the web UI — shipped <code>pre-execute</code> policies asking you to decide.
+  当前的 bundle 只在很窄的范围内用了这个策略位：它的 goal 前端会先拦住操作性工具，直到一次长时间运行的
+  续跑已经查过原生 goal 状态、看过相关的工作区材料、并且把 <code>start_goal</code> 架好为止。第 13 章里那个
+  可选的工具延迟插件是另一个例子（<code>docs/tool-execution-pipeline.md</code>）。同一条流水线也解释了
+  Web UI 里的沙箱/审批提示 —— 那是内置的 <code>pre-execute</code> 策略在请你做决定。
 </p>
 
-<h2>Where new behavior goes — the official map</h2>
-<p>The architecture doc closes with a table you should bookmark; the rows you will actually use:</p>
+<h2>新行为该放哪儿 —— 官方地图</h2>
+<p>架构文档最后有一张表，值得你收藏；下面是你实际会用到的那几行：</p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/docs/architecture.md (“Where new behavior goes”, selected rows)</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/docs/architecture.md（“Where new behavior goes”，节选行）</figcaption>
 <pre><code>| Goal                                        | Mechanism                     |
 |---------------------------------------------|-------------------------------|
 | Add a model-facing capability               | register on ctx.tools         |
@@ -226,25 +217,24 @@ tools/result        → the immutable outcome</code></pre>
 | Add model-facing context                    | agent.inject()                |</code></pre>
 </figure>
 
-<h2>What you can now explain</h2>
+<h2>现在你能讲清什么</h2>
 <div class="box test">
-  <span class="box-title">Check your understanding</span>
+  <span class="box-title">检查理解</span>
   <ol>
-    <li>Why does adding the schedule capability (chapter 6/8) go in a <em>profile bundle</em>, but the
-        supervisor persona goes in a <em>preset</em>? <span class="muted">(Schedule is a service + session
-        driver shared by the process — host plane. The persona is one session’s contribution — agent
-        plane.)</span></li>
-    <li>Your supervisor restarts. Why is nothing lost even with no custom persistence code?
-        <span class="muted">(Sessions are append-only logs on disk; the harness resumes them. Plus your
-        <code>.agi/</code> files are ordinary files.)</span></li>
-    <li>Where would you look to see every plugin row your machine actually boots?
-        <span class="muted"><code>dsh --profile web --dump-config</code>.</span></li>
+    <li>为什么加 schedule 能力（第 6／8 章）要落到 <em>profile 的 bundle</em> 里，而监督者的 persona
+        要落到 <em>preset</em> 里？<span class="muted">（schedule 是进程共享的服务 + 会话驱动器 ——
+        宿主平面。persona 是单个会话的贡献 —— agent 平面。）</span></li>
+    <li>你的监督者重启了。为什么一行自定义持久化代码都没有，也什么都没丢？
+        <span class="muted">（会话是磁盘上只追加的日志，harness 会接着恢复它们。再加上你的
+        <code>.agi/</code> 文件本来就是普通文件。）</span></li>
+    <li>想看你机器实际启动时都有哪些插件行，要去哪儿看？
+        <span class="muted"><code>dsh --profile web --dump-config</code>。</span></li>
   </ol>
 </div>
 
 <nav class="pager">
-  <a class="prev" href="02-cordis.html">← Chapter 2 — Cordis from scratch</a>
-  <a class="next" href="04-lab.html">Chapter 4 — Your lab →</a>
+  <a class="prev" href="02-cordis.html">← 第 2 章 —— 从零开始学 Cordis</a>
+  <a class="next" href="04-lab.html">第 4 章 —— 你的实验场 →</a>
 </nav>
 </main>
 </body>

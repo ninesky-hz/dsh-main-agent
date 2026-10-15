@@ -2,33 +2,33 @@
 (function () {
   const KEY = 'tutorial-theme';
   const COURSE = [
-    ['00-setup.html', 'Setup'],
-    ['01-big-picture.html', 'Big picture'],
+    ['00-setup.html', '安装'],
+    ['01-big-picture.html', '大局观'],
     ['02-cordis.html', 'Cordis'],
     ['03-harness.html', 'Harness'],
-    ['04-lab.html', 'Lab'],
+    ['04-lab.html', '实验场'],
     ['05-creator-mode.html', 'Creator mode'],
-    ['06-preset.html', 'Preset'],
-    ['07-brain.html', 'Brain'],
-    ['08-schedule.html', 'Time'],
-    ['09-delegation.html', 'Workers'],
-    ['10-loop.html', 'Loop'],
+    ['06-preset.html', 'preset'],
+    ['07-brain.html', '大脑'],
+    ['08-schedule.html', '时间'],
+    ['09-delegation.html', 'worker'],
+    ['10-loop.html', '循环'],
     ['11-ui.html', 'UI'],
-    ['12-acceptance.html', 'Acceptance'],
-    ['13-extensions.html', 'Extensions'],
-    ['14-troubleshooting.html', 'Troubleshooting'],
+    ['12-acceptance.html', '验收'],
+    ['13-extensions.html', '扩展'],
+    ['14-troubleshooting.html', '排错'],
   ];
   const GRADERS = {
-    '00-setup.html': ['doctor', 'Check grader setup'],
-    '04-lab.html': ['m0', 'Run milestone 0 grader'],
-    '06-preset.html': ['m1', 'Run milestone 1 grader'],
-    '07-brain.html': ['m2', 'Run milestone 2 grader'],
-    '08-schedule.html': ['m3', 'Run milestone 3 grader'],
-    '09-delegation.html': ['m4', 'Run milestone 4 grader'],
-    '10-loop.html': ['m5', 'Run milestone 5 grader'],
-    '11-ui.html': ['m6', 'Run milestone 6 grader'],
-    '12-acceptance.html': ['m7', 'Run acceptance grader'],
-    'index.html': ['all', 'Grade milestones 0–6'],
+    '00-setup.html': ['doctor', '检查评分器环境'],
+    '04-lab.html': ['m0', '运行里程碑 0 评分器'],
+    '06-preset.html': ['m1', '运行里程碑 1 评分器'],
+    '07-brain.html': ['m2', '运行里程碑 2 评分器'],
+    '08-schedule.html': ['m3', '运行里程碑 3 评分器'],
+    '09-delegation.html': ['m4', '运行里程碑 4 评分器'],
+    '10-loop.html': ['m5', '运行里程碑 5 评分器'],
+    '11-ui.html': ['m6', '运行里程碑 6 评分器'],
+    '12-acceptance.html': ['m7', '运行验收评分器'],
+    'index.html': ['all', '给里程碑 0–6 打分'],
   };
 
   function systemTheme() {
@@ -49,11 +49,11 @@
   function syncButton(btn, theme) {
     const dark = theme === 'dark';
     btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
-    btn.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
-    btn.title = dark ? 'Light mode' : 'Dark mode';
+    btn.setAttribute('aria-label', dark ? '切换到浅色模式' : '切换到深色模式');
+    btn.title = dark ? '浅色模式' : '深色模式';
     btn.innerHTML = dark
-      ? '<span aria-hidden="true">☀</span> Light'
-      : '<span aria-hidden="true">☾</span> Dark';
+      ? '<span aria-hidden="true">☀</span> 浅色'
+      : '<span aria-hidden="true">☾</span> 深色';
   }
 
   apply(localStorage.getItem(KEY) || systemTheme());
@@ -100,17 +100,17 @@
     const copy = document.createElement('div');
     copy.className = 'course-progress-copy';
     const label = document.createElement('span');
-    label.textContent = page === 'index.html' ? 'Course map' : 'Course progress';
+    label.textContent = page === 'index.html' ? '课程地图' : '课程进度';
     const value = document.createElement('strong');
     value.textContent = position >= 0
-      ? 'Step ' + (position + 1) + ' of ' + COURSE.length + ' · ' + COURSE[position][1]
-      : 'Not started · ' + COURSE.length + ' steps';
+      ? '第 ' + (position + 1) + ' 步 / 共 ' + COURSE.length + ' 步 · ' + COURSE[position][1]
+      : '未开始 · 共 ' + COURSE.length + ' 步';
     copy.append(label, value);
 
     const track = document.createElement('div');
     track.className = 'course-progress-track';
     track.setAttribute('role', 'progressbar');
-    track.setAttribute('aria-label', 'Current tutorial position');
+    track.setAttribute('aria-label', '当前教程位置');
     track.setAttribute('aria-valuemin', '0');
     track.setAttribute('aria-valuemax', String(COURSE.length));
     track.setAttribute('aria-valuenow', String(Math.max(0, completed)));
@@ -123,7 +123,7 @@
     COURSE.forEach(function (entry, index) {
       const link = document.createElement('a');
       link.href = entry[0];
-      link.title = 'Step ' + (index + 1) + ': ' + entry[1];
+      link.title = '第 ' + (index + 1) + ' 步：' + entry[1];
       link.setAttribute('aria-label', link.title);
       if (index === current) link.classList.add('current');
       if (localStorage.getItem('tutorial-visited-' + index)) link.classList.add('visited');
@@ -149,15 +149,15 @@
     const panel = document.createElement('div');
     panel.className = 'web-grader';
     panel.innerHTML = '<div class="web-grader-heading">'
-      + '<span>Built-in course grader</span>'
-      + '<small>Runs locally and reads your DSH files; it never changes them.</small>'
+      + '<span>内置课程评分器</span>'
+      + '<small>在本地运行，读取你的 DSH 文件；绝不改动它们。</small>'
       + '</div>';
 
     let workspace;
     if (target !== 'doctor') {
       const field = document.createElement('label');
       field.className = 'web-grader-workspace';
-      field.textContent = 'Workspace override (optional)';
+      field.textContent = '工作区覆盖（可选）';
       workspace = document.createElement('input');
       workspace.type = 'text';
       workspace.placeholder = target === 'm7' ? '$HOME/agi-acceptance' : '$HOME/agi-lab';
@@ -184,7 +184,7 @@
     button.addEventListener('click', async function () {
       button.disabled = true;
       status.className = 'grade-status running';
-      status.textContent = 'Running…';
+      status.textContent = '运行中…';
       output.hidden = true;
       try {
         const body = { target: target };
@@ -195,11 +195,11 @@
           body: JSON.stringify(body),
         });
         const result = await response.json();
-        if (!response.ok && !result.output) throw new Error(result.error || 'grader request failed');
-        output.textContent = result.output || result.error || 'No grader output.';
+        if (!response.ok && !result.output) throw new Error(result.error || '评分器请求失败');
+        output.textContent = result.output || result.error || '评分器没有输出。';
         output.hidden = false;
         status.className = 'grade-status ' + (result.ok ? 'passed' : 'failed');
-        status.textContent = result.ok ? 'Passed' : 'Needs work';
+        status.textContent = result.ok ? '通过' : '未达标';
         if (target.match(/^m[0-7]$/)) {
           localStorage.setItem('tutorial-grade-' + target, result.ok ? 'pass' : 'fail');
           if (result.ok) {
@@ -210,8 +210,8 @@
         }
       } catch (error) {
         status.className = 'grade-status failed';
-        status.textContent = 'Unavailable';
-        output.textContent = 'Start this course with ./tutorial/setup.sh, then use the URL it prints.\n\n'
+        status.textContent = '不可用';
+        output.textContent = '先用 ./tutorial/setup.sh 启动课程，再打开它打印出来的 URL。\n\n'
           + String(error);
         output.hidden = false;
       } finally {

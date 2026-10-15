@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the tutorial and expose its read-only milestone grader on localhost."""
+"""在 localhost 上提供教程页面，并暴露它只读的里程碑评分器。"""
 
 from __future__ import annotations
 
@@ -34,14 +34,14 @@ class TutorialHandler(SimpleHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if length < 0 or length > 16_384:
-                raise ValueError("request body is too large")
+                raise ValueError("请求体太大")
             payload = json.loads(self.rfile.read(length) or b"{}")
             target = payload.get("target")
             workspace = payload.get("workspace")
             if target not in TARGETS:
-                raise ValueError("unknown grader target")
+                raise ValueError("未知的评分器 target")
             if workspace is not None and not isinstance(workspace, str):
-                raise ValueError("workspace must be a string")
+                raise ValueError("workspace 必须是字符串")
         except (ValueError, json.JSONDecodeError) as exc:
             self._json(400, {"ok": False, "error": str(exc)})
             return
@@ -55,14 +55,16 @@ class TutorialHandler(SimpleHTTPRequestHandler):
                 command,
                 cwd=TUTORIAL_ROOT,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env={**os.environ, "PYTHONUTF8": "1"},
                 timeout=180,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
             output = (exc.stdout or "") + (exc.stderr or "")
             self._json(504, {"ok": False, "exitCode": None, "output": output,
-                             "error": "grader timed out after 180 seconds"})
+                             "error": "评分器在 180 秒后超时"})
             return
 
         output = result.stdout + result.stderr
@@ -81,15 +83,15 @@ class TutorialHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1",
-                        help="listen address (default: 127.0.0.1)")
+                        help="监听地址（默认：127.0.0.1）")
     parser.add_argument("--port", type=int, default=0,
-                        help="listen port; 0 selects an unused port (default: 0)")
+                        help="监听端口；0 表示选一个未占用的端口（默认：0）")
     args = parser.parse_args()
 
     server = ThreadingHTTPServer((args.host, args.port), TutorialHandler)
     host, port = server.server_address[:2]
-    print(f"Tutorial: http://{host}:{port}/", flush=True)
-    print("Press Ctrl-C to stop.", flush=True)
+    print(f"教程：http://{host}:{port}/", flush=True)
+    print("按 Ctrl-C 停止。", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

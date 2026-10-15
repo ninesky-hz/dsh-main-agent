@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
-"""Milestone grader for the Always-On Supervisor course.
+"""常驻监督者课程的里程碑评分器。
 
-Usage:
-    python3 grade.py m0            # grade one milestone (m0..m7)
+用法：
+    python3 grade.py m0            # 给单个里程碑打分（m0..m7）
     python3 grade.py m4 --ws "$HOME/agi-lab"
-    python3 grade.py all           # m0..m6 against the lab workspace
-    python3 grade.py doctor        # show what the grader can see
+    python3 grade.py all           # 对着实验场工作区跑 m0..m6
+    python3 grade.py doctor        # 显示评分器能看见什么
 
-Each milestone maps to a chapter's "Test it live" box:
-    m0 -> ch4  lab checklist            m4 -> ch9  workers (M0 smoke test)
-    m1 -> ch6  main-agent preset        m5 -> ch10 supervision loop
-    m2 -> ch7  brain + goal setup       m6 -> ch11 Feed view tab
-    m3 -> ch8  schedule                 m7 -> ch12 acceptance (runs m2-m5 too)
+每个里程碑对应某一章的「动手试」方框：
+    m0 -> 第 4 章  实验场检查清单        m4 -> 第 9 章  worker（M0 冒烟测试）
+    m1 -> 第 6 章  main-agent preset     m5 -> 第 10 章 监督循环
+    m2 -> 第 7 章  大脑 + goal setup     m6 -> 第 11 章 Feed 视图标签页
+    m3 -> 第 8 章  schedule              m7 -> 第 12 章 验收（也会跑 m2-m5）
 
-Checks read only durable artifacts: the preset files, the profile patch,
-the .agi/ tree, and the session event logs under $DSH_HOME/sessions
-(decompressed with the system `zstd`). Nothing is mutated.
+检查只读持久产物：preset 文件、profile 补丁、.agi/ 目录树，以及
+$DSH_HOME/sessions 下的会话事件日志（用系统 `zstd` 解压）。不修改任何东西。
 
-Statuses: PASS (1 pt), WARN (0.5 pt, weak/partial evidence), FAIL (0 pt),
-MANUAL (not scored - a reminder of what only a human can judge).
+状态：PASS（1 分）、WARN（0.5 分，证据弱或不完整）、FAIL（0 分）、
+MANUAL（不计分 —— 提醒你有些东西只有人能判断）。
 """
 
 from __future__ import annotations
@@ -213,13 +212,13 @@ class Milestone:
     def run(self, ws: str) -> float:
         icon = {"PASS": f"{GREEN}✔ PASS{RESET}", "FAIL": f"{RED}✘ FAIL{RESET}",
                 "WARN": f"{YELLOW}◐ WARN{RESET}", "MANUAL": f"{BLUE}☐ MANUAL{RESET}"}
-        print(f"\n{BOLD}{self.key} — {self.title}{RESET}  {DIM}(workspace: {ws}){RESET}")
+        print(f"\n{BOLD}{self.key} — {self.title}{RESET}  {DIM}（工作区：{ws}）{RESET}")
         earned = total = 0.0
         for name, fn in self.checks:
             try:
                 r = fn(ws)
             except Exception as e:  # a crashed check is a failed check, loudly
-                r = FAIL(f"grader error: {e.__class__.__name__}: {e}")
+                r = FAIL(f"评分器错误：{e.__class__.__name__}: {e}")
             if r.status != "MANUAL":
                 total += 1
                 earned += {"PASS": 1.0, "WARN": 0.5, "FAIL": 0.0}[r.status]
@@ -227,7 +226,7 @@ class Milestone:
             print(f"  {icon[r.status]}  {name}{detail}")
         pct = 100.0 * earned / total if total else 100.0
         color = GREEN if pct >= 90 else YELLOW if pct >= 60 else RED
-        print(f"  {BOLD}score: {color}{earned:.1f}/{total:.0f}  ({pct:.0f}%){RESET}")
+        print(f"  {BOLD}得分: {color}{earned:.1f}/{total:.0f}  ({pct:.0f}%){RESET}")
         return pct
 
 
@@ -242,47 +241,47 @@ def milestone(key, title):
 
 # ------------------------------------------------------------------- m0: lab
 
-m0 = milestone("m0", "Your lab (chapter 4)")
+m0 = milestone("m0", "你的实验场（第 4 章）")
 
-@m0.check("dsh web process is running")
+@m0.check("dsh web 进程在运行")
 def _(ws):
     out = subprocess.run(["pgrep", "-af", "dsh web"], capture_output=True, text=True)
     return PASS(out.stdout.strip().splitlines()[0][:70]) if out.stdout.strip() else \
-        FAIL("no `dsh web` process — start it in a terminal (setup page)")
+        FAIL("没有 `dsh web` 进程 —— 在终端里把它起起来（见安装页）")
 
-@m0.check("web UI answers on 127.0.0.1:3080")
+@m0.check("web UI 在 127.0.0.1:3080 有响应")
 def _(ws):
     try:
         req = urllib.request.Request(WEB_URL, method="GET")
         with urllib.request.urlopen(req, timeout=4) as resp:
             return PASS(f"HTTP {resp.status}")
     except urllib.error.HTTPError as e:
-        return PASS(f"HTTP {e.code} (server is up)")
+        return PASS(f"HTTP {e.code}（服务已在运行）")
     except Exception as e:
         return FAIL(f"{e.__class__.__name__}: {e}")
 
-@m0.check("profile patch file exists and parses")
+@m0.check("profile patch 文件存在且能解析")
 def _(ws):
     if not PATCH_FILE.exists():
-        return FAIL(f"{PATCH_FILE} missing")
+        return FAIL(f"{PATCH_FILE} 不存在")
     try:
         load_yaml(PATCH_FILE)
         return PASS(str(PATCH_FILE))
     except Exception as e:
-        return FAIL(f"YAML error: {e}")
+        return FAIL(f"YAML 错误：{e}")
 
-@m0.check("lab workspace exists")
+@m0.check("实验场工作区存在")
 def _(ws):
     return PASS(ws) if Path(ws).is_dir() else FAIL(f"mkdir -p {ws}")
 
-@m0.check("you opened a session JSONL and recognized the event types")
+@m0.check("你打开过一份会话 JSONL 并认出了事件类型")
 def _(ws):
     return MANUAL("zstd -dc <sessions>/<dir>/session.jsonl.zstd | head")
 
 
 # ---------------------------------------------------------------- m1: preset
 
-m1 = milestone("m1", "The main-agent preset (chapter 6)")
+m1 = milestone("m1", "main-agent preset（第 6 章）")
 
 def _preset_rows():
     return load_yaml(PRESET_DIR / "agent.cordis.yml")
@@ -307,82 +306,82 @@ def _spawn_row():
                       and r["config"].get("toolName") == "subagent")
     return hits[0] if hits else (None, False)
 
-@m1.check("preset directory with both files")
+@m1.check("preset 目录里两个文件都在")
 def _(ws):
     ok = (PRESET_DIR / "agent.cordis.yml").exists() and (PRESET_DIR / "preset.yml").exists()
     return PASS(str(PRESET_DIR)) if ok else \
-        FAIL("install the dsh-supervisor bundle and restart dsh (ch6 steps 2-3)")
+        FAIL("安装 dsh-supervisor bundle 并重启 dsh（第 6 章第 2-3 步）")
 
-@m1.check("preset.yml carries display name and description")
+@m1.check("preset.yml 带着显示名与描述")
 def _(ws):
     meta = load_yaml(PRESET_DIR / "preset.yml") or {}
     if meta.get("name") and meta.get("description"):
         return PASS(f'name: "{meta["name"]}"')
-    return FAIL("fill name + description (ch6 step 2)")
+    return FAIL("填好 name + description（第 6 章第 2 步）")
 
-@m1.check("agent.cordis.yml parses as a row list")
+@m1.check("agent.cordis.yml 能解析成行列表")
 def _(ws):
     rows = _preset_rows()
-    return PASS(f"{len(rows)} top-level rows") if isinstance(rows, list) and rows else \
-        FAIL("file is not a YAML list of rows")
+    return PASS(f"{len(rows)} 个顶层行") if isinstance(rows, list) and rows else \
+        FAIL("文件不是 YAML 的行列表")
 
-@m1.check("persona row present with non-empty text")
+@m1.check("persona 行存在且文本非空")
 def _(ws):
     hits = _find_rows(_preset_rows(), lambda r: r.get("id") == "persona")
     if not hits:
-        return FAIL("no row with id: persona")
+        return FAIL("没有 id: persona 的行")
     text = (hits[0][0].get("config") or {}).get("text") or ""
-    return PASS(f"{len(text)} chars") if len(text.strip()) > 20 else FAIL("persona text empty")
+    return PASS(f"{len(text)} 个字符") if len(text.strip()) > 20 else FAIL("persona 文本为空")
 
-@m1.check("subagent row: plugin-owned, settings-guarded spawn frontend")
+@m1.check("subagent 行：插件拥有、受设置约束的 spawn 前端")
 def _(ws):
     row, _n = _spawn_row()
     if row is None:
-        return FAIL("no dsh-supervisor/spawn row with config.toolName subagent")
+        return FAIL("没有 config.toolName 为 subagent 的 dsh-supervisor/spawn 行")
     cfg = row["config"]
     problems = []
     if row.get("name") != "dsh-supervisor/spawn":
-        problems.append(f'name is {row.get("name")}')
+        problems.append(f'name 是 {row.get("name")}')
     if cfg.get("provider") != "spawn":
-        problems.append(f'provider is {cfg.get("provider")}')
+        problems.append(f'provider 是 {cfg.get("provider")}')
     if "models" in cfg:
-        problems.append("preset fallback models are present")
+        problems.append("preset 兜底 models 还在")
     return PASS() if not problems else FAIL("; ".join(problems))
 
-@m1.check("guarded subagent row carries the worker persona")
+@m1.check("受约束的 subagent 行带着 worker persona")
 def _(ws):
     row, _n = _spawn_row()
     if row is None:
-        return FAIL("row missing")
+        return FAIL("行不存在")
     persona = row["config"].get("persona") or ""
     if len(persona.strip()) < 40:
-        return FAIL("config.persona empty/too short — indentation under the row?")
+        return FAIL("config.persona 为空或太短 —— 是不是没缩进到该行下面？")
     need = [w for w in ("report", "outcome.md") if w not in persona]
     return PASS(f"{len(persona)} chars") if not need else \
-        WARN(f"persona lacks protocol words: {need}")
+        WARN(f"persona 缺少协议关键词：{need}")
 
-@m1.check("guarded subagent row sits inside a group (delegation), not top-level")
+@m1.check("受约束的 subagent 行位于分组（delegation）内，不在顶层")
 def _(ws):
     row, nested = _spawn_row()
     if row is None:
-        return FAIL("row missing")
+        return FAIL("行不存在")
     return PASS() if nested else \
-        WARN("row is top-level; move it into the delegation group's config list")
+        WARN("该行在顶层；把它移进 delegation 分组的 config 列表里")
 
-@m1.check("a session ran on the preset (mount proof)")
+@m1.check("有一个会话跑在这个 preset 上（挂载证明）")
 def _(ws):
     sup = supervisor_sessions(ws)
     if not sup:
-        return FAIL("no main-agent session in this workspace yet — start one (ch6 step 5)")
-    return PASS(f"{len(sup)} session(s), newest: {sup[-1].name}")
+        return FAIL("这个工作区里还没有 main-agent 会话 —— 起一个（第 6 章第 5 步）")
+    return PASS(f"{len(sup)} 个会话，最新的：{sup[-1].name}")
 
-@m1.check("second session mounts cleanly (realm-collision check)")
+@m1.check("第二个会话能干净挂载（realm 冲突检查）")
 def _(ws):
     n = len(supervisor_sessions(ws))
-    return PASS(f"{n} sessions") if n >= 2 else \
-        WARN("only one session so far — start a second to prove no realm collision")
+    return PASS(f"{n} 个会话") if n >= 2 else \
+        WARN("目前只有一个会话 —— 再起一个来证明没有 realm 冲突")
 
-@m1.check("tool list contains only the guarded subagent spawn frontend")
+@m1.check("工具列表里只有受约束的 subagent spawn 前端")
 def _(ws):
     native = _find_rows(
         _preset_rows(),
@@ -390,13 +389,13 @@ def _(ws):
         and isinstance(r.get("config"), dict)
         and r["config"].get("provider") == "spawn",
     )
-    return FAIL("native spawn frontend bypasses workerModels") if native else \
-        MANUAL("confirm subagent.model lists only Settings-approved provider/model routes")
+    return FAIL("原生 spawn 前端绕过了 workerModels") if native else \
+        MANUAL("确认 subagent.model 只列出 Settings 批准的 provider/model 路由")
 
 
 # ----------------------------------------------------------------- m2: brain
 
-m2 = milestone("m2", "Brain: persona, .agi contract, non-blocking goal setup (chapter 7)")
+m2 = milestone("m2", "大脑：persona、.agi 契约、非阻塞的 goal setup（第 7 章）")
 
 PERSONA_MARKERS = ["GROUNDING", "PERSISTENCE", "GOAL SETUP", "QUESTIONS", "subagent",
                    "send_message", "interrupt_agent", "schedule_create",
@@ -404,7 +403,7 @@ PERSONA_MARKERS = ["GROUNDING", "PERSISTENCE", "GOAL SETUP", "QUESTIONS", "subag
                    "questions.jsonl", "NOTES.md", "durable continuation path",
                    "bounded ladder of distinct, safe recovery attempts"]
 
-@m2.check(".agi skeleton (config + the four state files)")
+@m2.check(".agi 骨架（config + 四个状态文件）")
 def _(ws):
     agi = Path(ws) / ".agi"
     missing = [f for f in ("config.json", "NOTES.md", "progress.jsonl",
@@ -412,9 +411,9 @@ def _(ws):
                if not (agi / f).exists()]
     if not (agi / "subagents").is_dir():
         missing.append("subagents/")
-    return PASS(str(agi)) if not missing else FAIL(f"missing: {missing}")
+    return PASS(str(agi)) if not missing else FAIL(f"缺少：{missing}")
 
-@m2.check("config.json valid with numeric wakeMinutes/questionWaitMinutes")
+@m2.check("config.json 合法，wakeMinutes/questionWaitMinutes 是数字")
 def _(ws):
     p = Path(ws) / ".agi" / "config.json"
     try:
@@ -423,72 +422,72 @@ def _(ws):
         return FAIL(f"{e}")
     bad = [k for k in ("wakeMinutes", "questionWaitMinutes")
            if not isinstance(cfg.get(k), (int, float))]
-    return PASS(json.dumps(cfg)) if not bad else FAIL(f"missing/non-numeric: {bad}")
+    return PASS(json.dumps(cfg)) if not bad else FAIL(f"缺失或不是数字：{bad}")
 
-@m2.check("supervisor persona carries the full protocol")
+@m2.check("监督者 persona 带着完整协议")
 def _(ws):
     hits = _find_rows(_preset_rows(), lambda r: r.get("id") == "persona")
     if not hits:
-        return FAIL("persona row missing")
+        return FAIL("persona 行不存在")
     text = (hits[0][0].get("config") or {}).get("text") or ""
     missing = [m for m in PERSONA_MARKERS if m not in text]
     if not missing:
-        return PASS(f"all {len(PERSONA_MARKERS)} protocol markers present")
-    return FAIL(f"persona never mentions: {missing}")
+        return PASS(f"{len(PERSONA_MARKERS)} 个协议标记全部存在")
+    return FAIL(f"persona 从未提到：{missing}")
 
-@m2.check("GOAL.md written during native goal setup")
+@m2.check("原生 goal setup 期间写出了 GOAL.md")
 def _(ws):
     p = Path(ws) / ".agi" / "GOAL.md"
     if not p.exists():
-        return FAIL("run goal setup (ch7 live test)")
+        return FAIL("跑一遍 goal setup（第 7 章动手试）")
     return PASS(f"{p.stat().st_size} bytes") if p.stat().st_size > 80 else \
-        WARN("suspiciously short for objective+constraints+milestones+out-of-scope")
+        WARN("对 objective+constraints+milestones+out-of-scope 来说短得可疑")
 
-@m2.check("goal armed through the non-blocking supervisor frontend")
+@m2.check("goal 通过非阻塞的监督者前端武装")
 def _(ws):
     for d in supervisor_sessions(ws):
         started = tool_calls(d, "start_goal")
         if started:
             return PASS(f"start_goal in {d.name}")
-    return FAIL("no start_goal call in any main-agent session")
+    return FAIL("任何 main-agent 会话里都没有 start_goal 调用")
 
-@m2.check("progress.jsonl: valid lines with ts+text")
+@m2.check("progress.jsonl：行合法且带 ts+text")
 def _(ws):
     good, bad = jsonl_records(Path(ws) / ".agi" / "progress.jsonl")
     if bad:
-        return FAIL(f"{len(bad)} invalid line(s)")
+        return FAIL(f"{len(bad)} 行非法")
     shaped = [r for r in good if "ts" in r and "text" in r]
-    return PASS(f"{len(shaped)} entries") if shaped else FAIL("no {ts,text} entries yet")
+    return PASS(f"{len(shaped)} entries") if shaped else FAIL("还没有 {ts,text} 条目")
 
-@m2.check("questions.jsonl / CHANGELOG.jsonl are valid JSONL")
+@m2.check("questions.jsonl / CHANGELOG.jsonl 是合法 JSONL")
 def _(ws):
     agi = Path(ws) / ".agi"
     _q, qbad = jsonl_records(agi / "questions.jsonl")
     ch, cbad = jsonl_records(agi / "CHANGELOG.jsonl")
     if qbad or cbad:
-        return FAIL(f"invalid lines: questions={len(qbad)} changelog={len(cbad)}")
+        return FAIL(f"非法行：questions={len(qbad)} changelog={len(cbad)}")
     noact = [r for r in ch if "action" not in r]
-    return PASS() if not noact else WARN(f"{len(noact)} changelog line(s) lack `action`")
+    return PASS() if not noact else WARN(f"{len(noact)} 行 changelog 缺少 `action`")
 
-@m2.check("amendment discipline: GOAL_AMENDMENTS.md, GOAL.md untouched")
+@m2.check("修订纪律：写了 GOAL_AMENDMENTS.md，GOAL.md 未被改动")
 def _(ws):
     agi = Path(ws) / ".agi"
     am = agi / "GOAL_AMENDMENTS.md"
     if not am.exists() or am.stat().st_size == 0:
-        return WARN("no amendment yet — ch7 test step 5 exercises this")
+        return WARN("还没有修正案 —— 第 7 章测试第 5 步会练到")
     goal, amend = (agi / "GOAL.md").stat().st_mtime, am.stat().st_mtime
-    return PASS() if goal <= amend else FAIL("GOAL.md modified after the amendment")
+    return PASS() if goal <= amend else FAIL("修正案之后 GOAL.md 又被改动了")
 
-@m2.check("config-edit refusal (say: 'set questionWaitMinutes to 2 for me')")
+@m2.check("拒绝改 config（说：'set questionWaitMinutes to 2 for me'）")
 def _(ws):
-    return MANUAL("expect refusal + a config-proposal line, never an edit (ch7 step 6)")
+    return MANUAL("预期是拒绝 + 一条 config 提议行，绝不真的改（第 7 章第 6 步）")
 
 
 # -------------------------------------------------------------- m3: schedule
 
-m3 = milestone("m3", "Time: the schedule overlay (chapter 8)")
+m3 = milestone("m3", "时间：schedule 叠加层（第 8 章）")
 
-@m3.check("dsh-schedule is inserted (profile patch or an installed bundle)")
+@m3.check("dsh-schedule 已插入（profile 补丁或已安装的 bundle）")
 def _(ws):
     # dsh-time-context is deliberately NOT required (nor wanted): it injects a
     # per-step timestamp block into every request, and Schedule doesn't need it.
@@ -507,7 +506,7 @@ def _(ws):
         return names
 
     if not need - inserted_names(PATCH_FILE):
-        return PASS("via the profile patch layer")
+        return PASS("通过 profile 补丁这一层")
     # Bundle path (the dsh-supervisor package route): every profile bundle's
     # own cordis.patch.yml is a layer too.
     profile_dir = PATCH_FILE.parent
@@ -519,68 +518,68 @@ def _(ws):
     for bundle in bundles:
         bundle_patch = profile_dir / "node_modules" / bundle / "cordis.patch.yml"
         if bundle_patch.exists() and not need - inserted_names(bundle_patch):
-            return PASS(f"via installed bundle {bundle}")
-    return FAIL("rows in neither the profile patch nor any installed bundle (ch8 / README)")
+            return PASS(f"通过已安装的 bundle {bundle}")
+    return FAIL("这些行既不在 profile 补丁里，也不在任何已安装 bundle 里（第 8 章 / README）")
 
-@m3.check("composed tree contains the schedule row (dump-config)")
+@m3.check("组合树里有 schedule 行（dump-config）")
 def _(ws):
     try:
         out = subprocess.run(["dsh", "--profile", "web", "--dump-config"],
                              capture_output=True, text=True, timeout=120)
     except FileNotFoundError:
-        return WARN("dsh CLI not on PATH for this shell — skipped")
+        return WARN("这个 shell 的 PATH 里没有 dsh CLI —— 已跳过")
     except subprocess.TimeoutExpired:
-        return WARN("dump-config timed out — check manually")
+        return WARN("dump-config 超时 —— 请手动检查")
     ok = "dsh-schedule" in out.stdout
-    return PASS() if ok else FAIL("row absent from the composed tree — inspect the dsh web log and chapter 6 bundle install")
+    return PASS() if ok else FAIL("组合树里没有这一行 —— 检查 dsh web 日志和第 6 章的 bundle 安装")
 
-@m3.check("schedule_create was actually called by the supervisor")
+@m3.check("监督者确实调用过 schedule_create")
 def _(ws):
     for d in supervisor_sessions(ws):
         if tool_calls(d, "schedule_create"):
-            return PASS(f"in {d.name}")
-    return FAIL("no schedule_create in any main-agent session (ch8 tests 2-3)")
+            return PASS(f"在 {d.name} 里")
+    return FAIL("任何 main-agent 会话里都没有 schedule_create（第 8 章测试 2-3）")
 
-@m3.check("a reminder was delivered back as a turn")
+@m3.check("提醒作为一轮消息投递回来了")
 def _(ws):
     sup = supervisor_sessions(ws)
     # Verified framing: a firing reminder arrives as a plugin-sourced message
     # whose text opens with "[SCHEDULE REMINDER]" and carries the prompt as
     # untrusted reminder content (observed live, 2026-08-21).
     if any_line_contains(sup, "[SCHEDULE REMINDER]"):
-        return PASS("[SCHEDULE REMINDER] delivery observed")
+        return PASS("观测到 [SCHEDULE REMINDER] 投递")
     if any_line_contains(sup, "patience-test"):
-        return PASS("'patience-test' reminder observed")
-    return WARN("no delivery evidence found in logs — did you wait the 60s (ch8 test 2)?")
+        return PASS("观测到 'patience-test' 提醒")
+    return WARN("日志里没找到投递证据 —— 你等满 60 秒了吗（第 8 章测试 2）？")
 
-@m3.check("patience flow produced an `assumed` question")
+@m3.check("耐心流程产生了一条 `assumed` 问题")
 def _(ws):
     good, _bad = jsonl_records(Path(ws) / ".agi" / "questions.jsonl")
     hits = [r for r in good if r.get("status") == "assumed"]
-    return PASS(f"{len(hits)} assumed") if hits else \
-        FAIL("no assumed entry — ch8 test 3 (stay silent past questionWaitMinutes)")
+    return PASS(f"{len(hits)} 条 assumed") if hits else \
+        FAIL("没有 assumed 条目 —— 第 8 章测试 3（沉默超过 questionWaitMinutes）")
 
-@m3.check("recurring floor: every_seconds < 300 must be refused")
+@m3.check("循环下限：every_seconds < 300 必须被拒绝")
 def _(ws):
-    return MANUAL("ch8 test 4 — ask for a 60s recurring reminder, expect refusal")
+    return MANUAL("第 8 章测试 4 —— 要一个 60 秒的循环提醒，预期被拒绝")
 
 
 # --------------------------------------------------------------- m4: workers
 
-m4 = milestone("m4", "Workers: spawn, steer, kill, report (chapter 9)")
+m4 = milestone("m4", "worker：派生、纠偏、终止、报告（第 9 章）")
 
-@m4.check("child sessions exist (origin: subagent, parented to the supervisor)")
+@m4.check("子会话存在（origin: subagent，挂在监督者下）")
 def _(ws):
     kids = child_sessions(ws)
     if not kids:
-        return FAIL("no subagent-origin sessions in this workspace")
+        return FAIL("这个工作区里没有 subagent 来源的会话")
     parents = {session_header(d).get("parentSession") for d in kids}
     sup = {session_header(d).get("id") for d in supervisor_sessions(ws)}
     linked = parents & sup
-    return PASS(f"{len(kids)} children, {len(linked)} linked to supervisor sessions") \
-        if linked else WARN(f"{len(kids)} children but none parented to a main-agent session")
+    return PASS(f"{len(kids)} 个子会话，其中 {len(linked)} 个挂到监督者会话") \
+        if linked else WARN(f"有 {len(kids)} 个子会话，但没有一个挂在 main-agent 会话下")
 
-@m4.check("spawn: guarded subagent called with an explicit model")
+@m4.check("派生：受约束的 subagent 被显式指定了 model")
 def _(ws):
     calls = [call for d in supervisor_sessions(ws) for call in tool_calls(d, "subagent")]
     explicit = []
@@ -594,105 +593,105 @@ def _(ws):
         if isinstance(arguments, dict) and arguments.get("model"):
             explicit.append(call)
     if explicit:
-        return PASS(f"{len(explicit)} explicit-model call(s)")
-    return FAIL("no subagent call carrying a required settings-approved model choice")
+        return PASS(f"{len(explicit)} 次显式指定 model 的调用")
+    return FAIL("没有带必需的 Settings 已批准 model 选择的 subagent 调用")
 
-@m4.check("steer: send_message called")
+@m4.check("纠偏：调用了 send_message")
 def _(ws):
     n = sum(len(tool_calls(d, "send_message")) for d in supervisor_sessions(ws))
-    return PASS(f"{n} call(s)") if n else FAIL("no send_message call (ch9 observation 2)")
+    return PASS(f"{n} 次调用") if n else FAIL("没有 send_message 调用（第 9 章观察点 2）")
 
-@m4.check("kill: interrupt_agent called")
+@m4.check("终止：调用了 interrupt_agent")
 def _(ws):
     n = sum(len(tool_calls(d, "interrupt_agent")) for d in supervisor_sessions(ws))
-    return PASS(f"{n} call(s)") if n else FAIL("no interrupt_agent call (ch9 observation 5)")
+    return PASS(f"{n} 次调用") if n else FAIL("没有 interrupt_agent 调用（第 9 章观察点 5）")
 
-@m4.check("settle notice reached the supervisor")
+@m4.check("收敛通知送到了监督者")
 def _(ws):
     ok = any_line_contains(supervisor_sessions(ws), '"kind":"subagent-settled"')
-    return PASS() if ok else FAIL("no subagent-settled notice in supervisor logs")
+    return PASS() if ok else FAIL("监督者日志里没有 subagent-settled 通知")
 
-@m4.check("a blocked worker used report")
+@m4.check("被卡住的 worker 用了 report")
 def _(ws):
     for d in child_sessions(ws):
         if tool_calls(d, "report"):
-            return PASS(f"in child {d.name}")
-    return FAIL("no report call in any child (ch9 observation 4)")
+            return PASS(f"在子会话 {d.name} 里")
+    return FAIL("任何子会话里都没有 report 调用（第 9 章观察点 4）")
 
-@m4.check("the report arrived as a subagent-report message")
+@m4.check("报告以 subagent-report 消息的形式到达")
 def _(ws):
     ok = any_line_contains(supervisor_sessions(ws), '"kind":"subagent-report"')
-    return PASS() if ok else WARN("no subagent-report-sourced message in supervisor logs")
+    return PASS() if ok else WARN("监督者日志里没有 subagent-report 来源的消息")
 
-@m4.check("a worker wrote outcome.md")
+@m4.check("有 worker 写了 outcome.md")
 def _(ws):
     hits = list((Path(ws) / ".agi" / "subagents").glob("*/outcome.md"))
-    return PASS(f"{len(hits)} outcome file(s)") if hits else \
-        FAIL("no .agi/subagents/*/outcome.md — worker protocol not followed")
+    return PASS(f"{len(hits)} 个 outcome 文件") if hits else \
+        FAIL("没有 .agi/subagents/*/outcome.md —— worker 协议没被执行")
 
-@m4.check("worker persona took (child behaves per the row's persona)")
+@m4.check("worker persona 生效了（子会话按该行的 persona 行事）")
 def _(ws):
-    return MANUAL("open a child session in the UI: it should report a summary at the end")
+    return MANUAL("在 UI 里打开一个子会话：它结束时应该给出一份总结报告")
 
 
 # ------------------------------------------------------------------ m5: loop
 
-m5 = milestone("m5", "The supervision loop (chapter 10)")
+m5 = milestone("m5", "监督循环（第 10 章）")
 
 def _changelog_actions(ws):
     good, _bad = jsonl_records(Path(ws) / ".agi" / "CHANGELOG.jsonl")
     return [str(r.get("action", "")) for r in good]
 
-@m5.check("CHANGELOG covers spawn, steer, and kill")
+@m5.check("CHANGELOG 覆盖了派生、纠偏、终止")
 def _(ws):
     actions = set(_changelog_actions(ws))
     missing = {"spawn", "steer", "kill"} - actions
-    return PASS(f"actions seen: {sorted(actions)}") if not missing else \
-        FAIL(f"never logged: {sorted(missing)}")
+    return PASS(f"看到的 action：{sorted(actions)}") if not missing else \
+        FAIL(f"从未记录：{sorted(missing)}")
 
-@m5.check("an assumption was logged (silent-question branch)")
+@m5.check("记录了一条假定（静默提问分支）")
 def _(ws):
     good, _b = jsonl_records(Path(ws) / ".agi" / "questions.jsonl")
     if any(r.get("status") == "assumed" for r in good):
         return PASS()
     if any(a == "assumption" for a in _changelog_actions(ws)):
-        return PASS("via CHANGELOG")
-    return FAIL("no assumed question / assumption entry")
+        return PASS("通过 CHANGELOG")
+    return FAIL("没有 assumed 问题 / assumption 条目")
 
-@m5.check("NOTES.md holds check-in verdicts")
+@m5.check("NOTES.md 里存着检查点的结论")
 def _(ws):
     p = Path(ws) / ".agi" / "NOTES.md"
     return PASS(f"{p.stat().st_size} bytes") if p.exists() and p.stat().st_size > 40 else \
-        FAIL("empty NOTES.md — the timer-wake verdict rule (ch10) never ran?")
+        FAIL("NOTES.md 是空的 —— 定时唤醒的结论规则（第 10 章）没跑过？")
 
-@m5.check("progress.jsonl narrates the mission (>= 3 entries)")
+@m5.check("progress.jsonl 讲述了任务过程（>= 3 条）")
 def _(ws):
     good, _b = jsonl_records(Path(ws) / ".agi" / "progress.jsonl")
     return PASS(f"{len(good)} entries") if len(good) >= 3 else \
-        WARN(f"only {len(good)} entries")
+        WARN(f"只有 {len(good)} 条")
 
-@m5.check("mission deliverable exists (SUMMARY.md)")
+@m5.check("任务交付物存在（SUMMARY.md）")
 def _(ws):
     p = Path(ws) / "SUMMARY.md"
     if p.exists():
         return PASS(f"{p.stat().st_size} bytes")
-    return WARN("no SUMMARY.md — fine if your mission's deliverable differs; check it by hand")
+    return WARN("没有 SUMMARY.md —— 如果你的任务交付物不是它也没关系；手工确认一下")
 
-@m5.check(">= 2 workers over the mission (kill+respawn implies two)")
+@m5.check("整个任务期间 >= 2 个 worker（终止+重派就意味着两个）")
 def _(ws):
     n = len(child_sessions(ws))
-    return PASS(f"{n} children") if n >= 2 else WARN(f"only {n} child session(s)")
+    return PASS(f"{n} children") if n >= 2 else WARN(f"只有 {n} 个子会话")
 
-@m5.check("timer hygiene: schedule_delete after work finished")
+@m5.check("定时器卫生：活干完后 schedule_delete")
 def _(ws):
     n = sum(len(tool_calls(d, "schedule_delete")) for d in supervisor_sessions(ws))
-    return PASS(f"{n} call(s)") if n else \
-        WARN("no schedule_delete seen — check schedule_list shows no leftover reminder")
+    return PASS(f"{n} 次调用") if n else \
+        WARN("没看到 schedule_delete —— 用 schedule_list 确认没有残留提醒")
 
 
 # -------------------------------------------------------------------- m6: ui
 
-m6 = milestone("m6", "UI: the Feed view tab (chapter 11)")
+m6 = milestone("m6", "UI：监督动态 Feed 视图标签页（第 11 章）")
 
 BASE_URL = os.environ.get("DSH_URL", "http://127.0.0.1:3080")
 
@@ -705,103 +704,103 @@ def _http(path: str):
     except Exception as e:  # noqa: BLE001 - grading, not serving
         return None, str(e).encode()
 
-@m6.check("the installed bundle ships a client half (dsh.client + lib/client.js)")
+@m6.check("已安装的 bundle 带客户端半边（dsh.client + lib/client.js）")
 def _(ws):
     profile_dir = PATCH_FILE.parent
     pkg_dir = profile_dir / "node_modules" / "dsh-supervisor"
     try:
         manifest = json.loads((pkg_dir / "package.json").read_text())
     except Exception:
-        return FAIL("dsh-supervisor is not installed in the web profile")
+        return FAIL("dsh-supervisor 没有安装进 web profile")
     if (manifest.get("dsh", {}).get("client", {}).get("platform")) != "web":
-        return FAIL("package.json lacks dsh.client { platform: web }")
+        return FAIL("package.json 缺少 dsh.client { platform: web }")
     if not (pkg_dir / "lib" / "client.js").exists():
-        return FAIL("lib/client.js missing from the installed package")
+        return FAIL("已安装的包里缺少 lib/client.js")
     return PASS()
 
-@m6.check("boot graph carries the dsh-supervisor row (client-modules scan)")
+@m6.check("启动图里带着 dsh-supervisor 行（client-modules 扫描）")
 def _(ws):
     status, body = _http("/")
     if status is None:
-        return WARN(f"dsh web not reachable at {BASE_URL} — {body.decode()[:80]}")
+        return WARN(f"dsh web 在 {BASE_URL} 不可达 —— {body.decode()[:80]}")
     ok = b"__DSH_BOOT__" in body and b"dsh-supervisor" in body
-    return PASS() if ok else FAIL("index page's __DSH_BOOT__ graph has no dsh-supervisor row — restart after install?")
+    return PASS() if ok else FAIL("index 页的 __DSH_BOOT__ 图里没有 dsh-supervisor 行 —— 安装后重启过了吗？")
 
-@m6.check("the client bundle is served")
+@m6.check("客户端 bundle 能被服务出来")
 def _(ws):
     status, _body = _http("/plugins/dsh-supervisor/client.js")
     if status is None:
-        return WARN(f"dsh web not reachable at {BASE_URL}")
-    return PASS() if status == 200 else FAIL(f"/plugins/dsh-supervisor/client.js answered {status}")
+        return WARN(f"dsh web 在 {BASE_URL} 不可达")
+    return PASS() if status == 200 else FAIL(f"/plugins/dsh-supervisor/client.js 返回 {status}")
 
-@m6.check("the feed route serves the workspace's .agi state")
+@m6.check("feed 路由能提供该工作区的 .agi 状态")
 def _(ws):
     status, body = _http(f"/supervisor/feed?ws={ws}")
     if status is None:
-        return WARN(f"dsh web not reachable at {BASE_URL}")
+        return WARN(f"dsh web 在 {BASE_URL} 不可达")
     if status != 200:
-        return FAIL(f"/supervisor/feed answered {status}: {body.decode()[:120]}")
+        return FAIL(f"/supervisor/feed 返回 {status}：{body.decode()[:120]}")
     try:
         doc = json.loads(body)
     except Exception:
-        return FAIL("feed route returned non-JSON")
+        return FAIL("feed 路由返回的不是 JSON")
     need = {"goal", "progress", "questions", "changelog", "subagents"}
     missing = need - doc.keys()
-    return PASS() if not missing else FAIL(f"feed document lacks {sorted(missing)}")
+    return PASS() if not missing else FAIL(f"feed 文档缺少 {sorted(missing)}")
 
-@m6.check("Feed tab renders goal/workers/progress in the session view")
+@m6.check("Feed 标签页在会话视图里渲染 goal/worker/进度")
 def _(ws):
-    return MANUAL("open a main-agent session -> view ring -> Feed: goal card, workers, progress timeline")
+    return MANUAL("打开一个 main-agent 会话 -> 视图环 -> 监督动态 Feed：goal 卡片、worker、进度时间线")
 
 
 # ------------------------------------------------------------ m7: acceptance
 
-m7 = milestone("m7", "Acceptance run (chapter 12)")
+m7 = milestone("m7", "验收运行（第 12 章）")
 
-@m7.check("restart resilience: session resumed after a process restart")
+@m7.check("重启韧性：进程重启后会话能恢复")
 def _(ws):
     for d in supervisor_sessions(ws):
         if any('"type":"session/end-seed"' in ln or "end-seed" in ln
                for ln in session_lines(d)):
-            return PASS(f"resume marker in {d.name}")
-    return FAIL("no resume marker — the restart drill (ch12) hasn't happened")
+            return PASS(f"{d.name} 里有恢复标记")
+    return FAIL("没有恢复标记 —— 重启演练（第 12 章）还没做")
 
-@m7.check("goal amendment exercised after completion")
+@m7.check("完成之后练过 goal 修正案")
 def _(ws):
     am = Path(ws) / ".agi" / "GOAL_AMENDMENTS.md"
     return PASS() if am.exists() and am.stat().st_size > 0 else \
-        FAIL("no amendment entry (script step 8)")
+        FAIL("没有修正案条目（脚本第 8 步）")
 
-@m7.check("no re-interview after restart; no duplicate workers")
+@m7.check("重启后不重新问答；没有重复的 worker")
 def _(ws):
-    return MANUAL("judge from the transcript: 'continue' must reuse the active native goal without repeating setup")
+    return MANUAL("从对话记录判断：'continue' 必须复用当前活跃的原生 goal，不重跑 setup")
 
-@m7.check("exit criterion: every step passed twice in a row")
+@m7.check("退出标准：每一步连续两次通过")
 def _(ws):
-    return MANUAL("keep the ledger next to DESIGN.md; two clean runs = done")
+    return MANUAL("把记录台账放在 DESIGN.md 旁边；连续两次干净跑完 = 完成")
 
 
 # ----------------------------------------------------------------------- cli
 
 def doctor():
-    print(f"{BOLD}grader doctor{RESET}")
-    print(f"  DSH_HOME:        {DSH_HOME}  {'(ok)' if DSH_HOME.is_dir() else '(MISSING)'}")
-    print(f"  preset dir:      {PRESET_DIR}  {'(ok)' if PRESET_DIR.is_dir() else '(absent)'}")
-    print(f"  profile patch:   {PATCH_FILE}  {'(ok)' if PATCH_FILE.exists() else '(MISSING)'}")
+    print(f"{BOLD}评分器 doctor{RESET}")
+    print(f"  DSH_HOME:          {DSH_HOME}  {'（正常）' if DSH_HOME.is_dir() else '（缺失）'}")
+    print(f"  preset 目录:       {PRESET_DIR}  {'（正常）' if PRESET_DIR.is_dir() else '（不存在）'}")
+    print(f"  profile 补丁:      {PATCH_FILE}  {'（正常）' if PATCH_FILE.exists() else '（缺失）'}")
     z = shutil.which("zstd")
     if z:
-        print(f"  zstd decoder:    {z}")
+        print(f"  zstd 解码器:       {z}")
     else:
         try:
             import zstandard  # noqa: F401
-            print("  zstd decoder:    Python zstandard (ok)")
+            print("  zstd 解码器:       Python zstandard（正常）")
         except ImportError:
-            print("  zstd decoder:    MISSING (run ./tutorial/setup.sh)")
+            print("  zstd 解码器:       缺失（跑 ./tutorial/setup.sh）")
     try:
         import yaml  # noqa: F401
-        print("  PyYAML:          ok")
+        print("  PyYAML:            正常")
     except ImportError:
-        print("  PyYAML:          MISSING (pip install pyyaml)")
+        print("  PyYAML:            缺失（pip install pyyaml）")
     root = DSH_HOME / "sessions"
     for wsdir in sorted(root.iterdir()) if root.is_dir() else []:
         dirs = [d for d in wsdir.iterdir() if d.is_dir()]
@@ -810,14 +809,14 @@ def doctor():
             h = session_header(d)
             key = (h.get("agentPreset", "?"), h.get("origin", "top"))
             presets[key] = presets.get(key, 0) + 1
-        print(f"  {wsdir.name}: {len(dirs)} sessions {dict(sorted(presets.items()))}")
+        print(f"  {wsdir.name}: {len(dirs)} 个会话 {dict(sorted(presets.items()))}")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("target", choices=[*MILESTONES.keys(), "all", "doctor"])
-    ap.add_argument("--ws", help=f"workspace (default {DEFAULT_WS}; m7 default {ACCEPTANCE_WS})")
+    ap.add_argument("--ws", help=f"工作区（默认 {DEFAULT_WS}；m7 默认 {ACCEPTANCE_WS}）")
     args = ap.parse_args()
 
     if args.target == "doctor":
@@ -828,7 +827,7 @@ def main():
         keys = ["m0", "m1", "m2", "m3", "m4", "m5", "m6"]
         ws = args.ws or DEFAULT_WS
         scores = [(k, MILESTONES[k].run(ws)) for k in keys]
-        print(f"\n{BOLD}=== overall ==={RESET}")
+        print(f"\n{BOLD}=== 总览 ==={RESET}")
         for k, s in scores:
             bar = "█" * int(s / 10) + "░" * (10 - int(s / 10))
             print(f"  {k}  {bar}  {s:.0f}%")
@@ -836,7 +835,7 @@ def main():
 
     if args.target == "m7":
         ws = args.ws or ACCEPTANCE_WS
-        print(f"{DIM}m7 re-runs m2-m5 against the acceptance workspace first:{RESET}")
+        print(f"{DIM}m7 会先在验收工作区上重跑 m2-m5：{RESET}")
         scores = [MILESTONES[k].run(ws) for k in ("m2", "m3", "m4", "m5")]
         scores.append(MILESTONES["m7"].run(ws))
         sys.exit(0 if all(s >= 90 for s in scores) else 1)

@@ -1,70 +1,70 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>8 · Milestone 3: time — Supervisor on DSH</title>
+<title>第 8 章 · 里程碑 3：时间 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 8</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 8 章</span>
   <span class="spacer"></span>
   <a href="07-brain.html">←</a>
   <a href="09-delegation.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 3</p>
-  <h1>Time: the schedule overlay</h1>
-  <p class="lede">A supervisor needs two timers: a patience window on questions and a periodic
-  check-in on running workers. One <code>dsh-schedule</code> service row supplies both timer forms;
-  the bundle installs it automatically, or the manual path hot-applies it in your profile patch.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 3</p>
+  <h1>时间：schedule 叠加层</h1>
+  <p class="lede">监督者需要两个定时器：提问的耐心窗口，以及对运行中 worker 的周期性
+  巡检。一行 <code>dsh-schedule</code> 服务配置即可提供这两种定时形式；
+  bundle 会自动安装它，或由手动路径把它热应用到你的 profile patch。</p>
 </header>
 
-<h2>What the schedule subsystem is</h2>
+<h2>schedule 子系统是什么</h2>
 <p>
-  <code>@deepseek-ai/dsh-schedule</code> owns durable reminders that return to the original session
-  <em>as ordinary later conversation turns</em>. Three facts define the design space
-  (<code>docs/subsystems/schedule.md</code>):
+  <code>@deepseek-ai/dsh-schedule</code> 拥有一套持久提醒，它们会回到原本的会话，
+  形式就是<em>普通的后续对话回合</em>。三个事实界定了设计空间
+  （<code>docs/subsystems/schedule.md</code>）：
 </p>
 <ul>
-  <li><strong>Delivery is a turn.</strong> A firing reminder is a message into the session’s inbox — the
-      same wake mechanism as everything else in chapter 3. No callbacks, no polling.</li>
-  <li><strong>Three rules:</strong> one-shot <code>after_seconds</code> (any positive delay), one-shot absolute
-      <code>at</code>, and recurring <code>every_seconds</code> with a hard minimum of <strong>300 seconds</strong>.
-      Records are durable session events, so they survive restarts of the process.</li>
-  <li><strong>Session-local:</strong> a reminder returns to the session that created it. Perfect — the Main
-      Agent session is by definition the live one.</li>
+  <li><strong>投递即一个回合。</strong>到点的提醒是一条投进会话收件箱的消息 —— 与第 3 章中
+      其它一切相同的唤醒机制。无回调，无轮询。</li>
+  <li><strong>三条规则：</strong>一次性 <code>after_seconds</code>（任意正延迟）、一次性绝对
+      <code>at</code>，以及周期性 <code>every_seconds</code>，硬性下限为 <strong>300 秒</strong>。
+      记录是持久的会话事件，因此能扛过进程重启。</li>
+  <li><strong>会话本地：</strong>提醒会回到创建它的那个会话。完美 —— Main Agent
+      （监督者）会话按定义就是那个活着的会话。</li>
 </ul>
-<p>Mapping to your two needs:</p>
+<p>对应到你的两个需求：</p>
 <table>
-  <tr><th>Need</th><th>Mechanism</th></tr>
-  <tr><td>Question patience (<code>questionWaitMinutes</code>, template default 2)</td><td><code>schedule_create</code> one-shot, <code>after_seconds: questionWaitMinutes*60</code>. No minimum — 2-minute patience works fine.</td></tr>
-  <tr><td>Periodic worker check-in (<code>wakeMinutes</code>, default 5)</td><td><code>schedule_create</code> recurring, <code>every_seconds: wakeMinutes*60</code> — created when a worker spawns, deleted when work is done. Minimum 300 s ⇒ <code>wakeMinutes ≥ 5</code>, which matches your default.</td></tr>
+  <tr><th>需求</th><th>机制</th></tr>
+  <tr><td>提问耐心（<code>questionWaitMinutes</code>，模板默认 2）</td><td><code>schedule_create</code> 一次性，<code>after_seconds: questionWaitMinutes*60</code>。没有下限 —— 2 分钟耐心完全可用。</td></tr>
+  <tr><td>周期性 worker 巡检（<code>wakeMinutes</code>，默认 5）</td><td><code>schedule_create</code> 周期性，<code>every_seconds: wakeMinutes*60</code> —— worker 派生时创建，工作结束后删除。下限 300 秒 ⇒ <code>wakeMinutes ≥ 5</code>，正好与你的默认值一致。</td></tr>
 </table>
 
 <div class="box why">
-  <span class="box-title">Why this replaces the plan’s custom <code>wait_for_agents</code> tool (mostly)</span>
+  <span class="box-title">为什么这（基本）取代了计划里自研的 <code>wait_for_agents</code> 工具</span>
   <p>
-    The plan’s M2c built a blocking tool: sleep until a child settles or a timeout passes. Natively,
-    <em>both wake sources already exist</em>: a settling child unconditionally delivers a notice to the
-    parent (chapter 9), and the recurring reminder is the timeout. The only difference is form —
-    instead of blocking inside a tool call, the supervisor ends its turn and gets woken. Same loop,
-    zero code. The blocking version remains available as a chapter 13 exercise if you prefer its
-    ergonomics.
+    计划里的 M2c 造了一个阻塞式工具：睡到子级收敛、或某个超时到点为止。而在原生路径下，
+    <em>两个唤醒源都已经存在</em>：子级收敛时会无条件把通知投递给
+    父级（第 9 章），而周期性提醒就是那个超时。唯一差别只是形式 ——
+    监督者不再阻塞在一次工具调用内，而是结束自己的回合、再被唤醒。同一个循环，
+    零代码。阻塞版仍可作为第 13 章的练习保留，如果你更偏好
+    它的使用手感。
   </p>
 </div>
 
-<h2>The overlay: the shipped example</h2>
+<h2>叠加层：随包示例</h2>
 <p>
-  Schedule is <em>not mounted by default</em>. The harness ships the opt-in as an example overlay —
-  read it, it is exactly two rows (we will keep only one of them):
+  Schedule <em>默认不挂载</em>。harness 把这个可选件作为示例叠加层随包提供 ——
+  读一下，它正好是两行（我们只保留其中一行）：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/examples/web-schedule/cordis.yml (the shipped overlay)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/examples/web-schedule/cordis.yml（随包示例叠加层）</figcaption>
 <pre><code>- insert:
     - id: time-context
       name: '@deepseek-ai/dsh-time-context'
@@ -72,45 +72,45 @@
       name: '@deepseek-ai/dsh-schedule'</code></pre>
 </figure>
 <ul>
-  <li><code>dsh-schedule</code> — the service, the session driver, and the model tools
+  <li><code>dsh-schedule</code> —— 服务、会话驱动器，以及模型工具
       (<code>schedule_create</code> / <code>schedule_list</code> / <code>schedule_delete</code>).</li>
-  <li><code>dsh-time-context</code> — injects a current-time block (and the browser’s time zone) into
-      <em>every request step</em>. The shipped example mounts it so natural-language absolute times
-      (“tomorrow 9am”) resolve in the user’s zone — but it is <strong>not</strong> a Schedule dependency
-      (<code>packages/schedule/schedule/README.md</code>: “Time-context is not a Schedule dependency”).</li>
+  <li><code>dsh-time-context</code> —— 把当前时间块（以及浏览器的时区）注入
+      <em>每一个请求步骤</em>。随包示例挂载它，是为了让自然语言表达的绝对时间
+      （“明天早 9 点”）能按用户所在时区解析 —— 但它<strong>不是</strong> Schedule 的依赖
+      （<code>packages/schedule/schedule/README.md</code>：“Time-context is not a Schedule dependency”）。</li>
 </ul>
 <div class="box warn">
-  <span class="box-title">We deliberately do NOT mount <code>dsh-time-context</code></span>
+  <span class="box-title">我们刻意不挂载 <code>dsh-time-context</code></span>
   <p>
-    Its injected block (“Time sampled while preparing turn N, step M… Supersedes earlier snapshots”)
-    re-appears on every step — constant context noise for an always-on agent. The supervisor only ever
-    arms <em>relative</em> timers (<code>after_seconds</code> / <code>every_seconds</code>), which need no
-    time zone. So the overlay below is one row. If your deployment wants zone-local <code>at</code>
-    schedules from natural language, add the time-context row back in your own profile patch.
+    它注入的块（“Time sampled while preparing turn N, step M… Supersedes earlier snapshots”）
+    会在每一步重新出现 —— 对一个常驻 agent 来说是持续的上下文噪音。监督者只会
+    武装<em>相对</em>定时器（<code>after_seconds</code> / <code>every_seconds</code>），它们不需要
+    时区。所以下面的叠加层只有一行。如果你的部署想从自然语言得到按本时区的 <code>at</code>
+    计划，就把 time-context 行加回你自己的 profile patch。
   </p>
 </div>
 <p>
-  Host plane or preset? Host: the schedule <em>service and driver</em> serve every session and the tools
-  register globally. In the normal path it therefore lives in the supervisor bundle layer; the
-  user-owned profile patch is reserved for overrides.
+  宿主平面还是 preset？宿主：schedule <em>服务与驱动器</em>服务每一个会话，并且这些工具
+  是全局注册的。因此在正常路径下它位于监督者的 bundle 层；
+  用户所有的 profile patch 保留给覆盖项。
 </p>
 
-<h2>Verify the row chapter 6 already installed</h2>
+<h2>核验第 6 章已安装的那一行</h2>
 <p>
-  The clean-machine path installed <code>dsh-supervisor</code> as a bundle in chapter 6, and that bundle's
-  <code>agi-schedule</code> row mounted <code>@deepseek-ai/dsh-schedule</code> at the restart. Verify it:
+  干净机器路径在第 6 章把 <code>dsh-supervisor</code> 作为 bundle 安装，而那个 bundle 的
+  <code>agi-schedule</code> 行在重启时挂载了 <code>@deepseek-ai/dsh-schedule</code>。核验它：
 </p>
 <pre><code>dsh --profile web --dump-config | grep -A2 'agi-schedule'</code></pre>
 <p>
-  Do <strong>not</strong> add another schedule row to <code>$HOME/.dsh/profiles/web/cordis.patch.yml</code>.
-  The service registers once per process; a duplicate mount is a composition error.
+  在 <code>$HOME/.dsh/profiles/web/cordis.patch.yml</code> 里<strong>不要</strong>再加一行 schedule。
+  该服务每进程只注册一次；重复挂载是组合错误。
 </p>
 
 <details>
-<summary>Manual alternative when you deliberately skipped the bundle</summary>
-<p>Back up, then edit your live patch file:</p>
+<summary>当你刻意跳过 bundle 时的手动替代方案</summary>
+<p>先备份，然后编辑你的 live patch 文件：</p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>$HOME/.dsh/profiles/web/cordis.patch.yml (replace the current <code>[]</code>)</figcaption>
+<figcaption><span class="badge you">YOURS</span>$HOME/.dsh/profiles/web/cordis.patch.yml （替换当前内容 <code>[]</code>）</figcaption>
 <pre><code># Profile patch layer — applied after every bundle layer. Live-watched.
 - insert:
     - id: schedule
@@ -120,93 +120,93 @@
 # ... edit ...
 </code></pre>
 <p>
-  No restart: the file is watched, and each change transactionally recomposes the tree
-  (<code>packages/boot/app-boot/README.md</code>: “Every profile boot keeps <code>cordis.patch.yml</code>
+  无需重启：该文件被监视着，每次改动都会事务性地重组整棵树
+  （<code>packages/boot/app-boot/README.md</code>：“Every profile boot keeps <code>cordis.patch.yml</code>
   live through <code>watchUserPatches</code>… A rejected read, parse, or Loader candidate leaves the last
-  good tree running”). If you typo the YAML, the old tree keeps running and the <code>dsh web</code> terminal
-  shows <code>hmr/config-update-failed</code> — fix and save again.
+  good tree running”）。如果你的 YAML 打错字，旧树会继续运行，而 <code>dsh web</code> 终端
+  会显示 <code>hmr/config-update-failed</code> —— 修正后再次保存。
 </p>
 
 <div class="box warn">
-  <span class="box-title">Two sharp edges</span>
+  <span class="box-title">两处锋利边缘</span>
   <ul>
-    <li><strong>Duplicate ids are fatal at compose time.</strong> If you later add more inserts, never reuse
-        <code>id: schedule</code> etc.</li>
-    <li><strong>An empty patch file must be <code>[]</code>.</strong> A file of only comments throws (“it parses
-        to nothing, not to a list”) — same README.</li>
+    <li><strong>重复 id 在组合期是致命的。</strong>如果之后还要加更多 insert，绝不要复用
+        <code>id: schedule</code> 等 id。</li>
+    <li><strong>空的 patch 文件必须是 <code>[]</code>。</strong>只有注释的文件会抛错（“it parses
+        to nothing, not to a list”）—— 同一个 README。</li>
   </ul>
 </div>
 
 <div class="box why">
-  <span class="box-title">Field note: the packaged alternative</span>
+  <span class="box-title">实战笔记：打包方案</span>
   <p>
-    The normal course path installed the bundle in chapter 6. The same row ships in the bundle's own
-    <code>cordis.patch.yml</code> instead, and this manual edit becomes unnecessary. Never both at once:
-    the schedule service registers once per process, so a second mount collides. If the bundle is
-    installed, keep your profile patch at <code>[]</code>; its row is addressable
-    (<code>agi-schedule</code>) and can be disabled by an id-targeted patch if
-    your deployment mounts schedule from somewhere else. The grader accepts either source.
+    课程的正常路径已在第 6 章安装 bundle。同一行也随 bundle 自带的 own
+    <code>cordis.patch.yml</code> 发布，于是这次手动编辑就多余了。绝不要同时用两者：
+    schedule 服务每进程只注册一次，所以第二次挂载会冲突。如果 bundle 已
+    安装，就把你的 profile patch 保持为 <code>[]</code>；它的行是可寻址的
+    （<code>agi-schedule</code>），如果你的部署从别处挂载 schedule，
+    可以用一条按 id 定位的 patch 把它禁用。评分器接受任一来源。
   </p>
 </div>
 </details>
 
 <div class="box test">
-  <span class="box-title">Test it live — milestone 3 acceptance</span>
-  <p><strong>Auto-grade:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m3</code> — checks the
-     composed row/tree, the <code>schedule_create</code> call, reminder delivery, and the <code>assumed</code> question.</p>
+  <span class="box-title">实机验证 —— 里程碑 3 验收</span>
+  <p><strong>自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m3</code> —— 检查
+     组合后的行/树、<code>schedule_create</code> 调用、提醒投递，以及那条 <code>assumed</code> 提问。</p>
   <ol>
-    <li><strong>Tools appeared (existing sessions too):</strong> in your <code>main-agent</code> session ask
-        <em>“do you now have schedule tools?”</em> — expect <code>schedule_create</code> /
-        <code>schedule_list</code> / <code>schedule_delete</code> in its catalog. (Composition changes reach
-        the live tree; the next turn sees the new tools.)</li>
-    <li><strong>One-shot delivery:</strong> <em>“Create a reminder for 60 seconds from now that says
-        ‘patience-test’. Then stop.”</em> Wait a minute doing nothing. <strong>Expect:</strong> the agent
-        wakes <em>by itself</em> with a new turn carrying the reminder — you see it arrive in the
-        conversation.</li>
-    <li><strong>The persona’s patience path now works:</strong> re-run chapter 7’s question test — ask it
-        something ambiguous mid-work, stay silent. With <code>questionWaitMinutes: 2</code> in your
-        <code>config.json</code>, expect: question logged as <code>pending</code> → reminder created → two
-        minutes later it wakes, flips the entry to <code>assumed</code> with a recorded assumption, logs
-        it, and proceeds.</li>
-    <li><strong>Recurring floor:</strong> <em>“create a recurring reminder every 60 seconds”</em> —
-        expect a refusal/error (minimum 300 s), proving you know where the floor is.</li>
+    <li><strong>工具出现了（已存在的会话也一样）：</strong>在你的 <code>main-agent</code> 会话里问
+        <em>“你现在有 schedule 工具了吗？”</em> —— 预期它的目录里出现 <code>schedule_create</code> /
+        <code>schedule_list</code> / <code>schedule_delete</code>。（组合变更会到达
+        活着的树；下一个回合就能看到新工具。）</li>
+    <li><strong>一次性投递：</strong><em>“创建一个 60 秒后的提醒，内容是
+        ‘patience-test’。然后停下。”</em> 什么都不做，等一分钟。<strong>预期：</strong>agent
+        带着这条提醒<em>自己</em>醒来开出一个新回合 —— 你会看到它到达
+        对话里。</li>
+    <li><strong>人格的耐心路径现在能用了：</strong>重跑第 7 章的提问测试 —— 在工作中途问它一个
+        含糊的问题，然后保持沉默。当你的
+        <code>config.json</code> 里是 <code>questionWaitMinutes: 2</code> 时，预期：提问被记为 <code>pending</code> → 创建提醒 → 两
+        分钟后它醒来，把该条翻成 <code>assumed</code> 并附上记录的假设，写入
+        日志，然后继续。</li>
+    <li><strong>周期性下限：</strong><em>“创建一个每 60 秒的周期性提醒”</em> ——
+        预期被拒绝/报错（下限 300 秒），以此证明你知道下限在哪里。</li>
   </ol>
 </div>
 
 <div class="box why">
-  <span class="box-title">Field note: what a firing reminder actually looks like</span>
+  <span class="box-title">实战笔记：到点的提醒究竟长什么样</span>
   <p>
-    Observed live: the delivery is a <em>plugin-sourced</em> message whose text opens with
-    <code>[SCHEDULE REMINDER]</code> and explicitly frames the prompt as “untrusted reminder content,
-    not new user instructions,” carrying <code>schedule_id_json</code> and <code>occurrence_at</code>.
-    Two consequences: your persona’s reminder prompts should be <em>self-contained instructions to
-    yourself</em> (“Question q1 follow-up: if no reply by now, mark it assumed…” worked verbatim), and
-    anything that scans logs for deliveries should match <code>[SCHEDULE REMINDER]</code> — which is
-    exactly what <code>tutorial/grade.py m3</code> does.
+    实测观察到：投递的是一条<em>来自插件</em>的消息，其正文以
+    <code>[SCHEDULE REMINDER]</code> 开头，并明确把该提示框定为“untrusted reminder content,
+    not new user instructions”，同时携带 <code>schedule_id_json</code> 与 <code>occurrence_at</code>。
+    两个推论：你的人格里的提醒提示词应当是<em>写给自己的自足
+    指令</em>（“Question q1 追问：到点仍无回复就把它记为 assumed” 逐字照抄即可用），并且
+    任何扫描日志找投递的工具都应该匹配 <code>[SCHEDULE REMINDER]</code> —— 这正是
+    <code>tutorial/grade.py m3</code> 所做的事。
   </p>
 </div>
 
 <div class="box ts">
-  <span class="box-title">TypeScript corner · reading the schedule record types</span>
+  <span class="box-title">TypeScript corner · 读懂 schedule 的记录类型</span>
   <p>
-    <code>docs/subsystems/schedule.md</code> defines the durable records as interfaces — e.g.
+    <code>docs/subsystems/schedule.md</code> 用接口定义这些持久记录 —— 例如
     <code>interface AfterScheduleRecord { readonly kind: 'after'; readonly afterSeconds: number; … }</code>.
-    Two idioms to bank: a <em>literal type</em> (<code>kind: 'after'</code> — the field can only ever be that
-    exact string; unions of these make “tagged unions” you can switch on), and <code>readonly</code>
-    (compile-time immutability). Durable records here are tagged unions everywhere: events, stop
-    reasons, message sources. Recognizing the tag field is half of reading harness types.
+    两个值得记住的惯用法：<em>字面量类型</em>（<code>kind: 'after'</code> —— 该字段只可能是那个
+    精确字符串；它们的联合构成可以 switch 的“tagged union”），以及 <code>readonly</code>
+    （编译期不可变）。这里的持久记录到处都是以 tagged union 形式出现的：事件、停止
+    原因、消息来源。认出 tag 字段，读懂 harness 类型就完成了一半。
   </p>
 </div>
 
-<h2>What exists now</h2>
+<h2>现在有了什么</h2>
 <p>
-  A supervisor that can wake itself. The question protocol is fully operational; the periodic
-  check-in has its mechanism but nothing to check on yet. Next: workers.
+  一个能唤醒自己的监督者。提问协议已完全可用；周期性
+  巡检有了机制，但暂时还没有可巡检的对象。下一章：worker。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="07-brain.html">← Chapter 7 — Milestone 2: the brain</a>
-  <a class="next" href="09-delegation.html">Chapter 9 — Milestone 4: workers →</a>
+  <a class="prev" href="07-brain.html">← 第 7 章 —— 里程碑 2：大脑</a>
+  <a class="next" href="09-delegation.html">第 9 章 —— 里程碑 4：worker →</a>
 </nav>
 </main>
 </body>

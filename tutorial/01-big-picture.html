@@ -1,65 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>1 · The big picture — Supervisor on DSH</title>
+<title>第 1 章 · 大局观 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part I · Chapter 1</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 I 部分 · 第 1 章</span>
   <span class="spacer"></span>
   <a href="00-setup.html">←</a>
   <a href="02-cordis.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part I — Foundations</p>
-  <h1>The big picture</h1>
-  <p class="lede">What you are building, why it is shaped this way, and the exact inventory
-  of native parts you will assemble. No code yet — this chapter is the map you will
-  navigate by for the next fourteen.</p>
+  <p class="kicker">第 I 部分 —— 基础</p>
+  <h1>大局观</h1>
+  <p class="lede">你正在构建什么、它为什么被塑造成这个样子，以及你将组装起来的各部分原生组件的准确清单。本章还没有代码 —— 它是你接下来十四章里用来导航的地图。</p>
 </header>
 
-<h2>The product in one paragraph</h2>
+<h2>一段话讲清这个产品</h2>
 <p>
-  A <strong>Main Agent</strong> runs as one long-lived chat session. When you give it a mission, it
-  inspects durable workspace state and relevant runbooks/scripts, writes a reviewable goal, arms
-  the native continuation loop, and proceeds in the same turn. From then on it loops forever:
-  it <em>spawns</em> a worker subagent with a task, <em>sleeps</em>, <em>wakes</em> when the worker finishes
-  (or a timer fires, or you send a message), <em>inspects</em> what happened, and then <em>steers</em>,
-  <em>kills</em>, or <em>spawns the next unit of work</em>. It never idles waiting for a human: if you
-  don’t answer a question within a patience window, it records an assumption and moves on.
-  Everything it knows lives in plain files on disk, so a crash or restart costs nothing.
+  一个 <strong>Main Agent</strong>（监督者）以单个长期存活的聊天会话运行。当你交给它一个任务时，它会
+  检查工作区的持久状态与相关的 runbook/脚本，写下一个可审阅的目标，武装
+  原生续行循环，并在同一回合里继续。从那以后它就永远循环：
+  它带着任务<em>派生</em>一个 worker 子代理，<em>休眠</em>，在 worker 收敛时
+  （或定时器触发、或你发来消息时）<em>唤醒</em>，<em>巡检</em>发生了什么，然后<em>纠偏</em>、
+  <em>终止</em>，或<em>派生下一个工作单元</em>。它绝不空等人类：如果你
+  在耐心窗口内没有回答某个问题，它会记录一个假设并继续。
+  它知道的一切都存放在磁盘上的纯文本文件里，因此崩溃或重启不产生任何代价。
 </p>
 
-<h2>The three roles</h2>
+<h2>三种角色</h2>
 <table>
-  <tr><th>Role</th><th>What it is</th><th>Realized as</th></tr>
+  <tr><th>角色</th><th>是什么</th><th>落实为</th></tr>
   <tr>
-    <td><strong>Main Agent</strong> (supervisor)</td>
-    <td>The one long-lived session. Plans, delegates, supervises, talks to you. It reads, searches, and verifies with its own tools — it understands what it orders and grades what comes back; only <em>mutation</em> is delegated.</td>
-    <td>The package-matched <em>agent preset</em> named <code>main-agent</code>, installed in chapter 6 and examined in chapter 7.</td>
+    <td><strong>Main Agent</strong>（监督者）</td>
+    <td>那一个长期存活的会话。它做规划、委派、监督，并和你对话。它用自己的工具读取、搜索和核验 —— 它理解自己下的指令，也验收拿回来的东西；只有<em>变更</em>才被委派出去。</td>
+    <td>与包匹配的 <em>agent preset</em>，名为 <code>main-agent</code>，在第 6 章安装、在第 7 章检视。</td>
   </tr>
   <tr>
-    <td><strong>Dev Agent</strong> (worker)</td>
-    <td>A disposable specialist spawned per unit of work: browser operator, researcher, implementer. Full tool access; installs whatever it needs at runtime.</td>
-    <td>A native <em>continuable background subagent</em> — a real, durable session of its own — started by the shipped <code>subagent</code> tool (chapter 9). Its role travels in the spawn prompt.</td>
+    <td><strong>Dev Agent</strong>（worker）</td>
+    <td>按工作单元派生的可丢弃专家：浏览器操作员、研究员、实现者。拥有完整工具权限；运行期需要什么就自己装。</td>
+    <td>一个原生<em>可续行后台 subagent</em> —— 它本身就是一个真实、持久的会话 —— 由随包携带的 <code>subagent</code> 工具启动（第 9 章）。它的角色写在派生提示词里。</td>
   </tr>
   <tr>
-    <td><strong>You</strong></td>
-    <td>The goal-giver and the only authority for goal changes, credentials, and config.</td>
-    <td>The person typing into the Main Agent’s chat in the web UI. All input flows through that one chat.</td>
+    <td><strong>你</strong></td>
+    <td>目标的给出者，也是目标变更、凭据与配置的唯一权威。</td>
+    <td>在 Web UI 里向 Main Agent 聊天框打字的那个人。所有输入都经由那一个聊天。</td>
   </tr>
 </table>
 
-<h2>The heartbeat: sleep, wake, triage</h2>
+<h2>心跳：休眠、唤醒、巡检</h2>
 <p>
-  The core of the system is a loop the Main Agent runs between your messages. It is worth
-  internalizing now, because every later chapter builds a piece of it:
+  系统的核心是 Main Agent 在你的消息之间运行的一个循环。现在就把它内化是值得的，
+  因为后面每一章都在构建它的一部分：
 </p>
 <pre><code>ensure an armed, reviewable GOAL exists (chapter 7 — goal setup)
 loop:
@@ -80,43 +78,43 @@ loop:
 </code></pre>
 
 <div class="box why">
-  <span class="box-title">Why “sleep” is free</span>
+  <span class="box-title">为什么「休眠」是免费的</span>
   <p>
-    In this harness an agent “running” means <em>a turn is executing</em>. Between turns an agent costs
-    nothing — no polling loop, no tokens. So the Main Agent sleeps by simply ending its turn, and it
-    wakes because the harness delivers something to its inbox: a settle notice, a child’s report,
-    a schedule reminder, or your message. All four are native delivery mechanisms. The design
-    documents call this “settle-or-timeout”; you get it without writing a scheduler.
+    在这个 harness 里，agent「正在运行」意味着<em>有回合正在执行</em>。回合之间 agent 不产生任何
+    开销 —— 没有轮询循环，也没有 token 消耗。因此 Main Agent（监督者）通过直接结束回合来休眠，
+    它被唤醒是因为 harness 往它的收件箱投递了东西：收敛通知、子级的报告、
+    定时提醒，或你的消息。这四条都是原生投递机制。设计
+    文档称之为「settle-or-timeout」；你无需写调度器就能得到它。
   </p>
 </div>
 
-<h2>The three verbs of supervision</h2>
+<h2>监督的三个动词</h2>
 <p>
-  The Main Agent manages workers with exactly three verbs, and all three are shipped tools you
-  will meet in chapter 9:
+  Main Agent 用恰好三个动词管理 worker，三者都是你将在第 9 章遇到的
+  随包携带的工具：
 </p>
 <table>
-  <tr><th>Verb</th><th>Native tool</th><th>Semantics</th></tr>
-  <tr><td><strong>spawn</strong></td><td><code>subagent</code> (continuable, background)</td>
-      <td>Creates a durable child session with its own agent, delivers the task as its first message, returns a child id immediately.</td></tr>
-  <tr><td><strong>steer</strong></td><td><code>send_message</code></td>
-      <td>Joins a running child at its <em>next model step</em>; an idle child starts a later turn and a cold child resumes from disk. Interrupt first only when the current turn must stop.</td></tr>
-  <tr><td><strong>kill</strong></td><td><code>interrupt_agent</code> + silence</td>
-      <td>Stops the current turn. An un-messaged child does no further work and burns zero tokens. There is no “destroy” — the session remains on disk, inspectable.</td></tr>
+  <tr><th>动词</th><th>原生工具</th><th>语义</th></tr>
+  <tr><td><strong>派生</strong>（spawn）</td><td><code>subagent</code>（可续行、后台）</td>
+      <td>创建一个持久的子会话（有它自己的 agent），把任务作为它的第一条消息投递，并立即返回子会话 id。</td></tr>
+  <tr><td><strong>纠偏</strong>（steer）</td><td><code>send_message</code></td>
+      <td>在一个正在运行的子级<em>下一个模型步骤</em>处加入；空闲的子级会启动一个后续回合，冷子级会从磁盘恢复。只有当当前回合必须立即停止时才先 interrupt。</td></tr>
+  <tr><td><strong>终止</strong>（kill）</td><td><code>interrupt_agent</code> + 沉默</td>
+      <td>停止当前回合。未被发消息的子级不会再做任何工作，也不会消耗任何 token。不存在「销毁」—— 会话仍留在磁盘上，可以检视。</td></tr>
 </table>
 <p>
-  And one verb belongs to the <em>worker</em>: <strong>report</strong>. A continuable child automatically gets a
-  <code>report</code> tool; calling it delivers a message to the parent and (by default) <em>wakes the parent’s
-  turn</em>. That is the blocked-question channel: the worker asks, stops, and the answer continues the
-  same child via <code>send_message</code>. Context preserved, no restart, no forking.
+  还有一个动词属于 <em>worker</em>：<strong>报告</strong>（report）。可续行的子级会自动获得
+  <code>report</code> 工具；调用它会向父级投递一条消息，并且（默认）<em>唤醒父级的
+  回合</em>。这就是受阻塞时的提问通道：worker 发问、停下，答案通过 <code>send_message</code> 继续
+  同一个子级。上下文保留，不重启，不分叉。
 </p>
 
-<h2>Files are the truth</h2>
+<h2>文件就是事实</h2>
 <p>
-  The Main Agent’s chat context is a cache; the record is a directory of plain files in the target
-  workspace, written as it goes. This is decision Q2c of your design and it survives the native-first
-  rewrite untouched, because writing files needs no machinery — every agent already has shell and
-  filesystem tools.
+  Main Agent 的聊天上下文只是缓存；真正的记录是目标工作区里的一堆纯文本
+  文件，边做边写。这是你设计中的决策 Q2c，它在原生优先的
+  重写中原封不动地保留下来，因为写文件不需要任何机制 —— 每个 agent 本来就有 shell 与
+  文件系统工具。
 </p>
 <pre><code>.agi/
   config.json          # user-only knobs (patience minutes, wake minutes)
@@ -129,91 +127,91 @@ loop:
   subagents/&lt;id&gt;/      # per-worker artifacts (outcome.md at minimum)
 </code></pre>
 <p>
-  Chapter 7 turns this tree into a <em>contract</em> the persona enforces. Because they are plain files,
-  your “UI” for them is anything that reads files — including the supervisor itself after a restart,
-  which is the whole point.
+  第 7 章会把这份目录树变成人格强制执行的<em>契约</em>。因为它们是纯文本文件，
+  你为它们准备的「UI」就是任何能读文件的东西 —— 包括重启后的监督者
+  自身，而这正是全部意义所在。
 </p>
 
-<h2>What is native, what is authored, what is optional</h2>
-<p>This is the current build inventory. The custom pieces are narrow policy surfaces over native domains:</p>
+<h2>哪些是原生的，哪些是自己写的，哪些是可选的</h2>
+<p>这是当前的构建清单。自定义部分只是覆盖在原生域之上的窄策略面：</p>
 <table>
-  <tr><th>Native lifecycle</th><th>Bundled supervisor policy</th><th>Optional extensions (ch. 13)</th></tr>
+  <tr><th>原生生命周期</th><th>随包携带的监督者策略</th><th>可选扩展（第 13 章）</th></tr>
   <tr>
     <td>
       <ul>
-        <li>continuable <code>subagent</code> spawn</li>
-        <li>follow-up / interrupt / <code>list_agents</code> services</li>
-        <li>child <code>report</code> tool + parent wakeup</li>
-        <li>settle notices</li>
-        <li>goal service, continuation driver, projection + UI</li>
-        <li>schedule tools (one config row)</li>
-        <li>web GUI: session list, child session views</li>
-        <li>session logs as JSONL on disk</li>
-        <li>todo, plan mode, ask-user, compaction</li>
+        <li>可续行的 <code>subagent</code> 派生</li>
+        <li>follow-up / interrupt / <code>list_agents</code> 服务</li>
+        <li>子级 <code>report</code> 工具 + 父级唤醒</li>
+        <li>收敛通知</li>
+        <li>goal 服务、续行驱动器、投影 + UI</li>
+        <li>schedule 工具（一行配置）</li>
+        <li>Web GUI：会话列表、子会话视图</li>
+        <li>磁盘上的会话日志（JSONL）</li>
+        <li>todo、plan mode、ask-user、compaction</li>
       </ul>
     </td>
     <td>
       <ul>
-        <li>the packaged <code>main-agent</code> preset and supervisor persona</li>
-        <li>guarded goal, spawn, and control frontends</li>
-        <li>live worker model, reasoning-effort, concurrency, and timing settings</li>
-        <li>worker question restriction and terminal-failure enrichment</li>
-        <li>Feed tab + Full stop</li>
-        <li>the <code>.agi/</code> file convention (prose + one mkdir)</li>
-        <li>one schedule row in the bundle patch</li>
+        <li>随包携带的 <code>main-agent</code> preset 与监督者人格</li>
+        <li>受保护的目标、派生与控制前端</li>
+        <li>实时的 worker 模型、推理强度、并发与时间设置</li>
+        <li>worker 提问限制与终态失败信息增强</li>
+        <li>监督动态 Feed 标签页 + Full stop</li>
+        <li><code>.agi/</code> 文件约定（文字约定 + 一条 mkdir）</li>
+        <li>bundle patch 里的一行 schedule 配置</li>
       </ul>
     </td>
     <td>
       <ul>
-        <li><code>wait_for_agents</code> blocking tool</li>
-        <li>automatic per-child <code>trace.log</code></li>
-        <li>additional domain-specific UI views</li>
+        <li><code>wait_for_agents</code> 阻塞工具</li>
+        <li>每个子级自动生成的 <code>trace.log</code></li>
+        <li>额外的领域专用 UI 视图</li>
       </ul>
     </td>
   </tr>
 </table>
 
 <div class="box warn">
-  <span class="box-title">Where this diverges from IMPLEMENTATION_PLAN.md</span>
+  <span class="box-title">这里与 IMPLEMENTATION_PLAN.md 的差异</span>
   <p>
-    The plan (M2) builds four host plugins before anything works. We invert that: chapters 6–12
-    first established the native-first core; the installable bundle now adds only the policy and UI
-    plugins listed above. Chapter 13 shows how to add further capabilities if you need them. Two plan details are also superseded by the design’s own later
-    amendments: workers get their task <em>in the spawn prompt</em> (no <code>brief.md</code> files — simplification
-    S4), and there is no mandated wake ritual (S1) — native session persistence is the memory.
+    那份计划（M2）先构建四个宿主插件，然后才有东西能跑。我们把它反过来：第 6–12 章
+    先确立原生优先的核心；可安装的 bundle 现在只添加上面列出的策略与 UI
+    插件。第 13 章展示在需要时如何继续增加能力。计划里还有两处细节也被设计自身后续的
+    修订取代：worker 的任务<em>写在 spawn 的提示词里</em>（不再有 <code>brief.md</code> 文件 —— 简化项
+    S4），以及不存在强制的唤醒仪式（S1）—— 原生会话持久化本身就是记忆。
   </p>
 </div>
 
-<h2>The two-plane rule (a preview)</h2>
+<h2>双平面规则（预告）</h2>
 <p>
-  One architectural idea governs every change you will make, so meet it early. A running harness
-  composes plugins on two planes:
+  有一个架构思想支配着你将要做的每一项改动，所以请尽早认识它。运行中的 harness
+  在两个平面上组合插件：
 </p>
 <ul>
-  <li>The <strong>host composition</strong> — one instance per process: registries, persistence, the sandbox,
-      the model route, the subagent machinery. You touch it only through your profile’s patch file,
-      and in the manual-install path you add one schedule-service row to it. The bundle path composes
-      that row plus its own setup plugin automatically.</li>
-  <li>An <strong>agent preset</strong> — what one session contributes: its tools, its persona, its prompt
-      sections. This is where almost everything you author lives.</li>
+  <li><strong>宿主组合（host composition）</strong> —— 每个进程一个实例：注册表、持久化、沙箱、
+      模型路由、subagent 机制。你只能通过 profile 的 patch 文件触碰它，
+      而在手动安装路径下，你向它添加一行 schedule 服务。bundle 路径会自动组合
+      那一行外加它自己的 setup 插件。</li>
+  <li>一个 <strong>agent preset</strong> —— 单个会话所贡献的东西：它的工具、它的人格、它的提示词
+      段落。你编写的东西几乎都在这里。</li>
 </ul>
 <p>
-  Chapter 3 develops this properly; chapter 6 applies it. If you ever wonder “where does this
-  change go?”, the answer is: <em>shared across sessions → host; one session’s capability → preset</em>.
+  第 3 章会完整展开这一点；第 6 章应用它。如果你曾困惑「这个
+  改动应该放哪里？」，答案是：<em>跨会话共享 → 宿主；单个会话的能力 → preset</em>。
 </p>
 
-<h2>The first mission (eventually)</h2>
+<h2>第一次任务（最终会到来）</h2>
 <p>
-  Your design names the acceptance mission: X.com growth automation — an open-ended,
-  long-horizon task where workers operate a browser. We will not start there. Chapter 12’s
-  acceptance run uses a deliberately boring goal (“produce a summary of a docs directory,
-  delegating the work”) because a boring goal makes supervisor failures visible.
-  The mission changes; the loop does not.
+  你的设计指定了验收任务：X.com 增长自动化 —— 一个开放式、
+  长周期、由 worker 操作浏览器的任务。我们不会从那里开始。第 12 章的
+  验收运行使用一个刻意无聊的目标（「产出一份 docs 目录的摘要，
+  把工作委派出去」），因为无聊的目标更容易让监督者的失败暴露出来。
+  任务会变；循环不会变。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="00-setup.html">← Required setup</a>
-  <a class="next" href="02-cordis.html">Chapter 2 — Cordis from scratch →</a>
+  <a class="prev" href="00-setup.html">← 必需的环境准备</a>
+  <a class="next" href="02-cordis.html">第 2 章 —— 从零开始学 Cordis →</a>
 </nav>
 </main>
 </body>

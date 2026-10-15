@@ -1,41 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>12 · Milestone 7: acceptance run — Supervisor on DSH</title>
+<title>第 12 章 · 里程碑 7：验收运行 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 12</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 12 章</span>
   <span class="spacer"></span>
   <a href="11-ui.html">←</a>
   <a href="13-extensions.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 7</p>
-  <h1>Acceptance run</h1>
-  <p class="lede">The formal definition of done: one clean workspace, one scripted mission,
-  every behavior forced once, every artifact graded, and the restart drill. Pass this twice in a
-  row and your supervisor is real.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 7</p>
+  <h1>验收运行</h1>
+  <p class="lede">正式的“做完”定义：一个干净的工作区、一次照脚本走的任务、
+  每个行为都强制走一遍、每件产物都评分，再加一次重启演练。连着两次
+  通过，你的监督者才算真的成立。</p>
 </header>
 
-<h2>Why a formal acceptance at all</h2>
+<h2>为什么非要正式验收</h2>
 <p>
-  Chapter 10’s rehearsal proved the branches work when freshly coaxed. Acceptance proves they work
-  <em>from a cold start, without coaching</em> — the difference between a demo and a system. The
-  protocol below is your design’s M6, adjusted for the native-first build. Its exit criterion is the
-  design’s own: <strong>every bullet passes twice in a row</strong>; when a step fails, fix persona wording
-  first, machinery second.
+  第 10 章的演练只证明这些分支在你刚哄过一遍时能工作。验收要证明它们
+  <em>从冷启动、无人哄的情况下</em>也能工作 —— 这就是演示与系统之间的差别。
+  下面这份规程就是你设计里的 M6，针对原生优先的实现做了调整。它的退出判据就是你设计里的
+  那一条：<strong>每个步骤连续两次通过</strong>；某一步失败时，先修人格的措辞，
+  再修机器。
 </p>
 
-<h2>Setup: a virgin workspace</h2>
+<h2>准备：一个处女工作区</h2>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>acceptance setup</figcaption>
+<figcaption><span class="badge you">YOURS</span>验收环境准备</figcaption>
 <pre><code>mkdir -p $HOME/agi-acceptance/.agi/subagents
 cat &gt; $HOME/agi-acceptance/.agi/config.json &lt;&lt;'EOF'
 { "wakeMinutes": 5, "questionWaitMinutes": 2 }
@@ -43,148 +43,148 @@ EOF
 touch $HOME/agi-acceptance/.agi/{NOTES.md,progress.jsonl,questions.jsonl,CHANGELOG.jsonl}</code></pre>
 </figure>
 <p>
-  Optionally open the terminal dashboard from chapter 11 against this workspace, then start a fresh
-  <code>main-agent</code> session on it. From here on you speak only the scripted lines — no hints, no
-  “remember to log that.” If you must coach, that is a finding: note it, fix the persona, restart
-  the run.
+  可选：对着这个工作区打开第 11 章那个终端仪表盘，然后为它开一个全新的
+  <code>main-agent</code> 会话。从现在起你只说脚本里写好的那几句 —— 不提示、不
+  说“记得记一笔”。如果你非哄不可，那本身就是一条发现：记下它、改人格、
+  重跑这次运行。
 </p>
 
-<h2>The script</h2>
-<p>Each row: what you say/do → what must happen → which artifact proves it.</p>
+<h2>脚本</h2>
+<p>每一行：你说/做什么 → 必须发生什么 → 哪件产物能证明它。</p>
 <table>
-  <tr><th>#</th><th>You</th><th>Must happen</th><th>Proof</th></tr>
-  <tr><td>1</td><td>“Goal: produce SUMMARY.md describing the layout of $HOME/src/deepseek-harness/docs — delegate the work, supervise, deliver.” <span class="muted">(Say nothing about where SUMMARY.md goes.)</span></td>
-      <td><code>get_goal</code> → inspect durable state and relevant runbooks/scripts → <code>start_goal</code>/<code>GOAL.md</code> → native goal armed and work continues in the same turn.</td>
-      <td><code>GOAL.md</code>; goal visible in UI; a progress line.</td></tr>
-  <tr><td>2</td><td><em>(nothing)</em></td>
-      <td>First worker spawned with a complete structured task and explicit allowed model; result names
-      route, modalities, and effective effort; check-in reminder armed; spawn logged.</td>
-      <td>Spawn call/result visible in chat; <code>CHANGELOG.jsonl</code> line; <code>schedule_list</code> shows the recurring reminder; child session appears in sidebar.</td></tr>
-  <tr><td>3</td><td><em>(nothing — wait ≥ 5 min with the worker running)</em></td>
-      <td>Timer wake: liveness + concrete report/artifact/log comparison with the previous checkpoint.
-      If nothing changed, it probes immediately; a second unchanged check interrupts and recovers.</td>
-      <td>Evidence-backed checkpoint or probe line in <code>NOTES.md</code>; never a repeated bare “still running” verdict.</td></tr>
-  <tr><td>4</td><td><em>(stay silent when asked about the output location)</em></td>
-      <td>Question logged <code>pending</code> → patience reminder → after 2 min: <code>assumed</code> with the assumption recorded; work continues.</td>
-      <td><code>questions.jsonl</code> shows the status transition; an <code>assumption</code> line in CHANGELOG.</td></tr>
-  <tr><td>5</td><td>“Have the worker also count the .zh.md files.”</td>
-      <td>Steer via <code>send_message</code> at the running worker's next model step — no kill, no respawn.</td>
-      <td><code>steer</code> CHANGELOG line; the correction is visible in and redirects the running child turn.</td></tr>
-  <tr><td>6</td><td>“That worker is off the rails. Kill it and restart with a tighter brief.”</td>
-      <td><code>interrupt_agent</code> → kill logged → fresh spawn with visibly narrowed scope.</td>
-      <td><code>kill</code> + <code>spawn</code> lines; old child idle in <code>list_agents</code>; new child session.</td></tr>
-  <tr><td>7</td><td><em>(nothing — let it finish)</em></td>
-      <td>Settle notice consumed; outcome read; SUMMARY.md delivered at the assumed location; goal completed; check-in reminder deleted.</td>
-      <td><code>SUMMARY.md</code>; final progress line; <code>schedule_list</code> empty; worker’s <code>outcome.md</code> under <code>.agi/subagents/&lt;id&gt;/</code>.</td></tr>
-  <tr><td>8</td><td>“Actually — also mention the cookbook subfolder in one paragraph.” <span class="muted">(after completion)</span></td>
-      <td>Treated as post-completion steering: <code>GOAL_AMENDMENTS.md</code> entry → a new small native goal or direct trivial edit, per its judgment — with the choice logged.</td>
-      <td>Amendment entry; updated SUMMARY.md.</td></tr>
+  <tr><th>#</th><th>你</th><th>必须发生</th><th>证据</th></tr>
+  <tr><td>1</td><td>“目标：产出 SUMMARY.md，描述 $HOME/src/deepseek-harness/docs 的目录结构 —— 委派工作、监督、交付。” <span class="muted">（关于 SUMMARY.md 放哪儿，一个字都别说。）</span></td>
+      <td><code>get_goal</code> → 巡检持久状态与相关 runbook/脚本 → <code>start_goal</code>/<code>GOAL.md</code> → 原生目标被武装，并在同一回合内继续工作。</td>
+      <td><code>GOAL.md</code>；UI 里能看到目标；一行进展。</td></tr>
+  <tr><td>2</td><td><em>（什么都不做）</em></td>
+      <td>第一个 worker 被派生：任务结构完整、显式给出被允许的模型；结果里写明
+      路由、模态与生效的推理强度；巡检提醒被武装；spawn 被记录。</td>
+      <td>聊天里能看到 spawn 的调用/结果；<code>CHANGELOG.jsonl</code> 里一行；<code>schedule_list</code> 显示那条周期提醒；子会话出现在侧边栏。</td></tr>
+  <tr><td>3</td><td><em>（什么都不做 —— 让 worker 跑着，等 ≥ 5 分钟）</em></td>
+      <td>定时器唤醒：活性 + 与先前检查点做具体的 report/产物/日志比对。
+      如果毫无变化，它立刻做一次探针；第二次检查仍无变化就 interrupt 并恢复。</td>
+      <td><code>NOTES.md</code> 里一条有实证的检查点或探针记录；绝不是又一次干巴巴的“仍在运行”。</td></tr>
+  <tr><td>4</td><td><em>（被问到输出位置时保持沉默）</em></td>
+      <td>提问被记为 <code>pending</code> → 耐心提醒 → 2 分钟后：记为 <code>assumed</code> 并记录那条假设；工作继续。</td>
+      <td><code>questions.jsonl</code> 显示状态流转；CHANGELOG 里一行 <code>assumption</code>。</td></tr>
+  <tr><td>5</td><td>“让那个 worker 也统计一下 .zh.md 文件。”</td>
+      <td>通过 <code>send_message</code> 在运行中的 worker 的下一个模型步骤纠偏 —— 不 kill，不重新派生。</td>
+      <td>CHANGELOG 里一行 <code>steer</code>；这条纠正出现在运行中的子级回合里，并改变了它的方向。</td></tr>
+  <tr><td>6</td><td>“那个 worker 跑偏了。终止它，用更紧的任务说明重开。”</td>
+      <td><code>interrupt_agent</code> → kill 被记录 → 一次新的派生，范围明显收窄。</td>
+      <td><code>kill</code> + <code>spawn</code> 两行；旧子级在 <code>list_agents</code> 里处于空闲；新的子会话。</td></tr>
+  <tr><td>7</td><td><em>（什么都不做 —— 让它跑完）</em></td>
+      <td>收敛通知被消费；outcome 被读过；SUMMARY.md 交付在假设所说的位置；目标完成；巡检提醒被删除。</td>
+      <td><code>SUMMARY.md</code>；最后一行进展；<code>schedule_list</code> 为空；worker 的 <code>outcome.md</code> 位于 <code>.agi/subagents/&lt;id&gt;/</code>。</td></tr>
+  <tr><td>8</td><td>“对了 —— 再用一段话提一下 cookbook 子目录。” <span class="muted">（在完成之后）</span></td>
+      <td>被当作完成后的纠偏：写一条 <code>GOAL_AMENDMENTS.md</code> → 由它自己判断，是开一个小而新的原生目标，还是直接做一次琐碎的编辑 —— 选择要记录。</td>
+      <td>修正案条目；更新后的 SUMMARY.md。</td></tr>
 </table>
 
 <p>
-  Add one blocked-worker assertion while the run is active: give a worker a genuinely undiscoverable
-  choice. Its tool catalog must not contain <code>ask_user_question</code>; it must call <code>report</code>,
-  producing a <code>subagent-report</code> wake in the parent. Answering with <code>send_message</code> must
-  continue that same child.
+  运行还活着的时候，再加一条“worker 被阻塞”的断言：给某个 worker 一个它确实无法自行
+  查到的选择。它的工具目录里不能有 <code>ask_user_question</code>；它必须调用 <code>report</code>，
+  从而在父会话里产生一次 <code>subagent-report</code> 唤醒。用 <code>send_message</code> 回答，必须
+  能继续同一个子级。
 </p>
 
-<h2>Driving it headless (how this run was actually tested)</h2>
+<h2>无头驱动（这次运行实际是怎么测的）</h2>
 <p>
-  You can run this whole script without touching the browser: the web process exposes its RPC over
-  plain HTTP — <code>POST /api/&lt;method&gt;</code> with an envelope
+  这整份脚本你完全可以不碰浏览器就跑完：web 进程把它的 RPC 通过
+  普通 HTTP 暴露出来 —— <code>POST /api/&lt;method&gt;</code>，信封为
   <code>{"type":"client-request","rpcId","method","payload"}</code>
-  (<code>packages/host/apiproxy/src/fetch/handler.ts</code>). Useful methods:
-  <code>session.create</code> (which <em>mount-validates the preset</em> — it fails with
-  <code>agent-preset-invalid</code> on a broken composition, an API-side alternative to
-  <code>standingKeyFor</code>), <code>session.prompt</code> (<code>mode: queue | steer</code>),
-  <code>session.list</code> (a <code>running</code> flag per session), <code>session.history</code>, and
-  <code>agentPreset.copy</code> (the roster’s authoring write, over HTTP). The repo wraps these as
-  <code>tutorial/drive.py</code>:
+  （<code>packages/host/apiproxy/src/fetch/handler.ts</code>）。有用的方法：
+  <code>session.create</code>（它会<em>在挂载时校验 preset</em> —— 组合有问题就报
+  <code>agent-preset-invalid</code>，这是 <code>standingKeyFor</code> 在 API 一侧的替代品）、
+  <code>session.prompt</code>（<code>mode: queue | steer</code>）、
+  <code>session.list</code>（每个会话一个 <code>running</code> 标志）、<code>session.history</code>，以及
+  <code>agentPreset.copy</code>（roster 的创作写入，走 HTTP）。仓库把它们包成
+  <code>tutorial/drive.py</code>：
 </p>
 <pre><code>S=$(python3 $HOME/src/dsh-supervisor/tutorial/drive.py create --cwd $HOME/agi-acceptance)
 python3 $HOME/src/dsh-supervisor/tutorial/drive.py send  "$S" "Goal: produce SUMMARY.md … deliver."
 python3 $HOME/src/dsh-supervisor/tutorial/drive.py steer "$S" "kill that worker and rescope"
 python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
 
-<h2>The restart drill</h2>
+<h2>重启演练</h2>
 <p>
-  Now the property that gives the system its name — indifference to restarts. Your supervisor’s
-  memory is three-layered, all durable: the session log (native), <code>.agi/</code> (yours), the goal
-  tool’s state (native). Prove all three:
+  现在是那个给整套系统命名的性质 —— 对重启无感。你的监督者的
+  记忆有三层，而且都是持久的：会话日志（原生）、<code>.agi/</code>（你的）、目标
+  工具的状态（原生）。三层都要证明：
 </p>
 <div class="box test">
-  <span class="box-title">Test it live — restart resilience</span>
+  <span class="box-title">实机验证 —— 重启韧性</span>
   <ol>
-    <li>Mid-mission (re-run steps 1–2 with a fresh goal, or before step 7), return to the terminal
-        running dsh, press <kbd>Ctrl-C</kbd>, wait for shutdown, then run <code>dsh web</code> again.</li>
-    <li>Reload the browser; open the <em>same</em> supervisor session (it is in the sidebar — sessions
-        are durable).</li>
-    <li>Say exactly: <em>“continue.”</em></li>
-    <li><strong>Expect:</strong> it re-reads <code>.agi/</code> as needed, checks <code>list_agents</code> for its
-        workers (durable children — a settled one’s outcome is on disk; an unfinished one can be
-        messaged, which cold-resumes it), re-arms its check-in reminder if workers still run, and
-        proceeds. <strong>It must not</strong> re-interview, re-write GOAL.md, or spawn a duplicate worker
-        for work already done.</li>
-    <li><strong>Caveat to verify honestly:</strong> a schedule reminder that would have fired <em>while the
-        process was down</em> is delivered per the schedule subsystem’s catch-up rules on resume. The
-        packaged Feed and its stopped-state fold return automatically; they are not process-memory
-        dynamic plugins.</li>
+    <li>任务进行到一半时（用一个新的目标重跑第 1–2 步，或在第 7 步之前），回到那个跑着 dsh 的
+        终端，按 <kbd>Ctrl-C</kbd>，等它关干净，然后再次运行 <code>dsh web</code>。</li>
+    <li>刷新浏览器；打开<em>同一个</em>监督者会话（它就在侧边栏里 —— 会话是
+        持久的）。</li>
+    <li>一字不差地说：<em>“继续。”</em></li>
+    <li><strong>预期：</strong>它按需重读 <code>.agi/</code>，用 <code>list_agents</code> 检查它的
+        worker（持久的子级 —— 已收敛的那个 outcome 就在磁盘上；没做完的那个可以
+        被发一条消息，从而冷恢复它），如果 worker 仍在运行就重新武装巡检提醒，然后
+        继续推进。<strong>它绝不能</strong>重新盘问、重写 GOAL.md，或者为已经做完的工作
+        再派生一个重复的 worker。</li>
+    <li><strong>要诚实核对的一个保留项：</strong>本该<em>在进程停着的时候</em>触发的 schedule 提醒，
+        会在恢复时按 schedule 子系统的补课规则被投递。
+        打包的监督动态 Feed 和它的停止状态折叠会自动回来；它们不是进程内存里的
+        动态插件。</li>
   </ol>
 </div>
 
-<h2>The Full stop drill</h2>
+<h2>Full stop（完全停止）演练</h2>
 <div class="box test">
-  <span class="box-title">Test the terminal operator action</span>
+  <span class="box-title">验证这个终端操作员动作</span>
   <ol>
-    <li>With a worker running and the recurring check-in armed, open Feed and click
-        <strong>■ Full stop</strong> (repeat once from a worker's Feed to verify root-lineage targeting).</li>
-    <li>Expect the active supervisor turn and all delegated worker branches to stop, and every schedule
-        reminder to disappear. Refresh: the stopped status remains and no worker is still running.</li>
-    <li>Wait beyond <code>wakeMinutes</code>: the supervisor must not recur. Then send a direct user prompt;
-        that explicit resume starts only the supervisor; stopped workers do not resume automatically.</li>
+    <li>在一个 worker 正在跑、周期巡检已武装的情况下，打开监督动态 Feed 并点
+        <strong>■ Full stop</strong>（再从某个 worker 的监督动态 Feed 里重复一次，以验证它瞄准的是根谱系）。</li>
+    <li>预期活动中的监督者回合和所有被委派的 worker 分支都停下来，并且每一条 schedule
+        提醒都消失。刷新：停止状态仍在，且没有 worker 还在运行。</li>
+    <li>等超过 <code>wakeMinutes</code>：监督者绝不能再次出现。然后你直接发一条提示词；
+        那次显式恢复只启动监督者；被停掉的 worker 不会自动恢复。</li>
   </ol>
 </div>
 
-<h2>Grading and the failure ledger</h2>
+<h2>评分与失败台账</h2>
 <p>
-  <strong>Auto-grade the whole run:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m7</code> — it re-runs the
-  milestone-2 through 5 graders against <code>$HOME/agi-acceptance</code>, then checks the
-  acceptance-specific evidence (the restart resume marker in the supervisor’s log, the
-  post-completion amendment). Steps only a human can judge are printed as MANUAL reminders.
+  <strong>给整场运行自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m7</code> —— 它会针对 <code>$HOME/agi-acceptance</code>
+  把里程碑 2 到 5 的评分器再跑一遍，然后检查验收特有的
+  证据（监督者日志里的重启恢复标记、完成之后的
+  修正案）。只有人能判断的步骤会以 MANUAL 提醒打印出来。
 </p>
 <p>
-  Keep an acceptance ledger (a file in <code>$HOME/src/dsh-supervisor/</code>, next to the design): one line per step per
-  run — <code>pass</code> / <code>fail(reason)</code> / <code>coached(what)</code>. The design’s exit criterion,
-  verbatim: every bullet passes <strong>twice in a row</strong>. Common first-run findings and their fixes:
+  维护一本验收台账（<code>$HOME/src/dsh-supervisor/</code> 里的一个文件，放在设计文档旁边）：每次运行
+  每一步一行 —— <code>pass</code> / <code>fail(reason)</code> / <code>coached(what)</code>。设计的退出判据，
+  原文是：每个步骤<strong>连续两次通过</strong>。首次运行常见的发现与其修法：
 </p>
 <table>
-  <tr><th>Finding</th><th>Class</th><th>Fix</th></tr>
-  <tr><td>Spawned before checking goal state or workspace scripts</td><td>Mechanism regression</td><td>Verify the preset mounts <code>dsh-supervisor/goal</code>, has no native <code>create_goal</code>, and requires <code>get_goal</code> before <code>start_goal</code>.</td></tr>
-  <tr><td>Forgot the CHANGELOG line for a steer</td><td>Protocol violation</td><td>Move logging into the verb’s own sentence: “Steer = send_message + one CHANGELOG line, always together.”</td></tr>
-  <tr><td>Answered its own question instantly instead of waiting</td><td>Protocol gap</td><td>Add: “A question you can answer by inspection is not a user question — resolve it and move on; only user-owned unknowns enter questions.jsonl.”</td></tr>
-  <tr><td>Timer fired but it steered an on-track worker anyway</td><td>Protocol gap</td><td>Add an explicit default: “On-track means: recent tool calls consistent with Scope. If on track, do nothing but the NOTES.md verdict.”</td></tr>
-  <tr><td>Worker waited in <code>ask_user_question</code></td><td>Mechanism regression</td><td>Verify the guarded spawn request carries <code>toolFilter.deny = ['ask_user_question']</code>; the child-scoped <code>report</code> tool must remain.</td></tr>
-  <tr><td>Spawn rejected an effort</td><td>Policy</td><td>The chosen route does not advertise its configured fixed effort. Select a supported catalog value on that model row or <code>provider/default</code>; do not expect clamping.</td></tr>
-  <tr><td>Tool errored (schedule missing, spawn rejected)</td><td>Mechanism</td><td>Chapter 6/8 regression: re-validate the preset, inspect the composed tree, and read the <code>dsh web</code> log.</td></tr>
+  <tr><th>发现</th><th>类别</th><th>修法</th></tr>
+  <tr><td>还没检查目标状态或工作区脚本就先派生了</td><td>机制回归</td><td>核验 preset 是否挂载了 <code>dsh-supervisor/goal</code>、没有原生 <code>create_goal</code>，并且要求在 <code>start_goal</code> 之前先 <code>get_goal</code>。</td></tr>
+  <tr><td>一次 steer 忘了写 CHANGELOG 行</td><td>协议违反</td><td>把记录并进该动作自己的句子里：“Steer = send_message + 一行 CHANGELOG，永远一起出现。”</td></tr>
+  <tr><td>不等就自己把问题答了</td><td>协议缺口</td><td>补一句：“你查一眼就能回答的问题不算用户问题 —— 自己解决然后往前走；只有用户才知道的未知项才写进 questions.jsonl。”</td></tr>
+  <tr><td>定时器到点了，它却去纠偏一个本就在轨的 worker</td><td>协议缺口</td><td>补一条明确的默认：“在轨的意思是：最近的工具调用与 Scope 一致。若在轨，除了写 NOTES.md 里的判定，什么都不做。”</td></tr>
+  <tr><td>worker 卡在 <code>ask_user_question</code> 上干等</td><td>机制回归</td><td>核验受保护的 spawn 请求是否带 <code>toolFilter.deny = ['ask_user_question']</code>；作用域为子级的 <code>report</code> 工具必须保留。</td></tr>
+  <tr><td>spawn 拒绝了某个推理强度</td><td>策略</td><td>所选路由没有公示为它配置的固定推理强度。在该模型那一行改选目录里支持的值，或选 <code>provider/default</code>；不要指望它会被截断成能用的值。</td></tr>
+  <tr><td>工具报错（schedule 不见了、spawn 被拒）</td><td>机制</td><td>第 6/8 章的回归：重新校验 preset、检查组合出来的树，并读 <code>dsh web</code> 的日志。</td></tr>
 </table>
 
-<h2>Where you stand</h2>
+<h2>你走到哪儿了</h2>
 <p>
-  Passing this chapter means you have what the design document calls the headless core — goal
-  goal setup, delegation, supervision, questions, files, resilience — built from a preset, a persona,
-  one schedule row, narrow bundled policy plugins, and a file convention. The 24/7 mission is now “run
-  start a bigger goal and let it loop,” plus whatever worker tooling that mission needs —
-  which workers install themselves at runtime, per their tasks.
+  通过这一章，意味着你已经拿到了设计文档所称的无头内核 ——
+  目标设置、委派、监督、提问、文件、韧性 —— 而它是用一份 preset、一段人格、
+  一行 schedule、几个窄口径的打包策略插件，以及一套文件约定搭出来的。24/7 的任务现在就是“起
+  一个更大的目标，让它自己循环”，再加上那个任务需要的任何 worker 工具 ——
+  而这些工具由 worker 在运行时按自己的任务自行安装。
 </p>
 <p>
-  What remains optional: the custom machinery the plan originally front-loaded. If you want it —
-  structured traces, a blocking wait, or mission-specific UI beyond the shipped Feed — chapter 13 shows
-  the packaged-plugin path with a real installed example as your template.
+  仍然是可选的东西：计划最初前置的那批自定义机器。如果你想要它 ——
+  结构化 trace、阻塞式等待，或者超出自带监督动态 Feed 的任务专属 UI —— 第 13 章会展示
+  打包插件的路径，并用一个真实装好的例子给你当模板。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="11-ui.html">← Chapter 11 — Milestone 6: UI</a>
-  <a class="next" href="13-extensions.html">Chapter 13 — Optional extensions →</a>
+  <a class="prev" href="11-ui.html">← 第 11 章 —— 里程碑 6：UI</a>
+  <a class="next" href="13-extensions.html">第 13 章 —— 可选扩展 →</a>
 </nav>
 </main>
 </body>

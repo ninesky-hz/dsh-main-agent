@@ -1,17 +1,17 @@
-# dsh-supervisor bundle patch: mounted as one layer when this package is
-# listed in the profile's dsh.profile.bundles (see README — `dsh plugin add`).
+# dsh-supervisor bundle patch：当本包被列入 profile 的 dsh.profile.bundles 时，
+# 它作为一个层被挂载（见 README —— `dsh plugin add`）。
 #
-# Rows:
-#   agi-schedule — the schedule service the supervisor's timers need. If your
-#     profile ALREADY mounts dsh-schedule elsewhere, disable this row with an
-#     id-targeted `disabled: true` patch in your profile's cordis.patch.yml —
-#     the schedule service registers once per process. (dsh-time-context is
-#     deliberately NOT mounted: it injects a per-step timestamp block into
-#     every request, which is noise for this supervisor — its timers are
-#     relative `after_seconds`, and Schedule does not depend on time-context.)
-#   agi-supervisor-setup — this package's own plugin: installs the bundled
-#     `main-agent` preset into ${DSH_HOME:-~/.dsh}/.agent-presets/ on boot
-#     (if absent; config syncPreset: if-absent | always | never).
+# Rows（行）：
+#   agi-schedule —— 监督者的定时器所需的 schedule 服务。如果你的
+#     profile 已从别处挂载 dsh-schedule，请用针对 id 的 `disabled: true`
+#     patch 在你的 profile 的 cordis.patch.yml 里禁用这一行 ——
+#     schedule 服务每进程只注册一次。（dsh-time-context 是
+#     刻意不挂载的：它会往每个请求注入一段逐步时间戳，对
+#     本监督者而言纯属噪声 —— 它的定时器用的是相对时间
+#     `after_seconds`，而 Schedule 不依赖 time-context。）
+#   agi-supervisor-setup —— 本包自身的插件：开机时把随包提供的
+#     `main-agent` preset 安装到 ${DSH_HOME:-~/.dsh}/.agent-presets/
+#     （若不存在；config syncPreset: if-absent | always | never）。
 - insert:
     - id: agi-schedule
       name: '@deepseek-ai/dsh-schedule'

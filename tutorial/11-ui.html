@@ -1,125 +1,125 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>11 · Milestone 6: UI, the minimal way — Supervisor on DSH</title>
+<title>第 11 章 · 里程碑 6：UI，最省事的做法 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 11</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 11 章</span>
   <span class="spacer"></span>
   <a href="10-loop.html">←</a>
   <a href="12-acceptance.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 6</p>
-  <h1>UI, the minimal way</h1>
-  <p class="lede">Your design sketched two custom tabs. This chapter shows how much of that the
-  shipped web UI already gives you for free, then walks the one piece the bundle now ships — the
-  <strong>Feed</strong> view tab, live Supervisor settings, and the durable <strong>Full stop</strong>
-  control that ends the whole delegated run.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 6</p>
+  <h1>UI，最省事的做法</h1>
+  <p class="lede">你的设计里画了两个自定义标签页。这一章先看其中有多少
+  现成的 Web UI 已经免费送给你了，然后再走一遍 bundle 现在真正交付的那一件 ——
+  <strong>监督动态 Feed</strong> 视图标签页、实时生效的 Supervisor 设置，以及那个持久的 <strong>Full stop</strong>（完全停止）
+  控件 —— 它能终结整场被委派的运行。</p>
 </header>
 
-<h2>What the shipped UI already is</h2>
-<p>Map your design’s two tabs onto what’s on screen right now:</p>
+<h2>现成的 UI 本来就有多全</h2>
+<p>把你设计里的两个标签页，映射到此刻屏幕上的东西：</p>
 <table>
-  <tr><th>Designed feature</th><th>Shipped equivalent</th></tr>
-  <tr><td>Progress tab: the locked goal + amendments</td><td>The goal tool’s state, rendered by the web UI for the session (chapter 7). <code>GOAL.md</code> / <code>GOAL_AMENDMENTS.md</code> readable in any editor.</td></tr>
-  <tr><td>Progress tab: event feed</td><td><code>.agi/progress.jsonl</code> — one <code>tail -f</code> away (below). Plus the supervisor’s own chat, which narrates milestones.</td></tr>
-  <tr><td>Progress tab: question stack</td><td><code>.agi/questions.jsonl</code>, same treatment — and pending questions also appear in chat, where you answer them.</td></tr>
-  <tr><td>Subagents tab: run list</td><td>The sidebar’s session list for the workspace: every worker is a session there, newest first.</td></tr>
-  <tr><td>Subagents tab: detail pane + live trace</td><td>Click the worker’s session: full conversation, every tool call and result, streaming live. This is strictly better than a trace tail.</td></tr>
-  <tr><td>Subagents tab: kill/steer buttons</td><td>By design, all input flows through the Main Agent chat (your Q18): “kill the researcher” <em>is</em> the button. The chat is the control surface.</td></tr>
+  <tr><th>设计中的功能</th><th>现成的等价物</th></tr>
+  <tr><td>进展标签页：被锁定的目标 + 修正案</td><td>目标工具的状态，由 Web UI 按会话渲染（第 7 章）。<code>GOAL.md</code> / <code>GOAL_AMENDMENTS.md</code> 在任何编辑器里都能读。</td></tr>
+  <tr><td>进展标签页：事件流</td><td><code>.agi/progress.jsonl</code> —— 一条 <code>tail -f</code> 的距离（见下）。外加监督者自己的聊天，它会把里程碑讲出来。</td></tr>
+  <tr><td>进展标签页：提问栈</td><td><code>.agi/questions.jsonl</code>，同样处理 —— 而待答的问题也会出现在聊天里，你在那里回答它们。</td></tr>
+  <tr><td>Subagent 标签页：运行列表</td><td>侧边栏里该工作区的会话列表：每个 worker 都是那里的一条会话，最新的在最前。</td></tr>
+  <tr><td>Subagent 标签页：详情面板 + 实时 trace</td><td>点开那个 worker 的会话：完整对话、每一次工具调用与结果，实时流式呈现。这比 tail 一段 trace 严格更好。</td></tr>
+  <tr><td>Subagent 标签页：kill/steer 按钮</td><td>按设计，所有输入都流过 Main Agent（监督者）的聊天（你的 Q18）：“kill the researcher” <em>就是</em>那个按钮。聊天就是控制面板。</td></tr>
 </table>
 <p>
-  So the honest gap is small: a glanceable “what is the supervisor doing right now” view and
-  file-feed convenience. The packaged bundle now closes both with a shipped <strong>Feed tab</strong>
-  (below); the terminal habit remains a useful independent view of the same durable state.
+  所以诚实的差距很小：一个扫一眼就知道“监督者现在在干什么”的视图，以及
+  读文件流的便利。打包的 bundle 现在用一个自带的 <strong>监督动态 Feed 标签页</strong>把两样都补上了
+  （见下）；而终端里的习惯，仍然是同一份持久状态的一个有用的独立视图。
 </p>
 
-<h2>The shipped Feed tab (what the bundle installs)</h2>
+<h2>自带的监督动态 Feed 标签页（bundle 装了什么）</h2>
 <p>
-  Since v0.2.0 the <code>dsh-supervisor</code> package ships a durable client plugin: open any
-  session and the view ring (the tabs that hold <em>Chat</em> and <em>Trajectory</em>) gains a
-  <strong>Feed</strong> entry. For a workspace with an <code>.agi/</code> directory it renders the
-  whole run at a glance — goal card (live, from the native <code>goal</code> projection), workers
-  with their <code>outcome.md</code>, the progress timeline, the question stack with
-  answered/assumed badges, the action changelog, notes, and the mission report.
+  从 v0.2.0 起，<code>dsh-supervisor</code> 包自带一个持久的客户端插件：打开任意
+  会话，视图环（装着 <em>Chat</em> 和 <em>Trajectory</em> 的那一圈标签页）里就多出一个
+  <strong>监督动态 Feed</strong> 条目。对于带 <code>.agi/</code> 目录的工作区，它一次把整场运行
+  渲染成一眼可读 —— 目标卡片（实时，来自原生 <code>goal</code> 投影）、worker
+  及其 <code>outcome.md</code>、进展时间线、带 answered/assumed 徽章的提问栈、
+  动作 changelog、notes，以及任务报告。
 </p>
 <ul>
-  <li><strong>Browser half</strong> — <code>lib/client.js</code>, a hand-written lazy-CJS factory
-      (<code>window.__ModuleLoader__.load…</code>, the format
-      <code>docs/cookbook/adding-a-settings-card.md</code> §Packaging documents). It registers id
-      <code>supervisor-feed</code> into the shipped <code>conversation.view</code> list slot — additive,
-      never replacing Chat. Served automatically by the client-modules scan: the package declares
-      <code>dsh.client&nbsp;{platform:'web'}</code> + <code>exports["./client"]</code>, and the page gets
-      <code>/plugins/dsh-supervisor/client.js</code> with no frontend rebuild.</li>
-  <li><strong>Host half</strong> — <code>GET /supervisor/feed?ws=&lt;workspace&gt;</code> in
-      <code>lib/index.js</code>: a nested fiber injecting <code>webServer</code> reads the
-      <code>.agi/</code> tree (text capped, JSONL tail-capped) so headless profiles still mount the
-      preset installer untouched.</li>
-  <li><strong>Data stays native-first</strong> — goal from <code>useProjection('goal')</code>, workers
-      from the <code>subagent.list</code> RPC, and only the <code>.agi/</code> files go through the
-      package's own route.</li>
+  <li><strong>浏览器那一半</strong> —— <code>lib/client.js</code>，一个手写的惰性 CJS 工厂
+      （<code>window.__ModuleLoader__.load…</code>，即
+      <code>docs/cookbook/adding-a-settings-card.md</code> §Packaging 里记录的格式）。它把 id
+      <code>supervisor-feed</code> 注册进自带的 <code>conversation.view</code> 列表槽位 —— 是加法，
+      绝不替换 Chat。由 client-modules 扫描自动提供：该包声明了
+      <code>dsh.client&nbsp;{platform:'web'}</code> + <code>exports["./client"]</code>，于是页面拿到
+      <code>/plugins/dsh-supervisor/client.js</code>，前端无需重建。</li>
+  <li><strong>宿主那一半</strong> —— <code>GET /supervisor/feed?ws=&lt;workspace&gt;</code>，在
+      <code>lib/index.js</code> 里：一个注入了 <code>webServer</code> 的嵌套 fiber 读取
+      <code>.agi/</code> 目录树（文本有上限，JSONL 只留尾部），因此无头的 profile 仍然能原封不动地装上
+      preset 安装器。</li>
+  <li><strong>数据仍然原生优先</strong> —— 目标来自 <code>useProjection('goal')</code>，worker
+      来自 <code>subagent.list</code> RPC，只有 <code>.agi/</code> 里的文件走
+      这个包自己的路由。</li>
 </ul>
 <div class="box test">
-  <span class="box-title">Test it live — milestone 6 acceptance</span>
-  <p><strong>Auto-grade:</strong> <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m6</code> — verifies the installed
-     client half, the <code>__DSH_BOOT__</code> row, the served bundle, and the feed route. Then the visual:
-     open your <code>main-agent</code> session → click <strong>Feed</strong> in the view ring → goal card,
-     workers, progress timeline all present and refreshing (~5 s), with <strong>■ Full stop</strong>
-     available while the supervisor is active.</p>
+  <span class="box-title">实机验证 —— 里程碑 6 验收</span>
+  <p><strong>自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m6</code> —— 核验已安装的
+     客户端那一半、<code>__DSH_BOOT__</code> 那一行、被提供出去的 bundle，以及 feed 路由。然后是肉眼环节：
+     打开你的 <code>main-agent</code> 会话 → 点视图环里的 <strong>监督动态</strong> → 目标卡片、
+     worker、进展时间线都在，并在刷新（约 5 秒），同时 <strong>■ Full stop</strong>
+     在监督者活动期间可用。</p>
 </div>
 
-<h2>Full stop: stopping the loop, not just one turn</h2>
+<h2>Full stop（完全停止）：停住整个循环，而不只是一个回合</h2>
 <p>
-  The native stop square aborts only the current turn. A recurring worker check-in is durable, so it
-  can wake the supervisor again. The Feed header's <strong>■ Full stop</strong> control targets the root
-  <code>main-agent</code> even when opened from a worker Feed. If the root is cold, the browser resumes
-  the existing session without starting a turn, then <code>POST /supervisor/stop?session=…</code> aborts
-  active work, waits for idle, releases every resident continuable worker branch recursively, enters
-  the agent's exclusive maintenance window, deletes every active schedule reminder, and flushes
-  persistence again. Workers remain visible in session history, but they no longer run or report.
+  原生的停止方块只中止当前回合。而周期性的 worker 巡检是持久的，所以它
+  还能再次唤醒监督者。监督动态 Feed 头部的 <strong>■ Full stop</strong> 控件瞄准的是根
+  <code>main-agent</code>，即使你是在某个 worker 的监督动态 Feed 里点的。如果根会话是冷的，浏览器会
+  恢复那个已存在的会话而不启动新回合，然后 <code>POST /supervisor/stop?session=…</code> 中止
+  活动中的工作、等待空闲、递归释放每一条常驻的可续跑 worker 分支、进入
+  该 agent 的独占维护窗口、删除所有活动的 schedule 提醒，并再次
+  刷写持久化。worker 在会话历史里仍然可见，但它们不再运行、也不再上报。
 </p>
 <p>
-  <code>GET /supervisor/stop?session=…</code> folds live or cold durable state, so the stopped status
-  survives refresh. A later direct user prompt explicitly resumes the supervisor; it does not restart
-  the stopped workers automatically, and the Full stop button becomes available again when work is armed.
-</p>
-
-<h2>The meta-config card (Settings → Plugins → Supervisor)</h2>
-<p>
-  Since v0.4.0 the bundle also ships the supervisor's <strong>meta-config</strong> through the native
-  settings domain: namespace <code>dsh-supervisor</code> with <code>workerModels</code> (allowlist, with a
-  default <strong>Current runtime model</strong> dropdown choice plus fixed routes showing native
-  <code>[text]</code>/<code>[text,image]</code> modality tags and model-advertised reasoning efforts),
-  <code>workerEfforts</code> (one user-owned provider-default or exact catalog-advertised effort
-  per allowed route; never selected or inherited by the main agent),
-  <code>maxParallelWorkers</code> (hard-enforced by the spawn tool at call time),
-  <code>wakeMinutes</code> (how often the supervisor wakes to inspect workers), and
-  <code>questionWaitMinutes</code> (how long it waits for an answer before recording an
-  assumption and continuing). Edit it in the UI card or as the <code>dsh-supervisor:</code> block in
-  <code>~/.dsh/settings.yaml</code> — both are the same revision-fenced document. The model list is the
-  complete policy: the guarded <code>subagent</code> schema exposes only those exact choices, requires one
-  explicitly, and disappears when the list is empty. <code>runtime/current</code> resolves the calling
-  request's captured route, never the stale session-creation route; no implicit fallback exists.
-  Effort is validated against the exact resolved route and never clamped or silently downgraded.
-  Everything applies <em>live</em>: the plugin remounts that schema on model-list changes, revalidates
-  settings on every call, and the <code>SUPERVISOR META-CONFIG</code> system-prompt section is a text
-  <em>function</em>, re-rendered into every request. Two implementation
-  facts worth stealing: a just-spawned continuable child reports <code>activity: 'inactive'</code> until its
-  first turn, so honest cap enforcement needs a starting-ledger on top of the active-count; and the spawn
-  tool declares <code>isConcurrencySafe: false</code> so two same-step spawns serialize through the check.
+  <code>GET /supervisor/stop?session=…</code> 会把活着的或冷却下来的持久状态折叠起来，所以“已停止”这个状态
+  能熬过刷新。之后你直接发一条提示词，就是显式恢复监督者；它不会自动重启
+  那些被停掉的 worker，而当工作再次被武装时，Full stop 按钮又会变得可用。
 </p>
 
-<h2>The observation habit (zero code)</h2>
+<h2>元配置卡片（Settings → Plugins → Supervisor）</h2>
+<p>
+  从 v0.4.0 起，bundle 还通过原生设置域自带了监督者的
+  <strong>元配置</strong>：命名空间 <code>dsh-supervisor</code>，含 <code>workerModels</code>（白名单，带一个
+  默认的 <strong>当前运行时模型</strong> 下拉选项，以及若干固定路由 —— 它们显示原生的
+  <code>[text]</code>/<code>[text,image]</code> 模态标签和模型自报的推理强度）、
+  <code>workerEfforts</code>（每条允许路由一个由用户掌管的 provider 默认值，或目录中明确公示的推理强度；
+  Main Agent（监督者）永远不能自己选、也不会继承它）、
+  <code>maxParallelWorkers</code>（由 spawn 工具在调用时硬性执行）、
+  <code>wakeMinutes</code>（监督者多久醒一次去巡检 worker），以及
+  <code>questionWaitMinutes</code>（等答案等多久，超时就记下一条
+  假设然后继续）。在 UI 卡片里编辑它，或者编辑 <code>~/.dsh/settings.yaml</code> 里的
+  <code>dsh-supervisor:</code> 块 —— 两者是同一份带修订围栏的文档。模型清单就是
+  完整的策略：受保护的 <code>subagent</code> schema 只暴露那些确切的选项、强制要求显式给出一个，
+  并在清单为空时直接消失。<code>runtime/current</code> 解析的是发起这次调用所捕获的
+  路由，绝不是会话创建时那份过期的路由；不存在隐式兜底。
+  推理强度会针对确切解析出的路由做校验，绝不截断、也绝不悄悄降级。
+  一切都是<em>实时</em>生效的：模型清单一变，插件就重新挂载那个 schema；每次调用都重新校验
+  设置；而 <code>SUPERVISOR META-CONFIG</code> 这段系统提示词是一个文本
+  <em>函数</em>，每次请求都重新渲染进去。两个值得抄走的实现
+  事实：一个刚派生出来的可续跑子级，在它第一个回合之前会报 <code>activity: 'inactive'</code>，
+  所以诚实的并发上限执行，需要在活动计数之上再加一本“正在启动”的账；还有，spawn
+  工具声明了 <code>isConcurrencySafe: false</code>，于是同一回合内的两次派生会串行地过这道检查。
+</p>
+
+<h2>观察的习惯（零代码）</h2>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>an optional supervision dashboard in another terminal</figcaption>
+<figcaption><span class="badge you">YOURS</span>另一个终端里的可选监督仪表盘</figcaption>
 <pre><code># pane 1 — the feed and the questions, live:
 tail -f $HOME/agi-lab/.agi/progress.jsonl $HOME/agi-lab/.agi/questions.jsonl \
         $HOME/agi-lab/.agi/CHANGELOG.jsonl
@@ -128,23 +128,23 @@ tail -f $HOME/agi-lab/.agi/progress.jsonl $HOME/agi-lab/.agi/questions.jsonl \
 watch -n 5 "find $HOME/.dsh/sessions -maxdepth 2 -type f | tail"</code></pre>
 </figure>
 <p>
-  During chapter 12’s acceptance run, keep this open next to the browser. Most people find they never
-  miss the custom tabs.
+  在第 12 章的验收运行期间，把它开在浏览器旁边。多数人会发现自己其实从来
+  不怀念那些自定义标签页。
 </p>
 
 <details>
-<summary>Historical exercise: the retired dynamic status pill</summary>
-<h2>Optional client-plugin exercise: a status pill</h2>
+<summary>历史练习：已退役的动态状态胶囊</summary>
+<h2>可选的客户端插件练习：一个状态胶囊</h2>
 <p class="muted">
-  This exercise is retained to teach dynamic host/client plugins, but it is not part of the current
-  product or milestone acceptance. The durable Feed superseded the process-memory pill in v0.2.0.
+  这个练习保留下来是为了教动态 host/client 插件，但它不属于当前的
+  产品或里程碑验收。持久的监督动态 Feed 在 v0.2.0 取代了这个进程内存里的胶囊。
 </p>
 <p>
-  Now the flourish — and the excuse to learn client-side dynamic plugins. The web UI’s layout
-  declares a frame-wide floating layer exactly for additions like this:
+  现在是那点花活 —— 顺便也是学客户端动态插件的借口。Web UI 的布局
+  专门为这类追加声明了一个横跨整帧的浮动层：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/extensions/cordis-client-runner/src/client/slot-catalog.ts (shell.overlay entry, abridged)</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/deepseek-harness/packages/extensions/cordis-client-runner/src/client/slot-catalog.ts （shell.overlay 条目，节选）</figcaption>
 <pre><code>key: 'shell.overlay', kind: 'list', scope: 'root',
 summary: 'Frame-wide floating layer, above every column and outside their
 scroll containers.',
@@ -155,18 +155,18 @@ underneath. This is the additive seat for a frame-wide surface of your own:
 a fresh id is added beside the shipped entries instead of replacing them.'</code></pre>
 </figure>
 <p>
-  “A status pill belongs here” — the catalog literally names your use case. The pill will poll your
-  <code>.agi/</code> files through a package-private host method (<code>harness.handle</code> on the host
-  half, <code>host.call</code> from the client half — the documented RPC bridge from the
-  <code>cordis-plugin-development</code> skill).
+  “状态胶囊就该放这儿” —— 这份目录字面上就点了你的用例。这个胶囊会通过一个包私有的宿主方法
+  轮询你的 <code>.agi/</code> 文件（宿主那一半用 <code>harness.handle</code>，
+  客户端那一半用 <code>host.call</code> —— 也就是 <code>cordis-plugin-development</code> 技能里
+  记录的那座 RPC 桥）。
 </p>
 <p>
-  In a Creator-mode session (<code>$HOME/agi-lab</code>), have it first <em>query the slot for real</em>
-  (<code>cordis_inspect_query</code>, client, <code>Slots.listSubTree</code>, root <code>shell.overlay</code> —
-  a browser tab must be open to answer), then define and run this two-halved plugin:
+  在一个 Creator 模式会话里（<code>$HOME/agi-lab</code>），先让它<em>真去查一下那个槽位</em>
+  （<code>cordis_inspect_query</code>、client、<code>Slots.listSubTree</code>、根 <code>shell.overlay</code> ——
+  必须有一个浏览器标签页开着才能回答），然后再定义并运行这个分成两半的插件：
 </p>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>dynamic plugin — host half (code.host)</figcaption>
+<figcaption><span class="badge you">YOURS</span>动态插件 —— 宿主那一半（code.host）</figcaption>
 <pre><code>return {
   name: 'agi-pill-host',
   apply(ctx) {
@@ -190,7 +190,7 @@ a fresh id is added beside the shipped entries instead of replacing them.'</code
 }</code></pre>
 </figure>
 <figure class="code">
-<figcaption><span class="badge you">YOURS</span>dynamic plugin — client half (code.client)</figcaption>
+<figcaption><span class="badge you">YOURS</span>动态插件 —— 客户端那一半（code.client）</figcaption>
 <pre><code>return {
   inject: ['timer'],
   apply(ctx) {
@@ -228,53 +228,53 @@ a fresh id is added beside the shipped entries instead of replacing them.'</code
   },
 }</code></pre>
 </figure>
-<p>Read your own code against the skill’s rules — every one appears here:</p>
+<p>拿你写的代码去对技能里的规则 —— 每一条都在这里出现了：</p>
 <ul>
-  <li>Host half exposes one JSON method with <code>harness.handle</code>; client calls it with
-      <code>host.call</code>. Only plain JSON crosses (we parse/slice to scalars first).</li>
-  <li>Client uses <code>React.createElement</code> — no JSX in dynamic code.</li>
-  <li>The timer is the <code>timer</code> <em>service</em>, hard-injected, and <code>ctx.interval</code> returns a
-      disposer that <code>useEffect</code> hands back — teardown-safe on stop/update.</li>
-  <li>The slot is registered <em>inside</em> <code>slots.inject(…)</code>, with a fresh <code>id</code> so it adds
-      beside shipped entries, and opts into <code>pointerEvents</code> per the overlay contract.</li>
-  <li>Filesystem access goes through <code>ctx.get('fs')</code> — the Cordis service, not Node globals
-      (which the sandbox withholds). Its read verb is verified:
-      <code>readText(target, signal?)</code> “reads the whole regular text file as one decoded string”
-      (<code>packages/fs/fs/README.md</code>, service table).</li>
+  <li>宿主那一半用 <code>harness.handle</code> 暴露一个 JSON 方法；客户端用
+      <code>host.call</code> 调用它。跨越边界的只有纯 JSON（我们先解析/切成标量）。</li>
+  <li>客户端用 <code>React.createElement</code> —— 动态代码里不能有 JSX。</li>
+  <li>定时器是 <code>timer</code> <em>服务</em>，硬注入，而 <code>ctx.interval</code> 返回一个
+      销毁函数，由 <code>useEffect</code> 交还 —— 在 stop/update 时安全拆除。</li>
+  <li>槽位是在 <code>slots.inject(…)</code> <em>内部</em>注册的，用一个全新的 <code>id</code>，于是它加在
+      自带条目旁边，并按 overlay 契约选择加入 <code>pointerEvents</code>。</li>
+  <li>文件系统访问走 <code>ctx.get('fs')</code> —— Cordis 服务，而不是 Node 全局
+      （沙箱不给这些）。它的读动词已核实：
+      <code>readText(target, signal?)</code>“把整个常规文本文件读成一个解码后的字符串”
+      （<code>packages/fs/fs/README.md</code>，服务表）。</li>
 </ul>
 
 <div class="box test">
-  <span class="box-title">Optional exercise check</span>
-  <p>This is not checked by <code>m6</code>; the current grader checks the packaged Feed and routes.</p>
+  <span class="box-title">可选练习的检查</span>
+  <p>这一项不由 <code>m6</code> 检查；当前的评分器查的是打包的监督动态 Feed 与那些路由。</p>
   <ol>
-    <li><code>cordis_run</code> returns <code>awaiting-approval</code> for the client half → an approval card
-        appears in the Creator session → approve it once.</li>
-    <li>The pill appears bottom-right of the web UI, in <em>every</em> open tab.</li>
-    <li>Append a line and watch it change within ~5 s:
+    <li><code>cordis_run</code> 对客户端那一半返回 <code>awaiting-approval</code> → Creator 会话里出现一张
+        批准卡片 → 批准它一次。</li>
+    <li>胶囊出现在 Web UI 的右下角，<em>每一个</em>打开的标签页里都有。</li>
+    <li>追加一行，看它在约 5 秒内变化：
         <code>echo '{"ts":"now","text":"pill test"}' &gt;&gt; $HOME/agi-lab/.agi/progress.jsonl</code></li>
-    <li>Add a fake pending question line to <code>questions.jsonl</code> → the ❓ counter appears; flip its
-        status to <code>answered</code> → it clears.</li>
-    <li><code>cordis_stop</code> → the pill vanishes everywhere (effects unwound, both sides of the wire).
-        Run it again — one approval was enough (the grant persists).</li>
+    <li>往 <code>questions.jsonl</code> 里加一行假的待答问题 → ❓ 计数出现；把它的
+        状态改成 <code>answered</code> → 计数清掉。</li>
+    <li><code>cordis_stop</code> → 胶囊在各处消失（两端的效果都拆干净了）。
+        再跑一次 —— 一次批准就够了（授权是持久的）。</li>
   </ol>
-  <p><strong>Remember its nature:</strong> dynamic plugins die with the process. If you love the pill,
-  chapter 13 explains what “promoting it to a real plugin” involves; until then, re-running it after
-  a restart is two tool calls in any Creator session.</p>
+  <p><strong>记住它的天性：</strong>动态插件随进程一起死。如果你爱上了这个胶囊，
+  第 13 章会讲“把它提升成真插件”意味着什么；在那之前，重启之后重新跑它，
+  在任何 Creator 会话里都只是两次工具调用。</p>
 </div>
 
 <div class="box why">
-  <span class="box-title">What this historical exercise teaches</span>
+  <span class="box-title">这段历史练习教的是什么</span>
   <p>
-    The host/client bridge, additive slot registration, teardown-safe timers, and plain-JSON boundary
-    are the same concepts used by packaged client plugins. The production supervisor uses them in the
-    durable <code>conversation.view</code> Feed instead of requiring a dynamic plugin after every restart.
+    host/client 桥、加法式槽位注册、拆除安全的定时器，以及纯 JSON 边界，
+    正是打包的客户端插件所用的同一批概念。生产版监督者把它们用在持久的
+    <code>conversation.view</code> 监督动态 Feed 里，而不是每次重启后都要再来一个动态插件。
   </p>
 </div>
 </details>
 
 <nav class="pager">
-  <a class="prev" href="10-loop.html">← Chapter 10 — Milestone 5: the loop</a>
-  <a class="next" href="12-acceptance.html">Chapter 12 — Milestone 7: acceptance →</a>
+  <a class="prev" href="10-loop.html">← 第 10 章 —— 里程碑 5：循环</a>
+  <a class="next" href="12-acceptance.html">第 12 章 —— 里程碑 7：验收 →</a>
 </nav>
 </main>
 </body>

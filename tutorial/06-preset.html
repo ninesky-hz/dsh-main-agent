@@ -1,30 +1,30 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>6 · Milestone 1: install and inspect the main-agent preset — Supervisor on DSH</title>
+<title>第 6 章 · 里程碑 1：安装并查看 main-agent preset — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Part II · Chapter 6</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">第 II 部分 · 第 6 章</span>
   <span class="spacer"></span>
   <a href="05-creator-mode.html">←</a>
   <a href="07-brain.html">→</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Part II — Build · Milestone 1</p>
-  <h1>Install and inspect <code>main-agent</code></h1>
-  <p class="lede">This is the first build action. You install the repository as a dsh profile
-  bundle, restart once, and let its non-destructive setup plugin install the exact current preset.
-  Only after the package exists do you inspect rows named <code>dsh-supervisor/…</code>.</p>
+  <p class="kicker">第 II 部分 —— 构建 · 里程碑 1</p>
+  <h1>安装并查看 <code>main-agent</code></h1>
+  <p class="lede">这是第一个构建动作。你把本仓库作为一个 dsh profile 的 bundle 装上、重启一次，
+  让它那个不破坏任何东西的 setup 插件把当前这份 preset 原样装上。等这个包真的存在了，你再去查看那些
+  名字形如 <code>dsh-supervisor/…</code> 的配置行。</p>
 </header>
 
-<h2>The dependency order</h2>
+<h2>依赖顺序</h2>
 <pre><code>clone repository                         (setup page)
   → dsh plugin add                      (package becomes profile dependency)
     → restart dsh web                   (bundle rows compose at boot)
@@ -32,13 +32,13 @@
         → preset subpath rows resolve   (goal/control/spawn mount)
           → start and test a session</code></pre>
 <p>
-  Reversing the middle two steps produces the exact error this chapter is designed to prevent:
-  <code>Cannot find package dsh-supervisor/control</code> or
-  <code>dsh-supervisor/spawn</code>. A YAML row is not an npm installation instruction; its package must
-  already resolve from the profile.
+  把中间那两步调换顺序，就会得到本章专门要防的那个报错：
+  <code>Cannot find package dsh-supervisor/control</code> 或
+  <code>dsh-supervisor/spawn</code>。YAML 里的配置行不是 npm 的安装指令；它指向的包必须已经能从
+  profile 里解析出来。
 </p>
 
-<h2>Step 1 — confirm the clean preflight</h2>
+<h2>第 1 步 —— 确认干净的前置状态</h2>
 <pre><code>test -f "$HOME/src/dsh-supervisor/package.json"
 test -f "$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml"
 test -f "$HOME/.dsh/profiles/web/package.json"
@@ -46,48 +46,48 @@ test -f "$HOME/.dsh/profiles/web/package.json"
 # On the clean course path this should print no supervisor dependency yet:
 grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json" || true</code></pre>
 <p>
-  If <code>$HOME/.dsh/.agent-presets/main-agent</code> already exists on a machine that is not actually
-  clean, move it aside before installing if you want the package's current preset. The installer never
-  clobbers a user-owned preset in its default <code>syncPreset: if-absent</code> mode.
+  如果机器其实并不干净、<code>$HOME/.dsh/.agent-presets/main-agent</code> 已经存在，而你又想要这个包
+  当前那份 preset，那就在安装前先把它挪开。安装器在默认的 <code>syncPreset: if-absent</code> 模式下，
+  绝不会覆盖用户自己的 preset。
 </p>
 
-<h2>Step 2 — install the supervisor bundle</h2>
+<h2>第 2 步 —— 安装 supervisor bundle</h2>
 <pre><code>cd "$HOME/src/dsh-supervisor"
 dsh plugin --profile web add "file:$PWD"</code></pre>
 <p>
-  This one command updates the profile dependency and ordered bundle list. Do not run
-  <code>npm install</code> inside the dsh profile and do not hand-edit its <code>package.json</code>.
-  The package manager may print peer-dependency warnings because Harness supplies those peers from
-  its own installation; use the installation gate below to distinguish a harmless warning from failure.
+  就这一条命令，会更新 profile 的依赖和有序的 bundle 列表。不要在 dsh profile 里跑
+  <code>npm install</code>，也不要手工编辑它的 <code>package.json</code>。包管理器可能会打印 peer
+  依赖警告，因为那些 peer 是 Harness 从它自己的安装里提供的；用下面那道“安装关卡”来区分无害警告和
+  真正的失败。
 </p>
 <p>
-  Return to the terminal running <code>dsh web</code>, press <kbd>Ctrl-C</kbd>, wait for shutdown, then run:
+  回到跑着 <code>dsh web</code> 的那个终端，按 <kbd>Ctrl-C</kbd>，等它退干净，然后运行：
 </p>
 <pre><code>dsh web</code></pre>
 <p>
-  The restart is required because bundle lists compose at boot. During boot, this package mounts its
-  settings/feed host plugin and the native schedule service, then copies the packaged
-  <code>main-agent</code> directory into <code>$HOME/.dsh/.agent-presets/</code> because it is absent.
+  这次重启是必须的，因为 bundle 列表是在启动时组装的。启动过程中，这个包会挂载它自己的 settings/feed
+  宿主插件和原生 schedule 服务，然后因为预设目录还不存在，把包里带的
+  <code>main-agent</code> 目录复制进 <code>$HOME/.dsh/.agent-presets/</code>。
 </p>
 
-<h2>Step 3 — prove package, bundle, and preset all exist</h2>
+<h2>第 3 步 —— 证明包、bundle、preset 三者都在</h2>
 <div class="box test">
-  <span class="box-title">Installation gate</span>
+  <span class="box-title">安装关卡</span>
   <pre><code>grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json"
 dsh --profile web --dump-config | grep -E 'agi-schedule|agi-supervisor-setup'
 test -f "$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml"
 test -f "$HOME/.dsh/.agent-presets/main-agent/preset.yml"</code></pre>
-  <p>All four commands must succeed. In the browser, Settings → Plugins must also contain
-  <strong>Supervisor</strong>. Stop here if any check fails.</p>
+  <p>这四条命令必须全部成功。在浏览器里，Settings → Plugins 里还必须有
+  <strong>Supervisor</strong>。任何一项没过，就停在这儿别往下走。</p>
 </div>
 
-<h2>Step 4 — inspect the rows the package installed</h2>
+<h2>第 4 步 —— 查看这个包装进来的那些行</h2>
 <p>
-  Open <code>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml</code> read-only. The important policy
-  substitutions are already complete:
+  用只读方式打开 <code>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml</code>。那些关键的策略
+  替换已经做好了：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>installed preset — selected rows, abridged</figcaption>
+<figcaption><span class="badge cite">引用</span>装好的 preset —— 节选的若干行</figcaption>
 <pre><code># Native goal domain, supervisor-owned model frontend:
 - id: tool-goal
   name: dsh-supervisor/goal
@@ -107,56 +107,55 @@ test -f "$HOME/.dsh/.agent-presets/main-agent/preset.yml"</code></pre>
     persona: |
       # exact worker protocol continues here</code></pre>
 </figure>
-<p>Now verify the bypasses are absent:</p>
+<p>现在验证那些“绕过”都不存在：</p>
 <pre><code>grep -nE 'subagent_fork|@deepseek-ai/dsh-tool-goal' \
   "$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml" || true</code></pre>
 <p>
-  The command should print nothing. The package exports that make the three custom names resolvable
-  are visible in <code>$HOME/src/dsh-supervisor/package.json</code> as <code>./goal</code>,
-  <code>./control</code>, and <code>./spawn</code>. Their lifecycle backends remain native; these frontends
-  add grounded goals, next-step steering, and settings-owned model/effort policy.
+  这条命令应该什么都不打印。让那三个自定义名字能被解析出来的包导出，在
+  <code>$HOME/src/dsh-supervisor/package.json</code> 里能看得到，也就是 <code>./goal</code>、
+  <code>./control</code> 和 <code>./spawn</code>。它们背后的生命周期后端仍然是原生的；这几个前端额外
+  加上了有依据的目标、下一步纠偏，以及由设置项掌管的模型/推理强度策略。
 </p>
 
-<h2>Step 5 — mount a real session</h2>
+<h2>第 5 步 —— 挂载一个真实会话</h2>
 <p>
-  Web UI → new session → workspace <code>$HOME/agi-lab</code> → preset
-  <strong>Main Agent (Supervisor)</strong>. Start it and ask:
+  Web UI → 新建会话 → 工作区 <code>$HOME/agi-lab</code> → preset
+  <strong>Main Agent（监督者）</strong>。启动它，然后问：
 </p>
 <pre><code>List every tool you can currently call, names only, grouped by theme.</code></pre>
 <div class="box test">
-  <span class="box-title">Milestone 1 acceptance</span>
-  <p><strong>Auto-grade:</strong>
+  <span class="box-title">里程碑 1 验收</span>
+  <p><strong>自动评分：</strong>
      <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m1 --ws "$HOME/agi-lab"</code></p>
   <ol>
-    <li>The session starts with no <code>Cannot find package</code> mount error.</li>
-    <li>Tools include <code>subagent</code>, <code>send_message</code>, <code>interrupt_agent</code>,
-        <code>list_agents</code>, <code>get_goal</code>, <code>start_goal</code>, and
-        <code>update_goal</code>.</li>
-    <li><code>subagent_fork</code> and native <code>create_goal</code> are absent.</li>
-    <li>A second session on the same preset also starts, proving no preset service leaked into the
-        process-global realm.</li>
+    <li>会话能启动，没有 <code>Cannot find package</code> 那种挂载错误。</li>
+    <li>工具里有 <code>subagent</code>、<code>send_message</code>、<code>interrupt_agent</code>、
+        <code>list_agents</code>、<code>get_goal</code>、<code>start_goal</code> 和
+        <code>update_goal</code>。</li>
+    <li><code>subagent_fork</code> 和原生的 <code>create_goal</code> 都不在。</li>
+    <li>同一个 preset 上的第二个会话也能启动，这证明没有哪个 preset 服务漏进进程级全局域。</li>
   </ol>
 </div>
 
 <div class="box why">
-  <span class="box-title">Where preset authoring still fits</span>
+  <span class="box-title">手写 preset 仍然适用的地方</span>
   <p>
-    Chapters 2–5 taught enough Cordis and roster mechanics to author a variant. For the primary course,
-    using the packaged preset is the reproducible build: it cannot drift from the plugin version that
-    supplies its rows. If you create a variant later, copy <code>main-agent</code> to a new id through the
-    roster, edit that user copy, and mount-validate it with <code>standingKeyFor</code>.
+    第 2–5 章教的 Cordis 和 roster 机制，已经够你写一个变体出来了。但在本课程的主路径上，用打包好的
+    preset 才是可复现的构建：它不会和提供这些行的插件版本脱节。你以后要真做变体，就通过 roster 把
+    <code>main-agent</code> 复制成一个新 id，改那份属于你的副本，再用 <code>standingKeyFor</code>
+    给它做挂载校验。
   </p>
 </div>
 
-<h2>What exists now</h2>
+<h2>现在有什么了</h2>
 <p>
-  A fully mountable supervisor preset, its package-owned policy frontends, live settings, Feed routes,
-  and schedule service. Chapter 7 reads and tests the installed persona and durable state contract.
+  一个能完整挂载的监督者 preset、它那套归包所有的策略前端、活着的设置项、Feed 路由，还有 schedule
+  服务。第 7 章会去读并测试装好的 persona 和持久状态契约。
 </p>
 
 <nav class="pager">
-  <a class="prev" href="05-creator-mode.html">← Chapter 5 — Creator mode</a>
-  <a class="next" href="07-brain.html">Chapter 7 — Milestone 2: the brain →</a>
+  <a class="prev" href="05-creator-mode.html">← 第 5 章 —— Creator mode 与 Cordis 工具集</a>
+  <a class="next" href="07-brain.html">第 7 章 —— 里程碑 2：大脑 →</a>
 </nav>
 </main>
 </body>

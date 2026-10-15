@@ -1,77 +1,76 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Setup · Start on a clean PC — Supervisor on DSH</title>
+<title>安装 · 从一台干净的 PC 开始 — DSH 上的监督者</title>
 <link rel="stylesheet" href="style.css">
 <script src="theme.js"></script>
 </head>
 <body>
 <nav class="top">
-  <a href="index.html">⌂ Contents</a>
-  <span class="crumb">Setup · Clean machine</span>
+  <a href="index.html">⌂ 目录</a>
+  <span class="crumb">安装 · 干净的机器</span>
   <span class="spacer"></span>
-  <a href="01-big-picture.html">Chapter 1 →</a>
+  <a href="01-big-picture.html">第 1 章 →</a>
 </nav>
 <main>
 <header class="chapter">
-  <p class="kicker">Before Part I — Required setup</p>
-  <h1>Start on a clean PC</h1>
-  <p class="lede">This is the only supported starting state for the course: no running Harness,
-  no Harness source checkout, no <code>main-agent</code> preset, and no supervisor plugin. Finish every
-  check on this page before chapter 1.</p>
+  <p class="kicker">第 I 部分之前 —— 必需的环境准备</p>
+  <h1>从一台干净的 PC 开始</h1>
+  <p class="lede">这是本课程唯一受支持的起始状态：没有正在运行的 Harness、
+  没有 Harness 源码检出、没有 <code>main-agent</code> preset、也没有监督者插件。进入第 1 章之前，
+  请完成本页的每一项检查。</p>
 </header>
 
-<h2>How this course app starts</h2>
+<h2>课程应用如何启动</h2>
 <p>
-  You have already cloned <code>dsh-supervisor</code> to reach this page. From that clone, the one local
-  setup command creates an isolated Python environment, installs only the grader's PyYAML and zstd
-  decoder dependencies, chooses an unused localhost port, and serves the tutorial with working grade
-  buttons:
+  你能看到本页，说明已经克隆了 <code>dsh-supervisor</code>。就在这份克隆里，那一条本地
+  安装命令会创建隔离的 Python 环境、只安装评分器所需的 PyYAML 与 zstd
+  解码器依赖、挑选一个未占用的 localhost 端口，并启动课程服务，且评分按钮可用：
 </p>
 <pre><code>cd "$HOME/src/dsh-supervisor"
 ./tutorial/setup.sh</code></pre>
 <p>
-  Keep that terminal open and use the URL it prints. The script deliberately does <strong>not</strong>
-  install dsh, clone DeepSeek Harness, configure a model, or create your lab; those learning steps
-  remain visible below. Press <kbd>Ctrl-C</kbd> when you want to stop the course server.
+  保持那个终端打开，并使用它打印出的 URL。该脚本刻意<strong>不</strong>
+  安装 dsh、不克隆 DeepSeek Harness、不配置模型、也不创建你的实验环境；这些学习步骤
+  仍列在下方。想停止课程服务器时，按 <kbd>Ctrl-C</kbd>。
 </p>
 
-<h2>Supported shell and prerequisites</h2>
+<h2>受支持的 shell 与前置条件</h2>
 <p>
-  The commands use a POSIX shell on Linux or macOS. On Windows, run them inside WSL. The course
-  launcher needs Python 3; on Debian/Ubuntu it automatically installs missing
-  <code>python3-venv</code> support through <code>apt-get</code>. For the Harness itself, install
-  <strong>Git</strong>, <strong>Node.js 22.19+ in the Node 22 line or Node 24+</strong>,
-  and the tools below. Node 23 is not a supported
-  Harness runtime. Use an LTS installer from
-  <a href="https://nodejs.org/en/download">nodejs.org</a>; on Ubuntu/WSL the remaining packages are:
+  这些命令使用 Linux 或 macOS 上的 POSIX shell。在 Windows 上，请在 WSL 里运行。
+  课程启动器需要 Python 3；在 Debian/Ubuntu 上，它会自动通过
+  <code>apt-get</code> 补装缺失的 <code>python3-venv</code> 支持。至于 Harness 本身，请安装
+  <strong>Git</strong>、<strong>Node.js 22 系列的 22.19+ 或 Node 24+</strong>，
+  以及下面的工具。Node 23 不是受支持的
+  Harness 运行时。请使用
+  <a href="https://nodejs.org/en/download">nodejs.org</a> 的 LTS 安装包；在 Ubuntu/WSL 上，其余软件包是：
 </p>
 <pre><code>sudo apt update
 sudo apt install -y git python3</code></pre>
-<p>On macOS, install Git and Python 3 with Homebrew or your preferred package manager. The setup script
-already installs the Python grading libraries inside the repository, so it does not modify your system
-Python. Finally verify the Harness prerequisites:</p>
+<p>在 macOS 上，用 Homebrew 或你惯用的包管理器安装 Git 与 Python 3。setup 脚本
+已经把 Python 评分库安装在仓库内部，因此不会改动你的系统
+Python。最后核验 Harness 的前置条件：</p>
 <pre><code>git --version
 node --version       # v22.19+ in 22.x, or v24+
 npm --version</code></pre>
 <pre><code>python3 --version
 test -x "$HOME/src/dsh-supervisor/tutorial/.venv/bin/python"</code></pre>
 
-<h2>Install DeepSeek Harness</h2>
+<h2>安装 DeepSeek Harness</h2>
 <pre><code>npm install --global @deepseek-ai/dsh
 dsh --version</code></pre>
 <p>
-  The npm installation is the runtime. The source checkout in the next step is for the course's cited
-  code tours; do not modify it.
+  npm 安装出来的才是运行时。下一步的源码检出只用于课程引用的
+  代码导览；不要修改它。
 </p>
 
-<h2>Clone DeepSeek Harness beside this course</h2>
+<h2>把 DeepSeek Harness 克隆到课程旁边</h2>
 <p>
-  The course repository is already at <code>$HOME/src/dsh-supervisor</code>. Clone the Harness source
-  beside it for the cited code tours. The global npm package remains the runtime; do not modify this
-  source checkout.
+  课程仓库已经位于 <code>$HOME/src/dsh-supervisor</code>。把 Harness 源码克隆到
+  它旁边，用于课程引用的代码导览。全局 npm 包仍是运行时；不要修改这份
+  源码检出。
 </p>
 <pre><code>mkdir -p "$HOME/src"
 git clone https://github.com/deepseek-ai/deepseek-harness.git \
@@ -81,25 +80,25 @@ test -f "$HOME/src/dsh-supervisor/package.json"
 test -f "$HOME/src/deepseek-harness/docs/architecture.md"</code></pre>
 
 <div class="box warn">
-  <span class="box-title">Do not install the supervisor bundle yet</span>
+  <span class="box-title">暂时不要安装监督者 bundle</span>
   <p>
-    Chapter 6 installs this repository as a profile bundle <em>before</em> any
-    <code>dsh-supervisor/…</code> row is mounted. At the next boot, the bundle installs the matching
-    packaged <code>main-agent</code> preset. Keeping package and preset installation together prevents
-    rows from referring to package names that do not exist yet.
+    第 6 章会把本仓库安装为一个 profile bundle，这一步发生在任何
+    <code>dsh-supervisor/…</code> 行被挂载<em>之前</em>。下一次启动时，该 bundle 会安装随包携带的
+    对应 <code>main-agent</code> preset。把包与 preset 的安装放在一起，可以避免
+    出现行引用了尚不存在的包名的情况。
   </p>
 </div>
 
-<h2>Start dsh and configure one model</h2>
-<p>Run the server in a terminal and leave that terminal open:</p>
+<h2>启动 dsh 并配置一个模型</h2>
+<p>在一个终端里启动服务器，并保持该终端打开：</p>
 <pre><code>dsh web</code></pre>
 <p>
-  Open <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a>, then go to
-  <strong>Settings → Models</strong> and configure a working provider/model route. The tutorial cannot
-  test prompts until a model succeeds. A terminal multiplexer is optional; no chapter assumes one.
+  打开 <a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a>，然后进入
+  <strong>Settings → Models</strong>，配置一条可用的 provider/model 路由。在模型可用之前，
+  课程无法测试提示词。终端复用器是可选的；没有任何一章假设你会用它。
 </p>
 
-<h2>Create the lab workspace</h2>
+<h2>创建实验工作区</h2>
 <pre><code>mkdir -p "$HOME/agi-lab/.agi/subagents"
 cp "$HOME/src/dsh-supervisor/agi-template/config.json" \
   "$HOME/agi-lab/.agi/config.json"
@@ -109,21 +108,21 @@ touch "$HOME/agi-lab/.agi/NOTES.md" \
       "$HOME/agi-lab/.agi/CHANGELOG.jsonl"</code></pre>
 
 <div class="box test">
-  <span class="box-title">Setup gate — do not continue until all six pass</span>
+  <span class="box-title">环境闸门 —— 六项全部通过之前不要继续</span>
   <ol>
-    <li><code>node --version</code> is 22.19+ in the 22.x line, or 24+; the course server's setup check passes below.</li>
-    <li><code>dsh --version</code> succeeds.</li>
-    <li>The course and Harness repositories both exist under <code>$HOME/src/</code>.</li>
-    <li><a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> loads.</li>
-    <li>A simple prompt in a standard session receives a model response.</li>
-    <li><code>$HOME/agi-lab/.agi/config.json</code> exists and
-        <code>$HOME/.dsh/profiles/web/package.json</code> was created.</li>
+    <li><code>node --version</code> 在 22.x 系列为 22.19+，或为 24+；下面的课程服务器 setup 检查通过。</li>
+    <li><code>dsh --version</code> 执行成功。</li>
+    <li>课程仓库与 Harness 仓库都存在于 <code>$HOME/src/</code> 下。</li>
+    <li><a href="http://127.0.0.1:3080">http://127.0.0.1:3080</a> 能正常打开。</li>
+    <li>在标准会话里发一个简单提示词，能收到模型回复。</li>
+    <li><code>$HOME/agi-lab/.agi/config.json</code> 存在，且
+        <code>$HOME/.dsh/profiles/web/package.json</code> 已创建。</li>
   </ol>
 </div>
 
 <nav class="pager">
-  <a class="prev" href="index.html">← Contents</a>
-  <a class="next" href="01-big-picture.html">Chapter 1 — The big picture →</a>
+  <a class="prev" href="index.html">← 目录</a>
+  <a class="next" href="01-big-picture.html">第 1 章 —— 大局观 →</a>
 </nav>
 </main>
 </body>

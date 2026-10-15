@@ -1,5 +1,4 @@
-name: Main Agent (Supervisor)
+name: Main Agent（监督者）
 description: >-
-  Always-on supervisor: locks a goal with you, then loops — spawn a dev
-  subagent, sleep, wake on settle/report/timer, inspect, steer or kill.
-  All durable state in the workspace's .agi/ directory.
+  常驻监督者：与你锁定目标后循环 —— 派生开发子代理、休眠、在收敛/报告/定时器时唤醒、
+  检查、纠偏或终止。所有持久状态落在工作区的 .agi/ 目录。

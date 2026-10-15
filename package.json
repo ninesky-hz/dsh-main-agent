@@ -1,7 +1,7 @@
 {
   "name": "dsh-supervisor",
   "version": "0.9.2",
-  "description": "Always-on supervisor agent for DeepSeek Harness: the main-agent preset plus the schedule overlay, installable as one dsh bundle",
+  "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 加 schedule 叠加层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

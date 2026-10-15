@@ -41,6 +41,73 @@ test('the latest logged preset selection wins over the creation header', () => {
   assert.equal(sessionAgentPreset({ header: { agentPreset: 'cordis' }, events: [] }), 'cordis')
 })
 
+test('the declared 0.2 Session surface resolves the live preset and fold offset', () => {
+  const log = [
+    { type: 'agent-preset/selected', data: { agentPreset: 'minimal' } },
+    { type: 'agent-preset/selected', data: { agentPreset: 'main-agent' } },
+  ]
+  assert.equal(sessionAgentPreset({
+    header: { version: 4, agentPreset: 'cordis' },
+    inheritedEventCount: 0,
+    snapshotEvents: () => log,
+  }), 'main-agent')
+
+  // dsh dropped `session.events`; both readers must stay fail-open.
+  assert.equal(sessionAgentPreset({ header: { version: 4, agentPreset: 'cordis' } }), 'cordis')
+  assert.equal(sessionAgentPreset({}), undefined)
+})
+
+test('full stop folds the declared Session log with its fork offset', async () => {
+  const order = []
+  const agent = fakeAgent(order)
+  const log = [{ type: 'schedule/change', data: { id: 'schedule-2' } }]
+  agent.session = {
+    header: { version: 4, agentPreset: 'main-agent' },
+    inheritedEventCount: 1,
+    snapshotEvents: () => log,
+    append(type, data) { order.push(`append:${data.id}`) },
+  }
+  let foldArgs
+  const outcome = await fullStopAgent(
+    agent,
+    async () => { order.push('flush') },
+    (events, inheritedEventCount) => {
+      foldArgs = [events, inheritedEventCount]
+      return agent.fold()
+    },
+  )
+
+  assert.deepEqual(outcome, { kind: 'stopped', ids: ['schedule-2', 'schedule-7'] })
+  assert.equal(foldArgs[0], log)
+  assert.equal(foldArgs[1], 1)
+  assert.deepEqual(order, [
+    'cancel:user', 'idle', 'maintenance', 'flush', 'fold',
+    'append:schedule-2', 'append:schedule-7', 'flush',
+  ])
+})
+
+test('a Session without any readable log folds nothing instead of failing the stop', async () => {
+  const order = []
+  const agent = fakeAgent(order)
+  agent.session = {
+    header: { version: 4, agentPreset: 'main-agent' },
+    append(type, data) { order.push(`append:${data.id}`) },
+  }
+  let foldArgs
+  const outcome = await fullStopAgent(
+    agent,
+    async () => { order.push('flush') },
+    (events, inheritedEventCount) => {
+      foldArgs = [events, inheritedEventCount]
+      return { active: [] }
+    },
+  )
+
+  assert.deepEqual(outcome, { kind: 'stopped', ids: [] })
+  assert.deepEqual(foldArgs, [[], 0])
+  assert.deepEqual(order.filter(step => step.startsWith('append:')), [])
+})
+
 test('full stop flushes before folding and after every deletion', async () => {
   const order = []
   const agent = fakeAgent(order)
@@ -251,5 +318,5 @@ test('Feed stops the root supervisor from a worker view and removes the button',
     undefined,
   )
   assert.ok(findElement(second, node => node.type === 'span'
-    && node.children.some(child => typeof child === 'string' && child.includes('stopped'))))
+    && node.children.some(child => typeof child === 'string' && child.includes('已停止'))))
 })

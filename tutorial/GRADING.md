@@ -1,9 +1,9 @@
-# Milestone graders for the Supervisor course
+# 监督者课程的里程碑评分器
 
-One command per milestone, run after finishing each chapter's "Test it live" box:
+每个里程碑一条命令，在完成该章的“实机验证”小框之后运行：
 
-The recommended interface is the <strong>Run grader</strong> button embedded in each tutorial milestone
-when the course is started with `./tutorial/setup.sh`. These commands are the equivalent CLI:
+推荐的入口是嵌在每个教程里程碑小框里的 <strong>运行评分器</strong> 按钮 ——
+当课程是用 `./tutorial/setup.sh` 启动的时候。下面是等价的命令行版本：
 
 ```sh
 "$HOME/src/dsh-supervisor/tutorial/grade.sh" m1
@@ -13,50 +13,50 @@ when the course is started with `./tutorial/setup.sh`. These commands are the eq
 "$HOME/src/dsh-supervisor/tutorial/grade.sh" doctor
 ```
 
-| Milestone | Chapter | What it grades |
+| 里程碑 | 章节 | 评的是什么 |
 |---|---|---|
-| m0 | 4  | dsh running, web UI up, profile patch parses, workspace exists |
-| m1 | 6  | preset files, persona row, sole plugin-owned `subagent` row (settings-only model policy with explicit `runtime/current`, worker persona, group placement), sessions mounted |
-| m2 | 7  | `.agi/` skeleton, config keys, all protocol markers in the persona, GOAL.md, plugin-owned non-blocking `start_goal` call, JSONL validity, amendment discipline |
-| m3 | 8  | schedule row in the installed bundle or manual patch, `schedule_create` called, reminder delivered, an `assumed` question |
-| m4 | 9  | child sessions parented to the supervisor; spawn/steer/kill calls; `subagent-settled` and `subagent-report` messages; a child `report`; `outcome.md` |
-| m5 | 10 | CHANGELOG covers spawn+steer+kill, assumption logged, NOTES verdicts, progress feed, deliverable, ≥2 workers, timer hygiene |
-| m6 | 11 | packaged Feed client, served bundle and feed route |
-| m7 | 12 | restart resume marker, amendment after completion — plus m2–m5 re-run on the acceptance workspace |
+| m0 | 4  | dsh 在跑、web UI 起来了、profile patch 能解析、工作区存在 |
+| m1 | 6  | preset 文件、persona 行、唯一由插件拥有的 `subagent` 行（只走设置的模型策略，且显式写了 `runtime/current`、worker persona、分组位置）、会话已挂载 |
+| m2 | 7  | `.agi/` 骨架、配置键、persona 里全部协议标记、GOAL.md、插件拥有的非阻塞 `start_goal` 调用、JSONL 合法性、修订纪律 |
+| m3 | 8  | 已装 bundle 或手工 patch 里有 schedule 行、`schedule_create` 被调用过、提醒真的送达、有一条 `assumed` 状态的提问 |
+| m4 | 9  | 子会话的父级是这个监督者；有 spawn/steer/kill 调用；有 `subagent-settled` 与 `subagent-report` 消息；有一个子级发来的 `report`；有 `outcome.md` |
+| m5 | 10 | CHANGELOG 覆盖了 spawn+steer+kill、假设有记录、NOTES 里有结论、progress 动态有更新、交付物在、≥2 个 worker、定时器卫生 |
+| m6 | 11 | 打包的监督动态 Feed client、已伺服的 bundle 与 feed 路由 |
+| m7 | 12 | 重启后的恢复标记、完成之后再追加一次修订 —— 外加在验收工作区上重跑 m2–m5 |
 
-## How it works
+## 它是怎么工作的
 
-Everything is graded from durable artifacts only — nothing is executed in your agent and
-nothing is mutated:
+评分只看持久产物 —— 不在你的 agent 里执行任何东西，
+也不改动任何东西：
 
-- **Preset & patch**: parsed from `~/.dsh/.agent-presets/main-agent/` and
-  `~/.dsh/profiles/web/cordis.patch.yml` (YAML loader tolerates `!!js` tags).
-- **Behavior**: read from the session event logs
-  (`~/.dsh/sessions/<workspace>/<session>/session.jsonl.zstd`, decompressed with the
-  system CLI when present or the tutorial's private Python decoder; live half-written logs are handled). Tool calls are matched by the
-  `tool/call` event's `data.name`; settle/report/schedule wakes by their message
-  `source.kind`.
-- **State**: your workspace's `.agi/` files.
+- **Preset 与 patch**：从 `~/.dsh/.agent-presets/main-agent/` 和
+  `~/.dsh/profiles/web/cordis.patch.yml` 里解析出来（YAML 加载器能容忍 `!!js` 标签）。
+- **行为**：从会话事件日志里读
+  （`~/.dsh/sessions/<workspace>/<session>/session.jsonl.zstd`，有系统 CLI 就用系统 CLI 解压，
+  否则用教程自带的私有 Python 解码器；写到一半的活动日志也能处理）。工具调用靠
+  `tool/call` 事件的 `data.name` 匹配；settle/report/schedule 唤醒靠消息里的
+  `source.kind` 匹配。
+- **状态**：你工作区里的 `.agi/` 文件。
 
-Scoring: PASS = 1, WARN = 0.5 (weak or partial evidence — read the hint), FAIL = 0.
-MANUAL lines are reminders of things only a human can judge (visuals, transcript
-quality); they never affect the score. A milestone "passes" at ≥ 90%, which is also the
-process exit code (0/1), so you can chain it in scripts.
+评分：PASS = 1，WARN = 0.5（证据偏弱或不完整 —— 读一下它给的提示），FAIL = 0。
+MANUAL 行是提醒你：有些东西只有人能判断（视觉效果、对话记录的质量）；
+它们从不影响分数。里程碑在 ≥ 90% 时算“通过”，这个值同时也是
+进程退出码（0/1），所以你可以在脚本里把它串起来用。
 
-Requirements: Python 3 with PyYAML and either the `zstd` CLI or Python
-`zstandard`. `./tutorial/setup.sh` installs both Python packages in an isolated venv.
+依赖：Python 3 加上 PyYAML，以及 `zstd` CLI 或 Python 的
+`zstandard` 二选一。`./tutorial/setup.sh` 会在一个独立的 venv 里把这两个 Python 包装好。
 
-## Honest limitations
+## 老实说的局限
 
-- The grader proves *evidence exists*, not that it is good. It can see that
-  `send_message` was called; whether the correction was sensible is your read of the
-  transcript. MANUAL lines mark exactly these spots.
-- m1's "second session mounts cleanly" is a proxy (two session dirs), not a live
-  realm-collision test — `standingKeyFor` can only be called from inside the runtime
-  (chapter 6 step 4 does it properly).
-- m3's "reminder delivered" searches for schedule-sourced messages or the literal
-  `patience-test` prompt from the chapter's script; a custom prompt may need the
-  `--ws` workspace's logs read by hand if it WARNs.
-- Logs are scanned across **all** sessions in the workspace, so a check once passed
-  stays passed (evidence is append-only). Use a fresh workspace (`--ws`) when you want
-  a clean slate — exactly what chapter 12 does with `$HOME/agi-acceptance`.
+- 评分器证明的是*证据存在*，不是说它做得好。它能看见
+  `send_message` 被调用了；这次纠偏合不合理，得你自己读对话记录来判断。
+  MANUAL 行标的就是这些地方。
+- m1 那条“第二个会话能干净挂载”是个替身判据（存在两个会话目录），不是真的
+  领域冲突测试 —— `standingKeyFor` 只能在运行时内部调用
+  （第 6 章的第 4 步才是正规做法）。
+- m3 那条“提醒真的送达”会去找来自 schedule 的消息，或者该章脚本里那个字面量
+  `patience-test` 提示词；如果你用的是自定义提示词，它可能会 WARN，那就得自己手动读
+  `--ws` 那个工作区的日志。
+- 日志是在工作区的**所有**会话里扫的，所以一条检查一旦过了
+  就会一直算过（证据只追加）。想要一张白纸，就用一个全新的工作区（`--ws`）——
+  第 12 章用 `$HOME/agi-acceptance` 干的正是这件事。

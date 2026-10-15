@@ -1,40 +1,40 @@
-# dsh-supervisor — an Always-On Supervisor Agent for DeepSeek Harness
+# dsh-supervisor — 面向 DeepSeek Harness 的常驻监督者 Agent
 
-A 24/7 **Main Agent** that records a reviewable goal, then loops unattended: spawn a dev
-subagent → sleep → wake on settle / report / timer / your message → inspect → steer,
-kill, or continue. Built **native-first** on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-(dsh): the core is one agent preset, a persona, and one schedule-service row — zero custom
-loop machinery. This repo **is an installable dsh plugin bundle**: one command puts the
-whole setup on any machine running dsh.
+7×24 小时在线的 **Main Agent**：先记录一个可审阅的目标，然后无人值守地循环：派生开发
+子代理 → 休眠 → 因收敛 / 报告 / 定时器 / 你的消息而唤醒 → 巡检 → 纠偏、
+终止或继续。基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+（dsh）以 **原生优先** 方式构建：核心就是一个 agent preset、一份人格、一行
+schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可安装的 dsh 插件包**：一条命令即可把
+整套配置装到任何运行 dsh 的机器上。
 
-Tested end-to-end on `glm-5.3` (Z.AI): goal setup, grounded delegation, mid-flight
-steering, a mid-turn kill + tighter respawn, the silent-question → recorded-assumption
-flow, deliverable verification (it caught its own buggy link-checker and re-ran it),
-and full process-restart resume. Grader scores: m0–m5 and m7 at 100%.
+已在 `glm-5.3`（Z.AI）上端到端实测：目标设置、有打底的委派、飞行中
+纠偏、回合中途终止 + 更严密的重新派生、静默提问 → 记录假设
+流程、交付物核验（它抓到了自己那个有 bug 的链接检查器并重跑），
+以及整进程重启后恢复。评分结果：m0–m5 与 m7 均为 100%。
 
-## dsh 0.2.0 compatibility
+## dsh 0.2.0 兼容性
 
-This repository (a fork at `n-sky/dsh-supervisor`) carries the port to **dsh 0.2.0-rc.2**:
+本仓库（`n-sky/dsh-supervisor` 上的一个 fork）承载了向 **dsh 0.2.0-rc.2** 的移植：
 
-- settings follow the per-row `Config` model — `export const Config` with `.volatile()` fields,
-  no `installSettingsSection` / `settingsNamespace` (both removed upstream); values are live
-  references read through `config.*.get()`, and edits are picked up from `loader/volatile-update`;
-- the settings card registers into the **`plugins.item`** slot through `configForms`
-  (`ctx.configForms.get(<entry id>)` + `whileServed` + `scope.mutate`), replacing `settingsScope`
-  and the old `settings.plugin.item` slot;
-- worker messages use `subagents.sendMessage` (the `followup` alias is gone), and worker
-  activity is read as `running` / `inactive`.
+- 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
+  不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
+  引用，通过 `config.*.get()` 读取，修改由 `loader/volatile-update` 拾取；
+- 设置卡片通过 `configForms` 注册进 **`plugins.item`** 槽位
+  （`ctx.configForms.get(<entry id>)` + `whileServed` + `scope.mutate`），取代 `settingsScope`
+  与旧的 `settings.plugin.item` 槽位；
+- worker 消息使用 `subagents.sendMessage`（`followup` 别名已移除），worker
+  活动状态读作 `running` / `inactive`。
 
-Verified against dsh `0.2.0-rc.2`: 36/36 unit tests, a composed `--dump-config` of a full profile,
-and a live boot of the same profile whose `/supervisor/models` route answers `200`.
+已针对 dsh `0.2.0-rc.2` 验证：51/51 单元测试、完整 profile 的 `--dump-config` 组合成功，
+以及同一 profile 的实机启动，其 `/supervisor/models` 路由返回 `200`。
 
-`DESIGN.md`, `IMPLEMENTATION_PLAN.md` and the `tutorial/` course are kept as the original design
-record: where they name `installSettingsSection`, `settingsNamespace`, `followup`,
-`settings.plugin.item`, or a worker activity of `active`, read them through the table above.
+`DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
+记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、
+`settings.plugin.item`，或 worker 活动状态为 `active` 时，请按上表理解。
 
-## Run the local course on a new PC
+## 在新 PC 上运行本地课程
 
-Install Git and Python 3, clone this repository, then run its course launcher:
+安装 Git 与 Python 3，克隆本仓库，然后运行它的课程启动器：
 
 ```sh
 mkdir -p "$HOME/src"
@@ -43,16 +43,16 @@ cd "$HOME/src/dsh-supervisor"
 ./tutorial/setup.sh
 ```
 
-The launcher keeps its environment under `tutorial/.venv`, installs the grader-only Python dependencies, selects
-an unused `127.0.0.1` port, and prints the tutorial URL. Its local server powers the grade
-buttons embedded in each milestone. It intentionally does not install dsh, clone DeepSeek Harness,
-configure a model, or create workspaces; the setup chapter teaches those steps explicitly.
+启动器把环境放在 `tutorial/.venv` 下，安装仅评分器需要的 Python 依赖，并挑选
+一个未占用的 `127.0.0.1` 端口，然后打印教程 URL。它的本地服务器为嵌入
+每个里程碑的评分按钮提供后端。它刻意不安装 dsh、不克隆 DeepSeek Harness、
+不配置模型、也不创建工作区；这些步骤由安装章节明确讲授。
 
-## Install the supervisor (chapter 6)
+## 安装监督者（第 6 章）
 
-Prerequisites: Node.js 22.19+ in the 22.x line, or Node.js 24+, and dsh
-(`npm i -g @deepseek-ai/dsh`), with a model configured (web UI → Settings → Models;
-tested with Z.AI `glm-5.3`).
+前置条件：22.x 系列中的 Node.js 22.19+，或 Node.js 24+，以及 dsh
+（`npm i -g @deepseek-ai/dsh`），并配置好模型（web UI → Settings → Models；
+已在 Z.AI `glm-5.3` 上测试）。
 
 ```sh
 # When chapter 6 tells you to install the already-cloned package:
@@ -63,17 +63,17 @@ dsh plugin --profile web add "file:$PWD"
 dsh web
 ```
 
-That's the whole install. The one command registers the package as a **profile bundle**
-(dependency + `dsh.profile.bundles` entry), and at boot the bundle:
+安装就这么多。这一条命令把该包注册为 **profile bundle**
+（依赖项 + `dsh.profile.bundles` 条目），启动时该 bundle 会：
 
-1. mounts the schedule service (`dsh-schedule`) the supervisor's timers need
-   (no `dsh-time-context` — it would inject a timestamp block into every request,
-   and Schedule does not depend on it), and
-2. runs this package's setup plugin (`lib/index.js`), which installs the bundled
-   **`main-agent` preset** into `${DSH_HOME:-~/.dsh}/.agent-presets/` — only if absent,
-   never clobbering your edits (row config `syncPreset: always | if-absent | never`).
+1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`）
+   （不挂 `dsh-time-context` —— 它会往每个请求注入时间戳块，
+   而 Schedule 不依赖它），以及
+2. 运行本包的 setup 插件（`lib/index.js`），它把随包携带的
+   **`main-agent` preset** 安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/` —— 仅在缺失时安装，
+   绝不覆盖你的修改（行配置 `syncPreset: always | if-absent | never`）。
 
-Then create a workspace for the supervisor's state:
+然后为监督者的状态创建一个工作区：
 
 ```sh
 mkdir -p "$HOME/agi-lab/.agi/subagents"
@@ -81,205 +81,205 @@ cp "$HOME/src/dsh-supervisor/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 ```
 
 <details>
-<summary>Alternative: manual install without the plugin manager</summary>
+<summary>替代方案：不用插件管理器的手动安装</summary>
 
-`./scripts/install-manual.sh ~/agi-lab` copies the preset into the user preset root
-and writes the schedule rows into your profile's `cordis.patch.yml` instead. Use ONE
-path, not both — the schedule service registers once per process, so the bundle rows
-and manual patch rows must not coexist. If your profile already mounts
-`dsh-schedule` from elsewhere, disable this bundle's copy with an id-targeted
-`disabled: true` patch on `agi-schedule`.
+`./scripts/install-manual.sh ~/agi-lab` 则会把 preset 复制到用户 preset 根目录，
+并把 schedule 行写进你 profile 的 `cordis.patch.yml`。只选
+一条路径，不要两条都用 —— schedule 服务每进程只注册一次，因此 bundle 行
+与手动 patch 行不能共存。如果你的 profile 已从别处挂载
+`dsh-schedule`，请用针对 id 的 `disabled: true` patch 作用于 `agi-schedule`，
+禁用本 bundle 里的这份。
 </details>
 
-## Run
+## 运行
 
-Open http://127.0.0.1:3080 → new session → workspace `~/agi-lab` → preset
-**Main Agent (Supervisor)** → give it a mission, e.g.:
+打开 http://127.0.0.1:3080 → 新建会话 → 工作区 `~/agi-lab` → preset
+**Main Agent（监督者）** → 交给它一个任务，例如：
 
-> Goal: produce SUMMARY.md describing the layout of `<some docs dir>` — delegate the
-> work, supervise, deliver.
+> 目标：产出 SUMMARY.md 描述 `<some docs dir>` 的目录布局 —— 委派
+> 工作、监督、交付。
 
-What you should see, in order: it **grounds** by reading the durable mission state
-and relevant workspace runbooks/scripts, calls `start_goal` to write `.agi/GOAL.md`
-and arm the native goal immediately, then continues in the same turn. No generated
-confirmation phrase or second human reply is required. It then calls the guarded
-`subagent` tool with a complete structured task and an explicit Settings-approved model route,
-arms a recurring check-in reminder, and sleeps. It wakes on the worker's settle
-notice, **verifies the deliverable with its own reads**, logs everything to
-`.agi/CHANGELOG.jsonl`, and continues or finishes. You steer at any time by chatting;
-workers are ordinary sessions in the sidebar — click one to watch it live.
+你应当依次看到：它先读取持久任务状态
+与相关工作区的 runbook/脚本完成 **打底**，调用 `start_goal` 写入 `.agi/GOAL.md`
+并立即武装原生目标，然后在同一回合里继续。不生成
+确认短语，也不需要第二次人工回复。接着它用完整的结构化任务
+与明确的、经 Settings 批准的模型路由调用受保护的 `subagent` 工具，
+武装一个周期性巡检提醒，然后休眠。它会因 worker 的收敛通知而醒来，
+**用自己的读取核验交付物**，把一切记录到 `.agi/CHANGELOG.jsonl`，
+然后继续或收尾。你随时可以通过聊天纠偏；
+worker 就是侧栏里的普通会话 —— 点开一个即可实时观看。
 
-### Reviewable, non-blocking goal frontend
+### 可审阅、非阻塞的目标前端
 
-The preset deliberately disables Harness's native model-facing
-`@deepseek-ai/dsh-tool-goal` row. That frontend permits `create_goal` to infer
-long-running intent without first checking durable mission state or workspace
-runbooks. `dsh-supervisor/goal` replaces only that
-frontend; the native `ctx.goals` service, session projection and race-fenced
-goal-round driver remain installed on the host.
+该 preset 刻意禁用了 Harness 原生的、面向模型的
+`@deepseek-ai/dsh-tool-goal` 行。那个前端允许 `create_goal` 在没有
+先检查持久任务状态或工作区 runbook 的情况下，就推断长时间运行意图。
+`dsh-supervisor/goal` 只替换那个
+前端；原生 `ctx.goals` 服务、会话投影与带竞态围栏的
+goal-round 驱动器仍安装在宿主上。
 
-The replacement exposes `get_goal`, `start_goal`, and `update_goal`. `start_goal`
-is available only to the root agent in a direct human turn and only after that
-turn calls `get_goal`. It captures objective, constraints, milestones,
-out-of-scope and the autonomous round cap in canonical `GOAL.md`, calls the native
-goal service immediately, and returns to the same model turn so work continues.
-The generated document is for visibility and steering, not an approval gate: the
-human can inspect it and redirect, pause, or stop through ordinary chat.
-`update_goal` deliberately omits `edit`; pause, resume, completion, blocking
-thresholds, native revisions, projections and automatic continuation retain their
-Harness behavior.
+该替代前端暴露 `get_goal`、`start_goal` 与 `update_goal`。`start_goal`
+仅在直接的人类回合中、且仅在该回合调用过 `get_goal` 之后，才对根 agent 可用。
+它把目标（objective）、约束、里程碑、
+范围外事项与自主回合上限写入规范的 `GOAL.md`，立即调用原生
+goal 服务，并返回同一个模型回合，使工作继续。
+生成的文档用于可见性与纠偏，不是审批闸门：
+人类可以查看它，并通过普通聊天改向、暂停或停止。
+`update_goal` 刻意省略了 `edit`；暂停、恢复、完成、阻塞
+阈值、原生修订版本、投影与自动续行都保持其
+Harness 行为。
 
-Worker failures are reported only when the native continuable child has actually
-settled. The supervisor preserves that single wake and enriches it from the child's
-durable final `turn/end`, for example `Terminal failure [QUOTA]: …`. Intermediate
-`RATE_LIMIT`, `SERVER`, `TIMEOUT`, `TRANSPORT`, and empty-response hiccups stay silent
-while Harness's retry policy owns them; a successful retry produces an ordinary
-completion notice, while exhausted retries expose only their final cause. The stopped
-child remains resumable through `send_message`.
+只有当原生可续行子级真正收敛后，才会报告 worker 失败。
+监督者保留那一次唤醒，并用子级持久的最终 `turn/end` 丰富它，
+例如 `Terminal failure [QUOTA]: …`。中间的
+`RATE_LIMIT`、`SERVER`、`TIMEOUT`、`TRANSPORT` 与空响应抖动保持静默，
+由 Harness 的重试策略负责处理；一次成功的重试产生普通的
+完成通知，而重试耗尽时只暴露最终原因。被停止的
+子级仍可通过 `send_message` 恢复。
 
-Blocked workers likewise cannot strand a question inside their own session. The
-guarded spawn frontend applies a native per-child tool restriction that removes
-`ask_user_question` from both the worker's advertised schema and execution path.
-The child-scoped `report` tool deliberately survives that restriction, so a question
-arrives at the parent as a `subagent-report` message, wakes the supervisor, and can be
-answered with `send_message`. A periodic reminder therefore remains a recovery check,
-not the first place the supervisor discovers that a worker has been waiting for input.
-The live prompt also forbids treating `list_agents: running` as evidence of progress.
-Every check-in must compare a concrete report, artifact/log change, or completed step
-with its prior `NOTES.md` checkpoint. The first unchanged check triggers a status probe;
-the next unchanged check interrupts and recovers or respawns the worker. This policy is
-rendered into every request, so the supervisor cannot legally loop on “still running.”
+受阻的 worker 同样无法把提问困在自己的会话里。
+受保护的派生前端会施加一项原生逐子级工具限制，从 worker 对外公布的 schema
+与执行路径中同时移除 `ask_user_question`。子级作用域的 `report` 工具
+刻意在该限制下存活，因此提问会以 `subagent-report` 消息到达父级，
+唤醒监督者，并可用 `send_message` 回答。因此周期性提醒只是一道恢复检查，
+而不是监督者发现某个 worker 一直在等待输入的第一现场。
+实时提示词还禁止把 `list_agents: running` 当作有进展的证据。
+每次巡检都必须把具体的报告、产物/日志变化或已完成的步骤
+与上一次 `NOTES.md` 检查点对比。第一次无变化的巡检触发状态探针；
+下一次仍无变化就中断，并恢复或重新派生该 worker。这条策略会
+渲染进每个请求，因此监督者在规则上无法围绕
+“仍在运行”空转。
 
-User-owned knobs in `<workspace>/.agi/config.json` (the agent may propose changes but
-never edits it): `wakeMinutes` (check-in cadence, ≥ 5 — the schedule floor) and
-`questionWaitMinutes` (patience before it records an assumption and moves on).
+用户所有的旋钮位于 `<workspace>/.agi/config.json`（agent 可以提议修改，但
+绝不直接编辑它）：`wakeMinutes`（巡检节奏，≥ 5 —— schedule 的下限）与
+`questionWaitMinutes`（在记录假设并继续之前等待答复的时长）。
 
-The preset treats recovery and continuity as explicit invariants. Before it
-escalates a blocker, the supervisor must inspect repository-local runbooks and
-scripts and try a bounded set of distinct safe recoveries; repeated hammering
-and bypassing security or approval boundaries are forbidden. A human-only
-dependency blocks only its branch: independent preparation and verification
-continue. Every unfinished long-running turn must leave a durable wake-up path
-(a running worker, an active native goal round, or a reminder), so a plain chat
-promise to wait cannot silently strand the mission. A legacy `GOAL.md` remains
-useful context but does not impersonate an armed native goal:
-every direct request to start, resume, or continue long-running work must first
-check `get_goal`; when no active native goal exists, the supervisor must inspect
-the workspace's relevant runbooks/scripts and call `start_goal`. Reminders are
-recovery aids, not a substitute for the goal driver.
-This boundary is enforced by a plugin-owned pre-execution guard, not only by
-persona text: an explicit long-running continuation may inspect durable state,
-but operational tools remain closed until the current turn checks native goal
-state and arms a reviewable goal. Once `start_goal` succeeds, the same turn may
-immediately use the workspace's existing automation. If the workspace contains
-a runbook, automation script, or source entry, `start_goal` is additionally
-denied until the current turn successfully opens one outside `.agi`; a broad
-listing or reading only GOAL.md/NOTES.md does not satisfy grounding.
+该 preset 把恢复与连续性当作明确的不变量。在升级一个阻塞项之前，
+监督者必须检查仓库本地的 runbook 与
+脚本，并尝试一组有界的、彼此不同的安全恢复动作；反复硬撞
+以及绕过安全或审批边界都是禁止的。仅人类可解的
+依赖只阻塞它所在的分支：独立的准备工作与核验
+继续进行。每个未完成的长期回合都必须留下一条持久唤醒路径
+（一个运行中的 worker、一轮活跃的原生目标，或一个提醒），因此单纯的聊天
+承诺「等待」不能悄悄搁浅任务。遗留的 `GOAL.md` 仍是
+有用的上下文，但不能冒充已武装的原生目标：
+每一次启动、恢复或继续长期工作的直接请求，都必须先
+检查 `get_goal`；当不存在活跃的原生目标时，监督者必须检查
+工作区相关的 runbook/脚本并调用 `start_goal`。提醒是
+恢复辅助手段，不能替代目标驱动器。
+这条边界由插件自有的执行前守卫强制执行，而不仅是
+人格文本：明确的长期续行可以检查持久状态，
+但在当前回合检查原生目标状态并武装一个可审阅目标之前，操作性工具保持关闭。
+一旦 `start_goal` 成功，同一回合即可
+立即使用工作区既有的自动化。如果工作区含有
+runbook、自动化脚本或源码入口，`start_goal` 会被额外
+拒绝，直到当前回合成功打开一个 `.agi` 之外的文件；宽泛的
+列目录，或只读 GOAL.md/NOTES.md，都不算满足打底要求。
 
-## Meta-config (Settings → Plugins → Supervisor)
+## 元配置（Meta-config，Settings → Plugins → 监督者）
 
-The supervisor's user-owned knobs live in one settings namespace,
-**`dsh-supervisor`**, editable two ways with the same effect:
+监督者由用户所有的旋钮位于同一个 settings 命名空间
+**`dsh-supervisor`** 中，有两种等效的编辑方式：
 
-- **Web UI:** Settings → Plugins → *Supervisor* — the card has an
-  add-from-catalog dropdown. A synthetic **Current runtime model** choice is
-  enabled by default; fixed models are tagged with native input modalities and
-  their model-advertised reasoning efforts. Every allowed model row owns its
-  own effort selector, and the add flow asks for both route and effort.
-- **File:** the `dsh-supervisor:` block in `~/.dsh/settings.yaml`.
+- **Web UI：** Settings → Plugins → *监督者* —— 该卡片带有
+  一个「从模型目录添加模型…」下拉框。一个合成的 **当前运行时模型** 选项
+  （跟随本次调用回合，`runtime/current`）默认启用；固定模型会标注原生输入模态与
+  其模型自述的推理强度。每个被允许的模型行都有自己的
+  推理强度选择器，添加流程会同时询问路由与推理强度。
+- **文件：** `~/.dsh/settings.yaml` 中的 `dsh-supervisor:` 块。
 
-| Key | Meaning | Applies |
+| 键 | 含义 | 生效时机 |
 |---|---|---|
-| `workerModels` | complete allowlist for required `subagent.model`: `runtime/current` and/or exact `provider/model-id` routes; fresh install = `runtime/current`; empty = spawning disabled | next tool call and next tool schema (live) |
-| `workerEfforts` | map from each allowed route to its user-selected effort; `provider/default` sends no explicit effort (fresh-install and missing-entry default), while fixed ids such as `high` come from the route's native catalog | next spawn and next tool description (live) |
-| `maxParallelWorkers` | max simultaneously open workers, **enforced** at spawn time; 0 = unlimited | next tool call (live) |
-| `wakeMinutes` | how often the supervisor wakes to inspect workers (minutes; recurring schedule, ≥ 5) | next turn (live) |
-| `questionWaitMinutes` | how long it waits for an answer to a question before recording an assumption and continuing | next turn (live) |
+| `workerModels` | 必填 `subagent.model` 的完整白名单：`runtime/current` 和/或精确的 `provider/model-id` 路由；全新安装 = `runtime/current`；留空 = 禁用派生 | 下一次工具调用与下一份工具 schema（实时） |
+| `workerEfforts` | 从每条被允许路由到用户所选推理强度的映射；`provider/default` 不发送显式推理强度（全新安装与缺失条目的默认值），而 `high` 之类的固定 id 来自该路由的原生目录 | 下一次派生与下一份工具描述（实时） |
+| `maxParallelWorkers` | 同时打开的 worker 上限，在派生时**强制执行**；0 = 不限 | 下一次工具调用（实时） |
+| `wakeMinutes` | 监督者隔多久醒来巡检运行中的 worker（分钟；周期性提醒，≥ 5） | 下一回合（实时） |
+| `questionWaitMinutes` | 监督者等待问题答复的时长；超时后记录一个假设并继续 | 下一回合（实时） |
 
-Changes are **live** — no restart, no new session: the plugin re-resolves the
-allowlist and remounts `subagent` so its `model` enum and capability labels show
-only the current approved choices. Execution re-reads settings as well, closing
-the race where a model is removed after a request receives its tool schema. A
-`SUPERVISOR META-CONFIG` system-prompt section re-renders the same policy into
-every request alongside the enforced cap and timing defaults.
+修改是**实时**的 —— 无需重启、无需新会话：插件会重新解析
+白名单并重新挂载 `subagent`，使其 `model` 枚举与能力标签只显示
+当前已批准的选择。执行时也会重新读取设置，从而关闭
+「某个模型在请求拿到工具 schema 之后才被移除」这一竞态。一个
+`SUPERVISOR META-CONFIG` 系统提示词段落会把同一策略连同
+强制上限与时间默认值一起重新渲染进每个请求。
 
-Effort is a property of each settings-owned model row, not a tool-call choice.
-The main agent receives a required model enum but no effort parameter. It also
-cannot inherit effort from its own request: a missing legacy map entry becomes
-`provider/default`. A fixed effort that the exact resolved worker route does
-not advertise is refused before provider I/O; it is never clamped or silently
-downgraded. For dynamic `runtime/current`, only the provider/model route follows
-the calling turn; its effort still comes from `workerEfforts.runtime/current`.
-The plugin reserves the continuable child's exact id (or
-captures a foreground child's creation edge) and applies a one-use,
-id-filtered request override before its first model call, making the choice part
-of the child's durable `request/header`. Later warm steps and cold resumes both
-recover the logged explicit effort. No Harness patch or custom continuation
-descriptor is needed.
+推理强度是每个由 settings 拥有的模型行的属性，而不是工具调用时的选择。
+主 agent 收到的是必填的 model 枚举，但没有推理强度参数。它同样
+不能从自己的请求继承推理强度：缺失的遗留映射条目会变成
+`provider/default`。若某个固定推理强度并非精确解析出的 worker 路由所
+自述支持的，则在 provider I/O 之前被拒绝；它绝不会被夹取或悄悄
+降级。对于动态的 `runtime/current`，只有 provider/model 路由跟随
+调用回合；其推理强度仍来自 `workerEfforts.runtime/current`。
+插件预留可续行子级的确切 id（或
+捕获前台子级的创建边界），并在其第一次模型调用之前施加一次性、
+按 id 过滤的请求覆盖，使该选择成为
+子级持久 `request/header` 的一部分。后续热步骤与冷恢复都会
+恢复已记录的显式推理强度。无需 Harness 补丁或自定义续行
+描述符。
 
-There is deliberately no preset model list and no implicit parent/default
-inheritance. A fresh installation explicitly allows `runtime/current`: choosing
-it reads the provider/model captured in the calling turn's durable request
-header, resolves its capabilities, and forwards that exact route to the child.
-It never reads the parent's creation-time options, so switching the main model
-before a turn also switches what `runtime/current` means without reviving the
-stale-route bug. Remove this entry in Settings if every child must use a pinned
-route; remove every entry to disable spawning.
+这里刻意没有 preset 模型清单，也没有隐式的父级/默认
+继承。全新安装显式允许 `runtime/current`：选择它
+会读取调用回合的持久请求头中捕获的 provider/model，解析其能力，
+并把该精确路由转发给子级。
+它绝不读取父级创建时的选项，因此在某个回合前切换主模型
+也会切换 `runtime/current` 的含义，而不会复活
+过期路由 bug。如果每个子级都必须使用固定
+路由，就在 Settings 中移除该条目；要禁用派生则移除所有条目。
 
-The shipped native spawn and fork frontends are absent from the preset because
-they have no settings-guarded `model` argument and can inherit the main
-session's route/effort. The plugin-owned `subagent` is the sole delegation
-frontend. Every successful tool result names the selected
-route, native modalities, and effective effort policy, e.g.
-`antigravity/gemini-3.7-flash [text,image] effort=high`, so the hierarchy makes
-the settings-owned choice visible. Vision routing: give
-a `[text,image]` model and the supervisor sends image work (screenshots, UI
-checks, figures) there; workers read files with `read_image`, which the harness
-only allows on image-capable routes.
+随包携带的原生 spawn 与 fork 前端未出现在 preset 中，因为
+它们没有受 settings 保护的 `model` 参数，且可能继承主
+会话的路由/推理强度。插件自有的 `subagent` 是唯一的委派
+前端。每个成功的工具结果都会列出所选
+路由、原生模态与生效的推理强度策略，例如
+`antigravity/gemini-3.7-flash [text,image] effort=high`，使层级关系让
+由 settings 拥有的选择清晰可见。视觉路由：给它一个
+`[text,image]` 模型，监督者就会把图像类工作（截图、UI
+检查、图表）派到那里；worker 用 `read_image` 读文件，而 harness
+仅在支持图像的模型路由上允许该工具。
 
-## The Feed tab
+## 监督动态 Feed 标签页
 
-Every session's view ring (the tabs holding **Chat** and **Trajectory**) gains a
-**Feed** entry: for a workspace with `.agi/` state it shows the whole run at a
-glance — live goal card, workers (with `outcome.md`), progress timeline, question
-stack, action changelog, notes, and the mission report, refreshing every ~5 s.
-Ships in this bundle as a durable client plugin (`lib/client.js`, served via the
-harness's client-modules scan) plus one host route (`GET /supervisor/feed?ws=…`)
-reading the `.agi/` tree. No frontend rebuild, no dynamic-plugin approval.
+每个会话的视图环（承载 **Chat** 与 **Trajectory** 的标签页）会多出一个
+**监督动态 Feed** 条目：对于带 `.agi/` 状态的工作区，它一眼展示整次运行 ——
+实时目标卡片、worker（含 `outcome.md`）、进度时间线、提问
+栈、动作变更日志、笔记与任务报告，每约 5 秒刷新一次。
+它作为持久客户端插件随本 bundle 发布（`lib/client.js`，通过
+harness 的 client-modules 扫描提供），外加一个宿主路由（`GET /supervisor/feed?ws=…`）
+读取 `.agi/` 目录树。无需重建前端，无需动态插件审批。
 
-### Full stop (the button in the Feed header)
+### Full stop（完全停止：监督动态 Feed 头部的按钮）
 
-The native stop square only aborts the current turn — the supervisor's recurring
-check-in reminder (`wakeMinutes`, floor 5 min) is a durable schedule event, so
-the agent re-runs by itself minutes later. The Feed header's **■ Full stop**
-button ends that for real. From a worker's Feed it resolves the lineage back to
-the root `main-agent`; if that supervisor is cold, the browser first resumes it
-through Harness's existing-id `session.create` path without starting a turn.
-`POST /supervisor/stop?session=…` then aborts the active turn, waits for idle,
-releases every resident continuable worker branch recursively, flushes before
-folding, and deletes **every** active schedule reminder from inside the agent's
-exclusive maintenance window, followed by a second persistence flush. `GET` on
-the same route verifies the turn, reminders, and workers, so a successful stop
-replaces the button with its stopped status even after a page refresh. A later
-manual prompt explicitly resumes the supervisor; stopped worker sessions remain
-in history, but do not keep running or wake it.
+原生停止方块只会中止当前回合 —— 监督者的周期性
+巡检提醒（`wakeMinutes`，下限 5 分钟）是持久的 schedule 事件，因此
+agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full stop**
+按钮才真正终结它。从某个 worker 的监督动态 Feed 出发，它会沿继承链回溯到
+根 `main-agent`；如果那个监督者已冷，浏览器会先通过 Harness 既有的
+同 id `session.create` 路径把它恢复，但不启动回合。
+随后 `POST /supervisor/stop?session=…` 会中止活跃回合、等待空闲，并
+递归释放每个常驻的可续行 worker 分支；它在折叠前冲刷，
+并在 agent 的独占维护窗口内删除**每一条**活跃的 schedule 提醒，
+随后再执行第二次持久化冲刷。对同一路由发 `GET` 会核验回合、
+提醒与 worker，因此一次成功的停止即使页面刷新后，
+也会把按钮替换为已停止状态。之后的手动提示会显式恢复监督者；
+被停止的 worker 会话仍留在历史中，
+但不会再运行，也不会唤醒它。
 
-Looking for the **Shots** tab (the screenshot player over a browser daemon's
-`<workspace>/shots/` feed)? That is its own standalone plugin, **`dsh-shots`** —
-generic browser-daemon tooling, deliberately not part of the supervisor.
+在找 **Shots** 标签页（基于浏览器守护进程的
+`<workspace>/shots/` 数据源的截图播放器）吗？那是它自己独立的插件 **`dsh-shots`** ——
+通用的浏览器守护进程工具，刻意不属于监督者的一部分。
 
-## What's in this repo
+## 本仓库内容
 
-| Path | What |
+| 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | The dsh bundle: manifest (`dsh.bundle.patch` + `dsh.client`), the inserted rows, setup/routes, non-blocking native-goal frontend, final-settlement diagnostics, and the browser half (`lib/client.js`: Feed tab, Full stop, settings card) |
-| `agent-presets/main-agent/` | The supervisor preset: persona (grounding, non-blocking goal setup, loop, questions), plugin-owned goal frontend, and the sole settings-guarded `subagent` worker row |
-| `agi-template/` | The `.agi/config.json` template for a new workspace |
-| `tutorial/` | The self-contained 15-step course app: HTML/CSS/JS, setup/server, private requirements, grading UI/CLI, milestone grader, and optional headless driver |
-| `scripts/install-manual.sh` | Non-bundle fallback installer |
-| `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | The design record (Q1–Q23, A1–A6, S1–S4, N1–N7, G1) and the v2 plan |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片） |
+| `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
+| `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
+| `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
+| `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
+| `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N7、G1）与 v2 计划 |
 
-## Grade it
+## 评分
 
 ```sh
 ./tutorial/grade.sh all --ws ~/agi-lab    # m0–m6 report with bar chart
@@ -287,11 +287,11 @@ generic browser-daemon tooling, deliberately not part of the supervisor.
 ./tutorial/grade.sh doctor                # what the grader can see
 ```
 
-Graders read only durable artifacts (preset files, patch/bundle rows, `.agi/`, session
-event logs) — nothing is executed in your agents. `tutorial/GRADING.md` documents every
-check.
+评分器只读取持久产物（preset 文件、patch/bundle 行、`.agi/`、会话
+事件日志）—— 不会在你的 agent 里执行任何东西。`tutorial/GRADING.md` 记录了每一项
+检查。
 
-## Drive it headlessly (optional)
+## 无头驱动（可选）
 
 ```sh
 S=$(python3 tutorial/drive.py create --cwd ~/agi-lab)       # new supervisor session
@@ -299,47 +299,47 @@ python3 tutorial/drive.py send "$S" "your mission here"     # prompt + wait + ta
 python3 tutorial/drive.py tail "$S"                          # readable event tail
 ```
 
-## Learn it from scratch
+## 从零学起
 
-Run `./tutorial/setup.sh` and open the URL it prints. Part I teaches Cordis and the harness from zero (no
-TypeScript assumed); Part II builds everything in this repo milestone by milestone,
-each with a live test and a grader; Part III covers packaged-plugin extensions —
-the very pattern this repo uses — and troubleshooting.
+运行 `./tutorial/setup.sh` 并打开它打印的 URL。第一部分从零讲授 Cordis 与 harness（不预设
+TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内容，
+每个里程碑都配有实测与评分器；第三部分讲解打包插件扩展 ——
+正是本仓库采用的模式 —— 以及故障排查。
 
-## Publishing & the plugin ecosystem
+## 发布与插件生态
 
-How this package reaches other people, in ascending order of effort:
+这个包如何触达其他人，按投入从低到高排列：
 
-1. **GitHub + the `dsh-plugin` topic.** Tag the repo with the
-   [`dsh-plugin`](https://github.com/topics/dsh-plugin) topic (the harness README's
-   official discoverability channel) and write a crisp one-line repo description — the
-   community indexes scrape exactly that line. Users then install straight from git:
-   `dsh plugin --profile web add "github:you/dsh-supervisor"`.
-2. **The aggregators pick it up automatically**: the awesome-lists
-   (e.g. `vvlife/awesome-deepseek-harness-plugins` regenerates its `PLUGINS.md` daily
-   from the topic) and topic-driven marketplaces (e.g. WhaleHub, a visual market with
-   one-click install commands). A PR to a curated list adds human placement.
-3. **npm publish** (optional): `dsh plugin` forwards to pnpm, so a published package
-   installs by name. The `files` list in `package.json` already scopes the payload
-   (`lib`, `cordis.patch.yml`, `agent-presets`, `agi-template`).
+1. **GitHub + `dsh-plugin` 主题。** 给仓库打上
+   [`dsh-plugin`](https://github.com/topics/dsh-plugin) 主题（harness README 的
+   官方可发现性渠道），并写一行简洁的仓库描述 ——
+   社区索引抓取的就是这一行。用户随后直接从 git 安装：
+   `dsh plugin --profile web add "github:you/dsh-supervisor"`。
+2. **聚合器会自动收录**：awesome-list
+   （例如 `vvlife/awesome-deepseek-harness-plugins` 每天从该主题重新生成其 `PLUGINS.md`）
+   与主题驱动的市场（例如 WhaleHub，一个带一键安装命令的可视化市场）。
+   向精选列表提 PR 可以增加人工收录位置。
+3. **发布到 npm**（可选）：`dsh plugin` 会转发给 pnpm，因此已发布的包
+   可按名称安装。`package.json` 中的 `files` 列表已限定发布内容
+   （`lib`、`cordis.patch.yml`、`agent-presets`、`agi-template`）。
 
-Packaging notes for preset-shipping plugins, learned from the ecosystem
-(`dsh-minimal-msys2` ships presets with this same copy-at-boot pattern;
-`dsh-preset-qa-mode` ships script-only; `dsh-preset-scaffold` additionally registers
-its packaged `skills/` as a skill root via `dsh-skill-filesystem`):
+以下是随包发布 preset 的插件的打包经验，学自生态：
+（`dsh-minimal-msys2` 用同样的启动时复制模式发布 preset；
+`dsh-preset-qa-mode` 只发布脚本；`dsh-preset-scaffold` 还通过 `dsh-skill-filesystem` 把
+其打包的 `skills/` 注册为 skill 根）：
 
-- Copy-at-boot into `${DSH_HOME}/.agent-presets/` is the established pattern — preset
-  discovery re-reads roots on every call, so no restart is needed after the copy, and
-  removing the plugin deliberately does not delete installed presets.
-- The roster also supports deployment-configured extra preset `roots` (see
-  `dsh-agent-presets` Config), but a bundle cannot append to the shipped row's config
-  without restating it wholesale — which is why the copy pattern won in practice.
+- 启动时复制到 `${DSH_HOME}/.agent-presets/` 是既定模式 —— preset
+  发现机制每次调用都会重新读取根目录，因此复制后无需重启，而且
+  卸载插件刻意不会删除已安装的 preset。
+- 花名册还支持部署配置的额外 preset `roots`（见
+  `dsh-agent-presets` 的 Config），但 bundle 无法在不整体重述的情况下追加已发布行的配置
+  —— 这就是复制模式在实践中胜出的原因。
 
-## Safety notes
+## 安全须知
 
-- Most supervisor protocol remains prose plus audit, but goal creation and worker-model
-  routing are hard-enforced by plugin-owned frontends. Read `.agi/CHANGELOG.jsonl` —
-  it is the diary of every spawn/steer/kill/assumption.
-- Decide the sandbox/approval posture deliberately before unattended missions with
-  real credentials (this lab runs `danger-full-access`).
-- One dsh per `$DSH_HOME`, ever. Never edit shipped presets or the harness checkout.
+- 监督者协议大多仍是文字约定加审计，但目标创建与 worker 模型
+  路由由插件自有的前端强制执行。阅读 `.agi/CHANGELOG.jsonl` ——
+  它是每一次派生/纠偏/终止/假设的日记。
+- 在带有真实凭据的无人值守任务之前，请刻意确定沙箱/审批姿态
+  （本实验环境运行在 `danger-full-access`）。
+- 每个 `$DSH_HOME` 永远只跑一个 dsh。绝不编辑随包发布的 preset 或 harness 检出目录。
