@@ -1,0 +1,28 @@
+# dsh-supervisor bundle patch：schedule 层（自带让位守卫）。
+#
+# 为什么单独成层：schedule 服务每进程只能注册一次。如果 profile 已经从别处
+# 挂过 @deepseek-ai/dsh-schedule（例如 @deepseek-ai/dsh-experimental-schedule-bundle
+# 提供的那条 `- id: schedule`），本包这一行再注册就会抛
+#   service "schedule" has been registered at <ScheduleService>
+# 用户在 UI 里看到的就是这一行「组件启用失败」：
+#   dsh: warning: 1 entry did not activate
+#   agi-schedule (@deepseek-ai/dsh-schedule): Error: service "schedule" has been registered at <ScheduleService>
+#
+# 守卫语义：loader 里只要存在**别的生效中**的 @deepseek-ai/dsh-schedule 行，
+# 本包这一行就让位（自动禁用）。
+#   `e.options.id !== 'agi-schedule'` —— 排除自己。
+#   `!e.disabled` —— 对方自己也被禁用时，本行仍然接管，否则整个 profile
+#   会一个 schedule 服务都没有，监督者的定时提醒随之失效。
+# 表达式形态逐字沿用 profile 自带范例（desktop profile 的 `better-sidebar` 行）。
+#
+# 顺序边界：守卫只能看见**排在本包之前**的 loader 行，所以「提供 schedule 的
+# bundle / profile 行必须列在 dsh-supervisor 之前」是这条守卫生效的前提
+# （本机 desktop profile 即如此：`- id: schedule` 在本包 agi-schedule 之前）。
+# 若对方列在本包之后，守卫看不到它，冲突依旧存在 —— 那时要在 profile 侧
+# 用针对 id 的 `disabled: true` 压制。
+- insert:
+    - id: agi-schedule
+      name: '@deepseek-ai/dsh-schedule'
+      disabled: !!js >-
+        [...ctx.loader.entries()].some((e) => e.options.name ===
+        '@deepseek-ai/dsh-schedule' && e.options.id !== 'agi-schedule' && !e.disabled)

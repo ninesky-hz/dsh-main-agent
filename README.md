@@ -66,10 +66,20 @@ dsh web
 安装就这么多。这一条命令把该包注册为 **profile bundle**
 （依赖项 + `dsh.profile.bundles` 条目），启动时该 bundle 会：
 
-1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`）
+1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`，声明在
+   `patches/schedule.patch.yml`）。这一行**自带守卫**：启动时它会检查
+   loader 里是否已有别的 `@deepseek-ai/dsh-schedule` 提供者，有就
+   **自动让位**（禁用自己），因此默认安装**不再需要**你在 profile 里
+   手写任何 patch —— 即使你的 profile 已经通过
+   `@deepseek-ai/dsh-experimental-schedule-bundle` 挂了 schedule。
+   边界：守卫只能看见**排在它之前**的 loader 行，所以「提供 schedule 的
+   bundle 必须列在 `dsh-supervisor` 之前」是本机制的前提（默认组合
+   满足）；若你在**自己 profile 的 `cordis.patch.yml`** 里声明 schedule
+   行，它排在本 bundle **之后**、守卫看不到它，此时仍请在 profile 里
+   保留 id 级 `- id: agi-schedule` / `disabled: true`（写了也无害）。
    （不挂 `dsh-time-context` —— 它会往每个请求注入时间戳块，
    而 Schedule 不依赖它）；
-2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 的第二份 patch）
+2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 里的最后一份 patch）
    向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
    唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
    「Main Agent（监督者）」，以及
@@ -91,8 +101,11 @@ cp "$HOME/src/dsh-supervisor/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 并把 schedule 行写进你 profile 的 `cordis.patch.yml`。只选
 一条路径，不要两条都用 —— schedule 服务每进程只注册一次，因此 bundle 行
 与手动 patch 行不能共存。如果你的 profile 已从别处挂载
-`dsh-schedule`，请用针对 id 的 `disabled: true` patch 作用于 `agi-schedule`，
-禁用本 bundle 里的这份。
+`dsh-schedule`（**且那份提供者来自排在 `dsh-supervisor` 之前的 bundle**），
+本 bundle 里的 `agi-schedule` 行会**自己让位**，你什么都不用做。
+历史写法 —— 针对 id 的 `- id: agi-schedule` / `disabled: true` ——
+**不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
+不会与守卫冲突），不必回退。
 </details>
 
 ## 运行
@@ -278,6 +291,7 @@ agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full
 |---|---|
 | `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片） |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
+| `patches/schedule.patch.yml` | 声明随包 schedule 行（`agi-schedule`）的 bundle patch，自带 `disabled: !!js` 自判定守卫：组合里已有别的 `@deepseek-ai/dsh-schedule` 提供者时本行自动让位。`dsh.bundle.patch` 里排在 preset 声明之前 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
@@ -326,7 +340,7 @@ TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内
    向精选列表提 PR 可以增加人工收录位置。
 3. **发布到 npm**（可选）：`dsh plugin` 会转发给 pnpm，因此已发布的包
    可按名称安装。`package.json` 中的 `files` 列表已限定发布内容
-   （`lib`、`cordis.patch.yml`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
+   （`lib`、`cordis.patch.yml`、`patches`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
 
 以下是随包发布 preset 的插件的打包经验（0.2.x 实测）：
 
