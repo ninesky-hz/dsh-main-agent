@@ -66,7 +66,10 @@ curl -I http://127.0.0.1:3080/</code></pre>
   <li><code>profiles/web/package.json</code> —— 第 6 章的 plugin 命令会安全地加上 supervisor 的依赖和
       bundle 条目；不要手工编辑它。</li>
   <li><code>profiles/web/cordis.patch.yml</code> —— 通常不用动；它只用于明确的覆盖。</li>
-  <li><code>.agent-presets/</code> —— 第 6 章装 bundle 时会通过 roster 在这里创建 <code>main-agent/</code>。</li>
+  <li><code>.agent-presets/</code> —— 第 6 章的安装器会在这里放一份 <code>main-agent/</code>
+      <b>兼容副本</b>（目录不存在时才写）。注意 0.2.x 起宿主<b>不再读取</b>这个目录：
+      真正让 preset 出现在挑选器里的是 bundle patch 里的声明行，也就是
+      <code>presets/main-agent.patch.yml</code>（第 6 章第 3 步）。</li>
   <li><code>sessions/</code> —— 对你来说只读，但信息量<em>极大</em>。下一节细说。</li>
 </ul>
 

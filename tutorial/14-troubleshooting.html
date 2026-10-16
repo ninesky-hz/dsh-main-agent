@@ -28,9 +28,9 @@
 <h3>preset 的问题（第 6–7 章）</h3>
 <table>
   <tr><th>症状</th><th>可能的原因 → 修法</th></tr>
-  <tr><td>preset 在挑选器里找不到</td><td>目录不在 <code>$HOME/.dsh/.agent-presets/</code> 里，或者 <code>agent.cordis.yml</code> 名字不对。<code>agentPresets.list()</code>（在 Creator 模式里）会显示 roster 实际看到的东西，以及真实路径。</td></tr>
-  <tr><td>挑选器只显示裸 id，没有描述</td><td><code>preset.yml</code> 缺失或为空 —— 第 6 章第 2 步。</td></tr>
-  <tr><td><code>standingKeyFor</code>：<code>invalid config: $.persona …</code> 或类似错误</td><td>具名行下面的 YAML 缩进有问题 —— 通常是 <code>persona: |</code> 块。校验这个文件： <code>python3 -c "import yaml,sys; yaml.safe_load(open('$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml'))"</code></td></tr>
+  <tr><td>preset 在挑选器里找不到</td><td>bundle patch 里没有 <code>preset-main-agent</code> 声明行（或该行 import 失败）：<b>0.2.x 起 <code>$DSH_HOME/.agent-presets/</code> 目录不再被读取</b>，所以先别去翻那个目录。先在 profile 的组合配置里找这一行 —— <code>dsh --profile &lt;名字&gt; --dump-config | grep -A4 'id: preset-main-agent'</code>；声明行本身在 <code>presets/main-agent.patch.yml</code>（由 <code>scripts/sync-preset-patch.mjs</code> 生成，<code>tests/preset-patch.test.mjs</code> 校同步），它必须存在、<code>name:</code> 为 <code>@deepseek-ai/dsh-agent-preset</code>、且没有 <code>disabled:</code>。然后用 <code>agentPresets.list()</code>（在 Creator 模式里）看 roster 实际注册了什么。如果那一行在、但启动日志里写着 <code>failed to import</code>，说明宿主没带这个包；如果写着 <code>pending (waiting for service: agentPresets)</code>，说明这个 profile 没有提供 registry 的 app（<code>dsh web</code> 提供）。</td></tr>
+  <tr><td>挑选器只显示裸 id，没有描述</td><td>声明行里的 <code>config.name</code> / <code>config.description</code> 缺失或为空 —— 第 6 章第 2 步。（<code>preset.yml</code> 只喂给更老 dsh 的那份兼容副本。）</td></tr>
+  <tr><td><code>standingKeyFor</code>：<code>invalid config: $.persona …</code> 或类似错误</td><td>具名行下面的 YAML 缩进有问题 —— 通常是 <code>prefix: |</code> 块（0.2.x 的 <code>dsh-persona</code> 必填 <code>prefix</code>，旧字段 <code>text</code> 会让整行加载失败）。校验源文件并重跑生成脚本： <code>python3 -c "import yaml,sys; yaml.safe_load(open('$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml'))"</code>，然后 <code>npm run sync-preset</code>。</td></tr>
   <tr><td><code>N row(s) did not activate: waiting for &lt;service&gt;</code></td><td>消费方行处在错误的领域里，或者那个宿主服务确实没被挂载（比如你在第 8 章之前就引用了 schedule）。</td></tr>
   <tr><td><code>published process-global service(s) […]</code></td><td>你在 preset 里随手加了一个 provider 行。把 provider 和消费方包进同一个 <code>isolate</code> 组，或者把它挪到宿主一侧。（第 2–3 章。）</td></tr>
   <tr><td>用这个 preset 开第二个会话失败；第一个却没事</td><td>还是领域（realm）那个 bug —— 冲突在第二次挂载时才触发。修法同上。</td></tr>

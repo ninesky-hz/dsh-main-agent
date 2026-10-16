@@ -29,8 +29,12 @@
 评分只看持久产物 —— 不在你的 agent 里执行任何东西，
 也不改动任何东西：
 
-- **Preset 与 patch**：从 `~/.dsh/.agent-presets/main-agent/` 和
+- **Preset 与 patch**：从 `~/.dsh/.agent-presets/main-agent/`（兼容副本）和
   `~/.dsh/profiles/web/cordis.patch.yml` 里解析出来（YAML 加载器能容忍 `!!js` 标签）。
+  注意那里读到的只是**兼容副本**：在 0.2.x 上 preset 是否真的出现在挑选器里，
+  由 bundle patch 里 `presets/main-agent.patch.yml` 的 `preset-main-agent`
+  （`@deepseek-ai/dsh-agent-preset`）声明行决定，`$DSH_HOME/.agent-presets/` 目录
+  已经不再被宿主读取。
 - **行为**：从会话事件日志里读
   （`~/.dsh/sessions/<workspace>/<session>/session.jsonl.zstd`，有系统 CLI 就用系统 CLI 解压，
   否则用教程自带的私有 Python 解码器；写到一半的活动日志也能处理）。工具调用靠

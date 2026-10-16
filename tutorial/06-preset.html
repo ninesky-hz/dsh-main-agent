@@ -20,16 +20,19 @@
   <p class="kicker">第 II 部分 —— 构建 · 里程碑 1</p>
   <h1>安装并查看 <code>main-agent</code></h1>
   <p class="lede">这是第一个构建动作。你把本仓库作为一个 dsh profile 的 bundle 装上、重启一次，
-  让它那个不破坏任何东西的 setup 插件把当前这份 preset 原样装上。等这个包真的存在了，你再去查看那些
+  它随包携带的第二份 bundle patch（<code>presets/main-agent.patch.yml</code>）就会声明
+  <code>preset-main-agent</code> 这一行，roster 里随之出现
+  <strong>Main Agent（监督者）</strong>。等这个包真的存在了，你再去查看那些
   名字形如 <code>dsh-supervisor/…</code> 的配置行。</p>
 </header>
 
 <h2>依赖顺序</h2>
 <pre><code>clone repository                         (setup page)
-  → dsh plugin add                      (package becomes profile dependency)
-    → restart dsh web                   (bundle rows compose at boot)
-      → setup plugin installs preset    (main-agent appears)
-        → preset subpath rows resolve   (goal/control/spawn mount)
+  → dsh plugin add                       (package becomes profile dependency)
+    → restart dsh web                    (bundle rows compose at boot)
+      → bundle patch declares the preset (presets/main-agent.patch.yml registers
+                                         preset-main-agent → main-agent appears)
+        → preset subpath rows resolve    (goal/control/spawn mount)
           → start and test a session</code></pre>
 <p>
   把中间那两步调换顺序，就会得到本章专门要防的那个报错：
@@ -47,8 +50,15 @@ test -f "$HOME/.dsh/profiles/web/package.json"
 grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json" || true</code></pre>
 <p>
   如果机器其实并不干净、<code>$HOME/.dsh/.agent-presets/main-agent</code> 已经存在，而你又想要这个包
-  当前那份 preset，那就在安装前先把它挪开。安装器在默认的 <code>syncPreset: if-absent</code> 模式下，
-  绝不会覆盖用户自己的 preset。
+  当前那份 preset，那就在安装前先把它挪开。安装器的 legacy 拷贝在默认的
+  <code>syncPreset: if-absent</code> 模式下，绝不会覆盖用户自己的那份。
+</p>
+<p>
+  同样要检查的是<b>手工挂过的 preset bundle</b>：早期迁移期有人会手写一个
+  <code>@local/dsh-main-agent-preset</code> 之类的包并把它加进 profile 的
+  <code>dsh.profile.bundles</code>。那样一来这个 profile 里就有了<b>两条</b>指向同一个 preset id
+  的声明行，而重复的声明行<b>不会报错、也不会去重</b>（后一层获胜），选择器里的文案会安静地变成
+  另一份。本仓库的安装是自足的，安装前请把这类手工 bundle 从 profile 依赖里摘掉。
 </p>
 
 <h2>第 2 步 —— 安装 supervisor bundle</h2>
@@ -66,8 +76,17 @@ dsh plugin --profile web add "file:$PWD"</code></pre>
 <pre><code>dsh web</code></pre>
 <p>
   这次重启是必须的，因为 bundle 列表是在启动时组装的。启动过程中，这个包会挂载它自己的 settings/feed
-  宿主插件和原生 schedule 服务，然后因为预设目录还不存在，把包里带的
-  <code>main-agent</code> 目录复制进 <code>$HOME/.dsh/.agent-presets/</code>。
+  宿主插件、原生 schedule 服务，并让 <code>presets/main-agent.patch.yml</code> 里那条
+  <code>preset-main-agent</code>（<code>@deepseek-ai/dsh-agent-preset</code>）行注册 preset ——
+  <b>这一条才是 0.2.x 上让 preset 出现在选择器里的东西</b>。它由
+  <code>scripts/sync-preset-patch.mjs</code> 从 <code>agent-presets/main-agent/</code> 生成，
+  同步关系由 <code>tests/preset-patch.test.mjs</code>（<code>npm test</code>）把守；改了预设源文件
+  就重跑 <code>npm run sync-preset</code> 再提交。
+</p>
+<p>
+  同一个 setup 插件还会把包里带的 <code>main-agent</code> 目录复制进
+  <code>$HOME/.dsh/.agent-presets/</code>（目录不存在时）。这是为<b>更老的 dsh</b> 保留的路径：
+  0.2.x 起宿主已经<b>不再读取</b>那个目录，所以它现在不是 preset 的来源。
 </p>
 
 <h2>第 3 步 —— 证明包、bundle、preset 三者都在</h2>
@@ -75,16 +94,27 @@ dsh plugin --profile web add "file:$PWD"</code></pre>
   <span class="box-title">安装关卡</span>
   <pre><code>grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json"
 dsh --profile web --dump-config | grep -E 'agi-schedule|agi-supervisor-setup'
+# The two files below are the compat copy for older dsh — they prove it was written:
 test -f "$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml"
-test -f "$HOME/.dsh/.agent-presets/main-agent/preset.yml"</code></pre>
-  <p>这四条命令必须全部成功。在浏览器里，Settings → Plugins 里还必须有
+test -f "$HOME/.dsh/.agent-presets/main-agent/preset.yml"
+# This is what makes the preset exist — it must print exactly one line:
+dsh --profile web --dump-config | grep -c 'preset-main-agent'
+dsh --profile web --dump-config | grep -A4 'id: preset-main-agent'</code></pre>
+  <p>这些命令必须全部成功。前两条 <code>test -f</code> 证明的是<b>兼容副本已被写入</b>
+  （那是给更老的 dsh 用的）；<b>preset 是否真的生效要看声明行</b>：
+  <code>preset-main-agent</code> 的计数必须是 <code>1</code>，紧接着的
+  <code>name:</code> 必须是 <code>@deepseek-ai/dsh-agent-preset</code>、其
+  <code>config.name</code> 为 <code>Main Agent（监督者）</code>，而且这一行<b>没有</b>
+  <code>disabled:</code>。在浏览器里，Settings → Plugins 里还必须有
   <strong>Supervisor</strong>。任何一项没过，就停在这儿别往下走。</p>
 </div>
 
 <h2>第 4 步 —— 查看这个包装进来的那些行</h2>
 <p>
-  用只读方式打开 <code>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml</code>。那些关键的策略
-  替换已经做好了：
+  用只读方式打开 <code>$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml</code> ——
+  声明行 <code>preset-main-agent</code> 的 <code>config.plugins</code> 就是这份文件的逐行副本
+  （<code>tests/preset-patch.test.mjs</code> 保证两者一致；<code>.agent-presets/</code> 里那份兼容副本
+  内容相同）。那些关键的策略替换已经做好了：
 </p>
 <figure class="code">
 <figcaption><span class="badge cite">引用</span>装好的 preset —— 节选的若干行</figcaption>
@@ -109,7 +139,7 @@ test -f "$HOME/.dsh/.agent-presets/main-agent/preset.yml"</code></pre>
 </figure>
 <p>现在验证那些“绕过”都不存在：</p>
 <pre><code>grep -nE 'subagent_fork|@deepseek-ai/dsh-tool-goal' \
-  "$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml" || true</code></pre>
+  "$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml" || true</code></pre>
 <p>
   这条命令应该什么都不打印。让那三个自定义名字能被解析出来的包导出，在
   <code>$HOME/src/dsh-supervisor/package.json</code> 里能看得到，也就是 <code>./goal</code>、
