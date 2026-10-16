@@ -24,7 +24,12 @@
 - id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
+    # 0.2.x 的 dsh-persona 契约：`prefix` 必填（打底人格），`suffix` 可选
+    # （运行时尾注）。旧版把全部文案写在 `text`，在 0.2.x 会因
+    # `$.prefix missing required value` 让这一行加载失败，进而让整个
+    # preset 挂载失败（roster 里带 broken，选择器中直接消失）。
+    suffix: 你的工作目录是 {{cwd}}。
+    prefix: |-
       你是 Main Agent：一个由 {{model}} 驱动的常驻监督者，
       工作于 {{cwd}}。你监督开发子代理。你不亲自实现
       变更 —— 但你不是一个盲目的派发器：你会用自己的工具阅读、搜索
@@ -402,8 +407,19 @@
         backgroundMode: one-shot
         maxDepth: provider-managed
 
+    # workflow 引擎：0.2.x 只发布 `dsh-workflow` 与 `dsh-workflow-ptc`；
+    # 随包的 `standard` preset 用的就是 ptc（config.provider 选隔离后端）。
+    # 上游曾写作 `@deepseek-ai/dsh-workflow-worker-thread`，该包在 0.2.x
+    # 不存在 —— 会让整个 preset 挂载失败（roster 里带 broken，
+    # 在选择器中直接消失）。若你的 dsh 版本里确有 worker-thread，
+    # 把下面这一行改回启用即可。
+    - id: workflow-engine
+      name: '@deepseek-ai/dsh-workflow-ptc'
+      config:
+        provider: spawn
     - id: workflow-worker-thread
       name: '@deepseek-ai/dsh-workflow-worker-thread'
+      disabled: true
       config:
         provider: spawn
 

@@ -68,8 +68,12 @@ dsh web
 
 1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`）
    （不挂 `dsh-time-context` —— 它会往每个请求注入时间戳块，
-   而 Schedule 不依赖它），以及
-2. 运行本包的 setup 插件（`lib/index.js`），它把随包携带的
+   而 Schedule 不依赖它）；
+2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 的第二份 patch）
+   向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
+   唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
+   「Main Agent（监督者）」，以及
+3. 运行本包的 setup 插件（`lib/index.js`），它把随包携带的
    **`main-agent` preset** 安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/` —— 仅在缺失时安装，
    绝不覆盖你的修改（行配置 `syncPreset: always | if-absent | never`）。
 
@@ -274,6 +278,7 @@ agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full
 |---|---|
 | `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片） |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
+| `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
@@ -321,19 +326,27 @@ TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内
    向精选列表提 PR 可以增加人工收录位置。
 3. **发布到 npm**（可选）：`dsh plugin` 会转发给 pnpm，因此已发布的包
    可按名称安装。`package.json` 中的 `files` 列表已限定发布内容
-   （`lib`、`cordis.patch.yml`、`agent-presets`、`agi-template`）。
+   （`lib`、`cordis.patch.yml`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
 
-以下是随包发布 preset 的插件的打包经验，学自生态：
-（`dsh-minimal-msys2` 用同样的启动时复制模式发布 preset；
-`dsh-preset-qa-mode` 只发布脚本；`dsh-preset-scaffold` 还通过 `dsh-skill-filesystem` 把
-其打包的 `skills/` 注册为 skill 根）：
+以下是随包发布 preset 的插件的打包经验（0.2.x 实测）：
 
-- 启动时复制到 `${DSH_HOME}/.agent-presets/` 是既定模式 —— preset
-  发现机制每次调用都会重新读取根目录，因此复制后无需重启，而且
-  卸载插件刻意不会删除已安装的 preset。
-- 花名册还支持部署配置的额外 preset `roots`（见
-  `dsh-agent-presets` 的 Config），但 bundle 无法在不整体重述的情况下追加已发布行的配置
-  —— 这就是复制模式在实践中胜出的原因。
+- **preset 只能由 patch 里的声明行注册。** 0.2.x 的 agent-preset 注册表
+  既不扫描 `${DSH_HOME}/.agent-presets/` 目录，也不接受部署配置的
+  preset 路径；`dsh-agent-presets` 的 Config 只保留 `default` 与
+  `selectedDefault`。声明行形如 `- id: preset-x` +
+  `name: '@deepseek-ai/dsh-agent-preset'` + `config.plugins`，而
+  `dsh.bundle.patch` 可以是**文件路径数组** —— 本仓库就是这样同时发出
+  `cordis.patch.yml`（host 层）与 `presets/main-agent.patch.yml`（preset 声明）。
+- **坏掉的 preset 不会报错，只会消失。** 声明行解析或挂载失败时，注册表
+  把它留在花名册里但带上 `broken`，而新会话选择器会过滤掉所有带
+  `broken` 的项；只有在 Settings → 智能体预设 里才会看到「加载失败」
+  卡片。所以「装好了但选择器里没有」要先去那里看原因。
+- **启动时复制到 `${DSH_HOME}/.agent-presets/` 只是旧版兼容路径**：保留它
+  不伤 0.2.x（目录被忽略），也让旧版 dsh 仍然能用。
+- **0.2.x 的两个字段陷阱**（都表现为整个 preset broken）：
+  `dsh-persona` 的 `text` 字段已被 `prefix`（必填）+ `suffix` 取代；
+  workflow 引擎包名是 `@deepseek-ai/dsh-workflow-ptc`
+  （`@deepseek-ai/dsh-workflow-worker-thread` 在 0.2.x 不存在）。
 
 ## 安全须知
 
