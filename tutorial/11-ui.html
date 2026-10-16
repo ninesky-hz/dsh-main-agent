@@ -44,7 +44,7 @@
 
 <h2>自带的监督动态 Feed 标签页（bundle 装了什么）</h2>
 <p>
-  从 v0.2.0 起，<code>dsh-supervisor</code> 包自带一个持久的客户端插件：打开任意
+  从 v0.2.0 起，<code>dsh-main-agent</code> 包自带一个持久的客户端插件：打开任意
   会话，视图环（装着 <em>Chat</em> 和 <em>Trajectory</em> 的那一圈标签页）里就多出一个
   <strong>监督动态 Feed</strong> 条目。对于带 <code>.agi/</code> 目录的工作区，它一次把整场运行
   渲染成一眼可读 —— 目标卡片（实时，来自原生 <code>goal</code> 投影）、worker
@@ -58,7 +58,7 @@
       <code>supervisor-feed</code> 注册进自带的 <code>conversation.view</code> 列表槽位 —— 是加法，
       绝不替换 Chat。由 client-modules 扫描自动提供：该包声明了
       <code>dsh.client&nbsp;{platform:'web'}</code> + <code>exports["./client"]</code>，于是页面拿到
-      <code>/plugins/dsh-supervisor/client.js</code>，前端无需重建。</li>
+      <code>/plugins/dsh-main-agent/client.js</code>，前端无需重建。</li>
   <li><strong>宿主那一半</strong> —— <code>GET /supervisor/feed?ws=&lt;workspace&gt;</code>，在
       <code>lib/index.js</code> 里：一个注入了 <code>webServer</code> 的嵌套 fiber 读取
       <code>.agi/</code> 目录树（文本有上限，JSONL 只留尾部），因此无头的 profile 仍然能原封不动地装上

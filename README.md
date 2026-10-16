@@ -1,4 +1,4 @@
-# dsh-supervisor — 面向 DeepSeek Harness 的常驻监督者 Agent
+# dsh-main-agent — 面向 DeepSeek Harness 的常驻监督者 Agent
 
 7×24 小时在线的 **Main Agent**：先记录一个可审阅的目标，然后无人值守地循环：派生开发
 子代理 → 休眠 → 因收敛 / 报告 / 定时器 / 你的消息而唤醒 → 巡检 → 纠偏、
@@ -14,7 +14,9 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
 
 ## dsh 0.2.0 兼容性
 
-本仓库（`n-sky/dsh-supervisor` 上的一个 fork）承载了向 **dsh 0.2.0-rc.2** 的移植：
+本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
+`https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
+它承载了向 **dsh 0.2.0-rc.2** 的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -54,6 +56,17 @@ cd "$HOME/src/dsh-supervisor"
 （`npm i -g @deepseek-ai/dsh`），并配置好模型（web UI → Settings → Models；
 已在 Z.AI `glm-5.3` 上测试）。
 
+发布版（0.10.0 起，直接从 git 安装）：
+
+```sh
+dsh plugin --profile web add https://gitee.com/n-sky/dsh-main-agent.git
+
+# restart dsh once (bundle layers compose at boot):
+dsh web
+```
+
+从已克隆的本地仓库安装（第 6 章课程路径，与上面等价）：
+
 ```sh
 # When chapter 6 tells you to install the already-cloned package:
 cd "$HOME/src/dsh-supervisor"
@@ -62,6 +75,15 @@ dsh plugin --profile web add "file:$PWD"
 # restart dsh once (bundle layers compose at boot):
 dsh web
 ```
+
+> **仓库沿革与改名。** 本包 0.9.4 及以前的版本发布在
+> `https://gitee.com/n-sky/dsh-supervisor.git`；自 **0.10.0** 起改名为
+> **`dsh-main-agent`**，并迁移到 `https://gitee.com/n-sky/dsh-main-agent.git`
+> （旧仓库冻结在 0.9.4，不再发布新版本）。改名只影响安装标识符：pnpm 的
+> 依赖键取自包清单里的 `name` 而不是仓库目录名，因此**从哪个 URL 装出来都是
+> `node_modules/dsh-main-agent`**。已经用旧 URL 装过 0.9.x 的 profile，请用上面的新
+> 仓库 URL 再 `dsh plugin --profile <name> add` 一次，并把旧的
+> `dsh-supervisor` 依赖键与 bundle 条目摘掉，避免同一个包挂两遍。
 
 安装就这么多。这一条命令把该包注册为 **profile bundle**
 （依赖项 + `dsh.profile.bundles` 条目），启动时该 bundle 会：
@@ -73,7 +95,7 @@ dsh web
    手写任何 patch —— 即使你的 profile 已经通过
    `@deepseek-ai/dsh-experimental-schedule-bundle` 挂了 schedule。
    边界：守卫只能看见**排在它之前**的 loader 行，所以「提供 schedule 的
-   bundle 必须列在 `dsh-supervisor` 之前」是本机制的前提（默认组合
+   bundle 必须列在 `dsh-main-agent` 之前」是本机制的前提（默认组合
    满足）；若你在**自己 profile 的 `cordis.patch.yml`** 里声明 schedule
    行，它排在本 bundle **之后**、守卫看不到它，此时仍请在 profile 里
    保留 id 级 `- id: agi-schedule` / `disabled: true`（写了也无害）。
@@ -101,7 +123,7 @@ cp "$HOME/src/dsh-supervisor/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 并把 schedule 行写进你 profile 的 `cordis.patch.yml`。只选
 一条路径，不要两条都用 —— schedule 服务每进程只注册一次，因此 bundle 行
 与手动 patch 行不能共存。如果你的 profile 已从别处挂载
-`dsh-schedule`（**且那份提供者来自排在 `dsh-supervisor` 之前的 bundle**），
+`dsh-schedule`（**且那份提供者来自排在 `dsh-main-agent` 之前的 bundle**），
 本 bundle 里的 `agi-schedule` 行会**自己让位**，你什么都不用做。
 历史写法 —— 针对 id 的 `- id: agi-schedule` / `disabled: true` ——
 **不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
@@ -131,7 +153,7 @@ worker 就是侧栏里的普通会话 —— 点开一个即可实时观看。
 该 preset 刻意禁用了 Harness 原生的、面向模型的
 `@deepseek-ai/dsh-tool-goal` 行。那个前端允许 `create_goal` 在没有
 先检查持久任务状态或工作区 runbook 的情况下，就推断长时间运行意图。
-`dsh-supervisor/goal` 只替换那个
+`dsh-main-agent/goal` 只替换那个
 前端；原生 `ctx.goals` 服务、会话投影与带竞态围栏的
 goal-round 驱动器仍安装在宿主上。
 
@@ -333,7 +355,7 @@ TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内
    [`dsh-plugin`](https://github.com/topics/dsh-plugin) 主题（harness README 的
    官方可发现性渠道），并写一行简洁的仓库描述 ——
    社区索引抓取的就是这一行。用户随后直接从 git 安装：
-   `dsh plugin --profile web add "github:you/dsh-supervisor"`。
+   `dsh plugin --profile web add "github:you/dsh-main-agent"`。
 2. **聚合器会自动收录**：awesome-list
    （例如 `vvlife/awesome-deepseek-harness-plugins` 每天从该主题重新生成其 `PLUGINS.md`）
    与主题驱动的市场（例如 WhaleHub，一个带一键安装命令的可视化市场）。

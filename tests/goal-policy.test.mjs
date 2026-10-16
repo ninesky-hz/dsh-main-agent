@@ -99,7 +99,7 @@ test('preset exposes only the supervisor-owned non-blocking goal frontend', asyn
     'utf8',
   )
   const goalSource = await readFile(new URL('../lib/goal.js', import.meta.url), 'utf8')
-  assert.match(preset, /- id: tool-goal\n\s+name: dsh-supervisor\/goal/)
+  assert.match(preset, /- id: tool-goal\n\s+name: dsh-main-agent\/goal/)
   assert.doesNotMatch(preset, /name: '@deepseek-ai\/dsh-tool-goal'/)
   assert.match(goalSource, /name: 'start_goal'/)
   assert.match(goalSource, /ctx\.on\('tools\/pre-execute'/)

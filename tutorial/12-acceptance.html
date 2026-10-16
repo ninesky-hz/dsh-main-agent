@@ -159,7 +159,7 @@ python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
 </p>
 <table>
   <tr><th>发现</th><th>类别</th><th>修法</th></tr>
-  <tr><td>还没检查目标状态或工作区脚本就先派生了</td><td>机制回归</td><td>核验 preset 是否挂载了 <code>dsh-supervisor/goal</code>、没有原生 <code>create_goal</code>，并且要求在 <code>start_goal</code> 之前先 <code>get_goal</code>。</td></tr>
+  <tr><td>还没检查目标状态或工作区脚本就先派生了</td><td>机制回归</td><td>核验 preset 是否挂载了 <code>dsh-main-agent/goal</code>、没有原生 <code>create_goal</code>，并且要求在 <code>start_goal</code> 之前先 <code>get_goal</code>。</td></tr>
   <tr><td>一次 steer 忘了写 CHANGELOG 行</td><td>协议违反</td><td>把记录并进该动作自己的句子里：“Steer = send_message + 一行 CHANGELOG，永远一起出现。”</td></tr>
   <tr><td>不等就自己把问题答了</td><td>协议缺口</td><td>补一句：“你查一眼就能回答的问题不算用户问题 —— 自己解决然后往前走；只有用户才知道的未知项才写进 questions.jsonl。”</td></tr>
   <tr><td>定时器到点了，它却去纠偏一个本就在轨的 worker</td><td>协议缺口</td><td>补一条明确的默认：“在轨的意思是：最近的工具调用与 Scope 一致。若在轨，除了写 NOTES.md 里的判定，什么都不做。”</td></tr>

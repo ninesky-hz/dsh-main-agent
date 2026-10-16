@@ -301,7 +301,7 @@ def _find_rows(rows, pred, nested=False):
 
 def _spawn_row():
     rows = _preset_rows()
-    hits = _find_rows(rows, lambda r: r.get("name") == "dsh-supervisor/spawn"
+    hits = _find_rows(rows, lambda r: r.get("name") == "dsh-main-agent/spawn"
                       and isinstance(r.get("config"), dict)
                       and r["config"].get("toolName") == "subagent")
     return hits[0] if hits else (None, False)
@@ -310,7 +310,7 @@ def _spawn_row():
 def _(ws):
     ok = (PRESET_DIR / "agent.cordis.yml").exists() and (PRESET_DIR / "preset.yml").exists()
     return PASS(str(PRESET_DIR)) if ok else \
-        FAIL("安装 dsh-supervisor bundle 并重启 dsh（第 6 章第 2-3 步）")
+        FAIL("安装 dsh-main-agent bundle 并重启 dsh（第 6 章第 2-3 步）")
 
 @m1.check("preset.yml 带着显示名与描述")
 def _(ws):
@@ -337,10 +337,10 @@ def _(ws):
 def _(ws):
     row, _n = _spawn_row()
     if row is None:
-        return FAIL("没有 config.toolName 为 subagent 的 dsh-supervisor/spawn 行")
+        return FAIL("没有 config.toolName 为 subagent 的 dsh-main-agent/spawn 行")
     cfg = row["config"]
     problems = []
-    if row.get("name") != "dsh-supervisor/spawn":
+    if row.get("name") != "dsh-main-agent/spawn":
         problems.append(f'name 是 {row.get("name")}')
     if cfg.get("provider") != "spawn":
         problems.append(f'provider 是 {cfg.get("provider")}')
@@ -507,7 +507,7 @@ def _(ws):
 
     if not need - inserted_names(PATCH_FILE):
         return PASS("通过 profile 补丁这一层")
-    # Bundle path (the dsh-supervisor package route): every profile bundle's
+    # Bundle path (the dsh-main-agent package route): every profile bundle's
     # own cordis.patch.yml is a layer too.
     profile_dir = PATCH_FILE.parent
     try:
@@ -707,31 +707,31 @@ def _http(path: str):
 @m6.check("已安装的 bundle 带客户端半边（dsh.client + lib/client.js）")
 def _(ws):
     profile_dir = PATCH_FILE.parent
-    pkg_dir = profile_dir / "node_modules" / "dsh-supervisor"
+    pkg_dir = profile_dir / "node_modules" / "dsh-main-agent"
     try:
         manifest = json.loads((pkg_dir / "package.json").read_text())
     except Exception:
-        return FAIL("dsh-supervisor 没有安装进 web profile")
+        return FAIL("dsh-main-agent 没有安装进 web profile")
     if (manifest.get("dsh", {}).get("client", {}).get("platform")) != "web":
         return FAIL("package.json 缺少 dsh.client { platform: web }")
     if not (pkg_dir / "lib" / "client.js").exists():
         return FAIL("已安装的包里缺少 lib/client.js")
     return PASS()
 
-@m6.check("启动图里带着 dsh-supervisor 行（client-modules 扫描）")
+@m6.check("启动图里带着 dsh-main-agent 行（client-modules 扫描）")
 def _(ws):
     status, body = _http("/")
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达 —— {body.decode()[:80]}")
-    ok = b"__DSH_BOOT__" in body and b"dsh-supervisor" in body
-    return PASS() if ok else FAIL("index 页的 __DSH_BOOT__ 图里没有 dsh-supervisor 行 —— 安装后重启过了吗？")
+    ok = b"__DSH_BOOT__" in body and b"dsh-main-agent" in body
+    return PASS() if ok else FAIL("index 页的 __DSH_BOOT__ 图里没有 dsh-main-agent 行 —— 安装后重启过了吗？")
 
 @m6.check("客户端 bundle 能被服务出来")
 def _(ws):
-    status, _body = _http("/plugins/dsh-supervisor/client.js")
+    status, _body = _http("/plugins/dsh-main-agent/client.js")
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达")
-    return PASS() if status == 200 else FAIL(f"/plugins/dsh-supervisor/client.js 返回 {status}")
+    return PASS() if status == 200 else FAIL(f"/plugins/dsh-main-agent/client.js 返回 {status}")
 
 @m6.check("feed 路由能提供该工作区的 .agi 状态")
 def _(ws):

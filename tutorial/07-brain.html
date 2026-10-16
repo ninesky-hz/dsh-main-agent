@@ -169,7 +169,7 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
      `runtime/current` 在用户允许时，会显式跟随为你当前回合
      捕获的模型路线；全新安装时它是启用的。不存在隐式的
      继承/默认模型。如果列表为空，worker 派生就是被禁用的；
-     请用户在 Settings -> Plugins -> dsh-supervisor 里添加一个选项。
+     请用户在 Settings -> Plugins -> dsh-main-agent 里添加一个选项。
      只为那些必须查看图片的单元选择 [text,image] 固定模型
      （截图、UI 检查、图表），并在 prompt 里点名 worker 应当
      read_image 的图片文件。绝不使用另一个委派工具来绕过白名单。
@@ -244,7 +244,7 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
 <p>
   第 6 章已经换掉了那个面向模型的 goal 配置行。原生的 goal <em>服务</em>、投影和会话驱动器，都还留在
   宿主侧。preset 只禁用了那个“猜意图”的 <code>@deepseek-ai/dsh-tool-goal</code> 前端，换成挂载
-  <code>dsh-supervisor/goal</code>。它的 <code>start_goal</code> 会写一份规范的 GOAL.md，并且在一次
+  <code>dsh-main-agent/goal</code>。它的 <code>start_goal</code> 会写一份规范的 GOAL.md，并且在一次
   直接来自人的轮次里、<code>get_goal</code> 之后立刻调用原生服务，然后把控制权交回同一个模型轮。
   Web UI 仍然会为这个会话渲染当前目标。那块显示就是你用来替代“进度标签页”的东西，而
   <code>progress.jsonl</code> 负责那条流。UI 代码：零行。

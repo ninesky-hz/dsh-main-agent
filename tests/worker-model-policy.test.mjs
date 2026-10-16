@@ -206,8 +206,8 @@ test('the bundled preset has one guarded spawn frontend and no native fallback r
     'utf8',
   )
 
-  assert.match(preset, /- id: tool-subagent\n\s+name: dsh-supervisor\/spawn/)
-  assert.match(preset, /name: dsh-supervisor\/spawn\n\s+config:\n\s+provider: spawn\n\s+toolName: subagent/)
+  assert.match(preset, /- id: tool-subagent\n\s+name: dsh-main-agent\/spawn/)
+  assert.match(preset, /name: dsh-main-agent\/spawn\n\s+config:\n\s+provider: spawn\n\s+toolName: subagent/)
   assert.doesNotMatch(
     preset,
     /name: '@deepseek-ai\/dsh-tool-subagent'\n\s+config:\n\s+provider: spawn\n\s+toolName: subagent/,

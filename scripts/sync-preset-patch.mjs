@@ -86,7 +86,7 @@ function main() {
   const rendered = renderPresetPatch({ name, description, composition })
   mkdirSync(dirname(OUT), { recursive: true })
   writeFileSync(OUT, rendered, 'utf8')
-  process.stdout.write(`dsh-supervisor: 已生成 ${OUT}（${rendered.split('\n').length} 行）\n`)
+  process.stdout.write(`dsh-main-agent: 已生成 ${OUT}（${rendered.split('\n').length} 行）\n`)
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main()

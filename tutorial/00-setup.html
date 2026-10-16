@@ -25,7 +25,8 @@
 
 <h2>课程应用如何启动</h2>
 <p>
-  你能看到本页，说明已经克隆了 <code>dsh-supervisor</code>。就在这份克隆里，那一条本地
+  你能看到本页，说明已经克隆了本课程所在的仓库 <code>dsh-main-agent</code>（本地目录
+  <code>$HOME/src/dsh-supervisor</code>）。就在这份克隆里，那一条本地
   安装命令会创建隔离的 Python 环境、只安装评分器所需的 PyYAML 与 zstd
   解码器依赖、挑选一个未占用的 localhost 端口，并启动课程服务，且评分按钮可用：
 </p>
@@ -83,7 +84,7 @@ test -f "$HOME/src/deepseek-harness/docs/architecture.md"</code></pre>
   <span class="box-title">暂时不要安装监督者 bundle</span>
   <p>
     第 6 章会把本仓库安装为一个 profile bundle，这一步发生在任何
-    <code>dsh-supervisor/…</code> 行被挂载<em>之前</em>。下一次启动时，该 bundle 会安装随包携带的
+    <code>dsh-main-agent/…</code> 行被挂载<em>之前</em>。下一次启动时，该 bundle 会安装随包携带的
     对应 <code>main-agent</code> preset。把包与 preset 的安装放在一起，可以避免
     出现行引用了尚不存在的包名的情况。
   </p>

@@ -125,7 +125,7 @@
          `runtime/current` 在用户允许时，会显式跟随为你当前回合
          捕获的模型路线；全新安装时它是启用的。不存在隐式的
          继承/默认模型。如果列表为空，worker 派生就是被禁用的；
-         请用户在 Settings -> Plugins -> dsh-supervisor 里添加一个选项。
+         请用户在 Settings -> Plugins -> dsh-main-agent 里添加一个选项。
          只为那些必须查看图片的单元选择 [text,image] 固定模型
          （截图、UI 检查、图表），并在 prompt 里点名 worker 应当
          read_image 的图片文件。绝不使用另一个委派工具来绕过白名单。
@@ -254,12 +254,12 @@
 # driver 与 `/goal` 命令留在 host 平面。本插件故意
 # 不挂载 `@deepseek-ai/dsh-tool-goal`：它的 inferred-intent create_goal
 # 会在同一个真人回合里武装一个自主目标，而绕过监督者
-# 必需的、以工作区打底的 GOAL.md 设置流程。dsh-supervisor/goal 保留
+# 必需的、以工作区打底的 GOAL.md 设置流程。dsh-main-agent/goal 保留
 # 原生 domain 与 continuation engine，但把那个前端替换为
 # get_goal -> workspace/runbook inspection -> immediate start_goal。目标设置
 # 绝不因等待第二个确认回合而阻塞。目标陈述的编辑功能仍然不提供。
 - id: tool-goal
-  name: dsh-supervisor/goal
+  name: dsh-main-agent/goal
 
 # ── plan mode（计划模式） ───────────────────────────────────────────────────
 
@@ -346,7 +346,7 @@
     # child 会在它的下一步被纠偏（lib/control.js）；空闲、等待中、
     # 以及冷恢复投递仍走原生的 ctx.subagents.sendMessage。
     - id: tool-subagent-control
-      name: dsh-supervisor/control
+      name: dsh-main-agent/control
 
     - id: tool-subagent-list-agents
       name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
@@ -365,7 +365,7 @@
     # `@deepseek-ai/dsh-tool-subagent` spawn 行：那个原生
     # 前端没有 model 参数，会绕过 Settings 的策略。
     - id: tool-subagent
-      name: dsh-supervisor/spawn
+      name: dsh-main-agent/spawn
       config:
         provider: spawn
         toolName: subagent

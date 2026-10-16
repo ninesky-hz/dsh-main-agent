@@ -49,7 +49,7 @@ elif [ -f "$PATCH" ] && grep -qv '^\s*\(#\|\[\]\|$\)' "$PATCH" && [ "$FORCE" != 
   echo "$ROWS" | sed 's/^/        /'
 else
   cp "$PATCH" "$PATCH.bak" 2>/dev/null || true
-  printf '%s\n' "# Profile patch 层 —— 实时监视。dsh-supervisor 的 schedule 叠加层。" "$ROWS" > "$PATCH"
+  printf '%s\n' "# Profile patch 层 —— 实时监视。dsh-main-agent 的 schedule 叠加层。" "$ROWS" > "$PATCH"
   echo "patch:  已安装 schedule 叠加层（若此前有备份，位于 $PATCH.bak）"
 fi
 

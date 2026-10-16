@@ -66,9 +66,9 @@ const ENABLED_SPECIFIERS = ROWS.filter(([, , text]) => !/^\s*disabled: true\s*$/
   .map(([, name]) => name)
   .filter((name) => !name.startsWith('cordis:'))
 /** Specifiers that must come from the installed DSH runtime. */
-const RUNTIME_SPECIFIERS = ENABLED_SPECIFIERS.filter((name) => packageOf(name) !== 'dsh-supervisor')
+const RUNTIME_SPECIFIERS = ENABLED_SPECIFIERS.filter((name) => packageOf(name) !== 'dsh-main-agent')
 /** Specifiers that must come from this package itself (the profile symlinks it). */
-const SELF_SPECIFIERS = SPECIFIERS.filter((name) => packageOf(name) === 'dsh-supervisor')
+const SELF_SPECIFIERS = SPECIFIERS.filter((name) => packageOf(name) === 'dsh-main-agent')
 const MANIFEST = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
 function findArchive() {

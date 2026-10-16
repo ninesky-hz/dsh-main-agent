@@ -110,7 +110,7 @@ routing depends only on Activation residency:
 </figure>
 <p>
   监督者的 preset 只替换面向模型的那一行控制项。对一个活着的、正在运行的直接子级，
-  <code>dsh-supervisor/control</code> 调用 <code>Agent.steer()</code>，也就是 web
+  <code>dsh-main-agent/control</code> 调用 <code>Agent.steer()</code>，也就是 web
   UI 的纠偏动作所用的同一个原语：消息在<em>下一个模型步骤</em>加入，不必等整个回合结束。
   其它所有状态都回落到原生 <code>followup()</code>。只有当当前回合本身必须停下时，才用
   先 interrupt 再 send。直接父级的权限被完整保留。

@@ -1,4 +1,4 @@
-# dsh-supervisor bundle patch：schedule 层（自带让位守卫）。
+# dsh-main-agent bundle patch：schedule 层（自带让位守卫）。
 #
 # 为什么单独成层：schedule 服务每进程只能注册一次。如果 profile 已经从别处
 # 挂过 @deepseek-ai/dsh-schedule（例如 @deepseek-ai/dsh-experimental-schedule-bundle
@@ -16,7 +16,7 @@
 # 表达式形态逐字沿用 profile 自带范例（desktop profile 的 `better-sidebar` 行）。
 #
 # 顺序边界：守卫只能看见**排在本包之前**的 loader 行，所以「提供 schedule 的
-# bundle / profile 行必须列在 dsh-supervisor 之前」是这条守卫生效的前提
+# bundle / profile 行必须列在 dsh-main-agent 之前」是这条守卫生效的前提
 # （本机 desktop profile 即如此：`- id: schedule` 在本包 agi-schedule 之前）。
 # 若对方列在本包之后，守卫看不到它，冲突依旧存在 —— 那时要在 profile 侧
 # 用针对 id 的 `disabled: true` 压制。

@@ -43,7 +43,7 @@ v1 的自建方案（保留在 git 历史中：提交 `1f9a480` 与 `4957d66`）
 | # | 交付物 | 实现形式 | 教程 | 评分器 |
 |---|---|---|---|---|
 | 0 | 干净 PC 的环境搭建与实验台自检（课程服务器、运行时、源码、模型、进程、工作区） | `tutorial/setup.sh` 用于隔离的评分器依赖/UI；Harness 前置条件仍为显式的学习步骤 | setup + 第 4 章（+1–3、5 用于概念） | 网页评分按钮 / `grade.py m0` |
-| 1 | 可安装的 `main-agent` 预设及其策略前端 | 安装本 bundle、重启，然后检查包安装的预设及其 `dsh-supervisor/goal`、`/control`、`/spawn` 行 | 第 6 章 | `grade.py m1` |
+| 1 | 可安装的 `main-agent` 预设及其策略前端 | 安装本 bundle、重启，然后检查包安装的预设及其 `dsh-main-agent/goal`、`/control`、`/spawn` 行 | 第 6 章 | `grade.py m1` |
 | 2 | 监督者大脑 | 检查并试运行打包的 persona（按 DESIGN §3、§15、§16 的 GROUNDING/STATE/GOAL SETUP/LOOP/QUESTIONS/LIMITS）+ 校验 `.agi/` 骨架 | 第 7 章 | `grade.py m2` |
 | 3 | 时间 | 校验 bundle 安装的 schedule 行；耐心计时 = 一次性，check-in = 循环（N2）。手工 profile-patch 安装是备选路径，绝不与 bundle 同时使用 | 第 8 章 | `grade.py m3` |
 | 4 | Worker | 手工驱动原生循环：派生 / 纠偏（`send_message`）/ 终止（`interrupt_agent`）/ `report` / 收敛通知 —— 即旧的 M0 冒烟测试，五项观察 | 第 9 章 | `grade.py m4` |
@@ -71,7 +71,7 @@ v1 的自建方案（保留在 git 历史中：提交 `1f9a480` 与 `4957d66`）
   针对精确路由校验，并将固定 effort
   持久化到子级头部）；
   校验已挂载的预设；启动两个会话（领域校验）。在包成为 profile 依赖之前，
-  绝不要撰写命名 `dsh-supervisor/*` 的行。
+  绝不要撰写命名 `dsh-main-agent/*` 的行。
 - **M2 —— 大脑**（第 7 章）：校验 `.agi/` 脚手架并读取确切安装的
   监督者 persona；运行
   非阻塞目标设置（`get_goal` → 检查持久状态与相关

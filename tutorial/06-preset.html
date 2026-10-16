@@ -23,7 +23,7 @@
   它随包携带的第二份 bundle patch（<code>presets/main-agent.patch.yml</code>）就会声明
   <code>preset-main-agent</code> 这一行，roster 里随之出现
   <strong>Main Agent（监督者）</strong>。等这个包真的存在了，你再去查看那些
-  名字形如 <code>dsh-supervisor/…</code> 的配置行。</p>
+  名字形如 <code>dsh-main-agent/…</code> 的配置行。</p>
 </header>
 
 <h2>依赖顺序</h2>
@@ -36,8 +36,8 @@
           → start and test a session</code></pre>
 <p>
   把中间那两步调换顺序，就会得到本章专门要防的那个报错：
-  <code>Cannot find package dsh-supervisor/control</code> 或
-  <code>dsh-supervisor/spawn</code>。YAML 里的配置行不是 npm 的安装指令；它指向的包必须已经能从
+  <code>Cannot find package dsh-main-agent/control</code> 或
+  <code>dsh-main-agent/spawn</code>。YAML 里的配置行不是 npm 的安装指令；它指向的包必须已经能从
   profile 里解析出来。
 </p>
 
@@ -47,7 +47,7 @@ test -f "$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml"
 test -f "$HOME/.dsh/profiles/web/package.json"
 
 # On the clean course path this should print no supervisor dependency yet:
-grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json" || true</code></pre>
+grep -n 'dsh-main-agent' "$HOME/.dsh/profiles/web/package.json" || true</code></pre>
 <p>
   如果机器其实并不干净、<code>$HOME/.dsh/.agent-presets/main-agent</code> 已经存在，而你又想要这个包
   当前那份 preset，那就在安装前先把它挪开。安装器的 legacy 拷贝在默认的
@@ -62,8 +62,23 @@ grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json" || true</code></
 </p>
 
 <h2>第 2 步 —— 安装 supervisor bundle</h2>
+<p>
+  两条等价路径，只选一条。发布版（<b>0.10.0</b> 起，本包改名为
+  <code>dsh-main-agent</code> 并迁到新仓库）直接用 git URL 安装：
+</p>
+<pre><code>dsh plugin --profile web add https://gitee.com/n-sky/dsh-main-agent.git</code></pre>
+<p>
+  或者用你刚克隆下来的本地仓库（本章课程路径）：
+</p>
 <pre><code>cd "$HOME/src/dsh-supervisor"
 dsh plugin --profile web add "file:$PWD"</code></pre>
+<p>
+  0.9.4 及以前的版本发布在旧仓库
+  <code>https://gitee.com/n-sky/dsh-supervisor.git</code>（现已冻结）；无论从哪个
+  URL 安装，依赖键与目录名都取自包清单的 <code>name</code>，所以装出来一律是
+  <code>node_modules/dsh-main-agent</code>。旧版装过的 profile，请用新 URL 重装一次并
+  摘掉旧的 <code>dsh-supervisor</code> 依赖键与 bundle 条目。
+</p>
 <p>
   就这一条命令，会更新 profile 的依赖和有序的 bundle 列表。不要在 dsh profile 里跑
   <code>npm install</code>，也不要手工编辑它的 <code>package.json</code>。包管理器可能会打印 peer
@@ -92,7 +107,7 @@ dsh plugin --profile web add "file:$PWD"</code></pre>
 <h2>第 3 步 —— 证明包、bundle、preset 三者都在</h2>
 <div class="box test">
   <span class="box-title">安装关卡</span>
-  <pre><code>grep -n 'dsh-supervisor' "$HOME/.dsh/profiles/web/package.json"
+  <pre><code>grep -n 'dsh-main-agent' "$HOME/.dsh/profiles/web/package.json"
 dsh --profile web --dump-config | grep -E 'agi-schedule|agi-supervisor-setup'
 # The two files below are the compat copy for older dsh — they prove it was written:
 test -f "$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml"
@@ -120,17 +135,17 @@ dsh --profile web --dump-config | grep -A4 'id: preset-main-agent'</code></pre>
 <figcaption><span class="badge cite">引用</span>装好的 preset —— 节选的若干行</figcaption>
 <pre><code># Native goal domain, supervisor-owned model frontend:
 - id: tool-goal
-  name: dsh-supervisor/goal
+  name: dsh-main-agent/goal
 
 # Inside the delegation group's config list:
 - id: tool-subagent-control
-  name: dsh-supervisor/control
+  name: dsh-main-agent/control
 
 - id: tool-subagent-list-agents
   name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
 
 - id: tool-subagent
-  name: dsh-supervisor/spawn
+  name: dsh-main-agent/spawn
   config:
     provider: spawn
     toolName: subagent
