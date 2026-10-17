@@ -352,8 +352,13 @@ runbook、自动化脚本或源码入口，`start_goal` 会被额外
 实时目标卡片、worker（含 `outcome.md`）、进度时间线、提问
 栈、动作变更日志、笔记与任务报告，每约 5 秒刷新一次。
 它作为持久客户端插件随本 bundle 发布（`lib/client.js`，通过
-harness 的 client-modules 扫描提供），外加一个宿主路由（`GET /supervisor/feed?ws=…`）
-读取 `.agi/` 目录树。无需重建前端，无需动态插件审批。
+harness 的 client-modules 扫描提供），外加三个宿主路由：
+`GET /supervisor/feed?ws=…` 读取 `.agi/` 目录树，
+`GET /supervisor/workers?session=…` 把子级目录与 live agent 状态合成
+每-run worker 列表（宿主不再暴露 `subagent.list` RPC，其 catalog 也不报告
+activity），`GET /supervisor/health` 报告宿主 `ctx.subagents` 是否具备本插件
+所需的 0.2.x 方法（不兼容时 Feed 顶部显示红色横幅，而不是静默假装正常）。
+无需重建前端，无需动态插件审批。
 
 ### Full stop（完全停止：监督动态 Feed 头部的按钮）
 

@@ -104,7 +104,7 @@ v1 的自建方案（保留在 git 历史中：提交 `1f9a480` 与 `4957d66`）
 | `agi-subagent-trace` | 希望在会话日志之上获得可按子级 grep 的 `trace.log` | `'session/event'(session, event)` 消防水管；子级具有 `header.origin === 'subagent'`；只用叶子字段，一切都要 try/catch |
 | `agi-tool-delay` | 需要限流/成本节流时 | `tools/pre-execute` 瀑布；始终 `return next()`；把 `toolDelaySeconds` 重新加入 `config.json` |
 | `agi-state-route` | 需要外部仪表盘时 | `ctx.webServer.register({kind,path,handler})`；对 `?ws=` 做路径校验（未认证的 localhost） |
-| 硬性派生上限 / 按次派生的 persona 工具 | 文字性限制发生漂移，或确实需要按次派生的 persona 时（恢复 S3/A6） | 包装 `ctx.subagents.startContinuable()`；通过 `listChildren` 计数 |
+| 硬性派生上限 / 按次派生的 persona 工具 | 文字性限制发生漂移，或确实需要按次派生的 persona 时（恢复 S3/A6） | 包装 `ctx.subagents.startActivation()`（0.2.x）；通过 `listChildren` + live agent 状态计数 |
 
 安装：构建 `lib/`，把 `file:` 依赖 + bundle 名称加入 profile 的 `package.json`，
 在 profile 目录中 `pnpm install`，重启 dsh 一次。通过按 id 定位的

@@ -24,6 +24,24 @@ export function defineTool(definition) {
   return definition
 }
 `],
+  // `lib/index.js` only needs its Config schema to be *constructible* at import
+  // time; these tests never parse a value through it. A self-returning builder
+  // stands in for schemastery's chainable schema API.
+  ['@deepseek-ai/schemastery', `
+function builder() {
+  const self = new Proxy(function () {}, {
+    get(_target, property) {
+      if (property === 'then') return undefined
+      return builder
+    },
+    apply() { return builder },
+    construct() { return builder },
+  })
+  return self
+}
+export default { object: builder, string: builder, number: builder, boolean: builder,
+  natural: builder, union: builder, const: builder, dict: builder, array: builder, any: builder }
+`],
 ])
 
 function stubUrl(specifier) {
