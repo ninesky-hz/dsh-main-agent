@@ -95,7 +95,8 @@
 <h2>元配置卡片（Settings → Plugins → Supervisor）</h2>
 <p>
   从 v0.4.0 起，bundle 还通过原生设置域自带了监督者的
-  <strong>元配置</strong>：命名空间 <code>dsh-supervisor</code>，含 <code>workerModels</code>（白名单，带一个
+  <strong>元配置</strong>：命名空间就是这份组合里本插件的<strong>入口 id</strong>
+  <code>agi-supervisor-setup</code>（不是包名），含 <code>workerModels</code>（白名单，带一个
   默认的 <strong>当前运行时模型</strong> 下拉选项，以及若干固定路由 —— 它们显示原生的
   <code>[text]</code>/<code>[text,image]</code> 模态标签和模型自报的推理强度）、
   <code>workerEfforts</code>（每条允许路由一个由用户掌管的 provider 默认值，或目录中明确公示的推理强度；
@@ -103,8 +104,13 @@
   <code>maxParallelWorkers</code>（由 spawn 工具在调用时硬性执行）、
   <code>wakeMinutes</code>（监督者多久醒一次去巡检 worker），以及
   <code>questionWaitMinutes</code>（等答案等多久，超时就记下一条
-  假设然后继续）。在 UI 卡片里编辑它，或者编辑 <code>~/.dsh/settings.yaml</code> 里的
-  <code>dsh-supervisor:</code> 块 —— 两者是同一份带修订围栏的文档。模型清单就是
+  假设然后继续）。在 UI 卡片里编辑它，或者直接编辑当前 profile 的 patch 层
+  <code>~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml</code> 里
+  <code>- id: agi-supervisor-setup</code> 那一行的 config —— 卡片写的就是同一行、同一份
+  带修订围栏的文档。<code>~/.dsh/settings.yaml</code> 是<strong>已移除的旧格式</strong>：
+  启动时宿主会把它改名成 <code>settings.yaml.imported</code> 并逐节尝试写回，节名必须
+  正好是运行中的入口 id 才会生效，所以旧写法里的 <code>dsh-supervisor:</code> 块只会
+  留下一条 <code>was not imported into entry …</code> 警告。模型清单就是
   完整的策略：受保护的 <code>subagent</code> schema 只暴露那些确切的选项、强制要求显式给出一个，
   并在清单为空时直接消失。<code>runtime/current</code> 解析的是发起这次调用所捕获的
   路由，绝不是会话创建时那份过期的路由；不存在隐式兜底。

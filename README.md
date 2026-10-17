@@ -217,15 +217,28 @@ runbook、自动化脚本或源码入口，`start_goal` 会被额外
 
 ## 元配置（Meta-config，Settings → Plugins → 监督者）
 
-监督者由用户所有的旋钮位于同一个 settings 命名空间
-**`dsh-supervisor`** 中，有两种等效的编辑方式：
+监督者由用户所有的旋钮位于同一个 settings 域，这个域的名字是这份组合里本插件的
+**入口 id（行 id）`agi-supervisor-setup`** —— 它既不是包名
+`dsh-main-agent`，也不是历史包名 `dsh-supervisor`。有两种等效的编辑方式：
 
-- **Web UI：** Settings → Plugins → *监督者* —— 该卡片带有
+- **Web UI（推荐）：** Settings → Plugins → *监督者* —— 该卡片带有
   一个「从模型目录添加模型…」下拉框。一个合成的 **当前运行时模型** 选项
   （跟随本次调用回合，`runtime/current`）默认启用；固定模型会标注原生输入模态与
   其模型自述的推理强度。每个被允许的模型行都有自己的
   推理强度选择器，添加流程会同时询问路由与推理强度。
-- **文件：** `~/.dsh/settings.yaml` 中的 `dsh-supervisor:` 块。
+- **文件：** 当前 profile 的 patch 层 `~/.dsh/profiles/<profile>/cordis.patch.yml`
+  里以 `- id: agi-supervisor-setup` 开头的那一行 —— 原生设置编辑器写入的就是这份
+  文档，键同样是入口 id。
+
+> **`settings.yaml` 是已移除的旧格式，不再是设置文件。** 启动时 `dsh-settings`
+> 会把 `~/.dsh/settings.yaml` 改名成 `settings.yaml.imported`，再逐节尝试写回；
+> 只有节名正好是某个**运行中的入口 id** 时才会成功（仅 `ui-developer-tools`、
+> `ui-onboarding`、`shell` 三个节名有硬编码映射）。所以 `dsh-supervisor:` 这样的节
+> 一定会被拒：`update()` 以入口 id 查行（`No configurable plugin entry
+> "dsh-supervisor"`），失败只留一条
+> `settings: section … was not imported into entry …` 警告，值留在 `.imported`
+> 文件里。全新机器上这个文件通常根本不存在 —— 直接改 Settings 卡片，或改上面那份
+> profile patch。
 
 | 键 | 含义 | 生效时机 |
 |---|---|---|

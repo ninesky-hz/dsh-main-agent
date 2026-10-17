@@ -726,12 +726,53 @@ def _(ws):
     ok = b"__DSH_BOOT__" in body and b"dsh-main-agent" in body
     return PASS() if ok else FAIL("index 页的 __DSH_BOOT__ 图里没有 dsh-main-agent 行 —— 安装后重启过了吗？")
 
-@m6.check("客户端 bundle 能被服务出来")
+
+BOOT_PLUGIN_ID = "dsh-main-agent"
+
+def _boot_payload(html: bytes):
+    """Decode the index page's `__DSH_BOOT__` graph, or None when unreadable.
+
+    The host emits one JSON object holding a flat `entries` list; each entry
+    declares the exact URL its browser half is served from.
+    """
+    text = html.decode("utf-8", "replace")
+    at = text.find("__DSH_BOOT__")
+    start = text.find("{", at) if at >= 0 else -1
+    end = text.find("</script>", start) if start >= 0 else -1
+    if start < 0 or end < 0:
+        return None
+    try:
+        return json.loads(text[start:end].rstrip().rstrip(";"))
+    except Exception:  # noqa: BLE001 - grading, not serving
+        return None
+
+def _advertised_client_url(payload):
+    """The client URL the page advertises for this package, or None."""
+    for entry in (payload or {}).get("entries", []):
+        if entry.get("id") == BOOT_PLUGIN_ID:
+            return entry.get("url")
+    return None
+
+@m6.check("客户端 bundle 能被服务出来（按 __DSH_BOOT__ 宣告的路径）")
 def _(ws):
-    status, _body = _http("/plugins/dsh-main-agent/client.js")
+    status, body = _http("/")
+    if status is None:
+        return WARN(f"dsh web 在 {BASE_URL} 不可达 —— {body.decode()[:80]}")
+    if status != 200:
+        return FAIL(f"GET / 返回 {status}（服务带令牌启动时，把令牌放进 DSH_URL）")
+    payload = _boot_payload(body)
+    if payload is None:
+        return FAIL("index 页里没有可解析的 __DSH_BOOT__ 启动图")
+    url = _advertised_client_url(payload)
+    if not url:
+        return FAIL("__DSH_BOOT__ 启动图里没有 dsh-main-agent 条目 —— 安装后重启过了吗？")
+    path = "/" + url.lstrip("/")
+    status, _body = _http(path)
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达")
-    return PASS() if status == 200 else FAIL(f"/plugins/dsh-main-agent/client.js 返回 {status}")
+    if status == 200:
+        return PASS()
+    return FAIL(f"{path} 返回 {status}（该路径由 index 页的 __DSH_BOOT__ 宣告）")
 
 @m6.check("feed 路由能提供该工作区的 .agi 状态")
 def _(ws):
