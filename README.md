@@ -44,8 +44,8 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
 
 ```sh
 mkdir -p "$HOME/src"
-git clone https://github.com/dat-lequoc/dsh-supervisor.git "$HOME/src/dsh-supervisor"
-cd "$HOME/src/dsh-supervisor"
+git clone https://github.com/dat-lequoc/dsh-supervisor.git "$HOME/src/dsh-main-agent"
+cd "$HOME/src/dsh-main-agent"
 ./tutorial/setup.sh
 ```
 
@@ -73,7 +73,7 @@ dsh web
 
 ```sh
 # When chapter 6 tells you to install the already-cloned package:
-cd "$HOME/src/dsh-supervisor"
+cd "$HOME/src/dsh-main-agent"
 dsh plugin --profile web add "file:$PWD"
 
 # restart dsh once (bundle layers compose at boot):
@@ -117,7 +117,7 @@ dsh web
 
 ```sh
 mkdir -p "$HOME/agi-lab/.agi/subagents"
-cp "$HOME/src/dsh-supervisor/agi-template/config.json" "$HOME/agi-lab/.agi/config.json"
+cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/config.json"
 ```
 
 <details>

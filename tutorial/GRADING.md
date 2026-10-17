@@ -6,11 +6,11 @@
 当课程是用 `./tutorial/setup.sh` 启动的时候。下面是等价的命令行版本：
 
 ```sh
-"$HOME/src/dsh-supervisor/tutorial/grade.sh" m1
-"$HOME/src/dsh-supervisor/tutorial/grade.sh" m4 --ws "$HOME/agi-lab"
-"$HOME/src/dsh-supervisor/tutorial/grade.sh" all
-"$HOME/src/dsh-supervisor/tutorial/grade.sh" m7
-"$HOME/src/dsh-supervisor/tutorial/grade.sh" doctor
+"$HOME/src/dsh-main-agent/tutorial/grade.sh" m1
+"$HOME/src/dsh-main-agent/tutorial/grade.sh" m4 --ws "$HOME/agi-lab"
+"$HOME/src/dsh-main-agent/tutorial/grade.sh" all
+"$HOME/src/dsh-main-agent/tutorial/grade.sh" m7
+"$HOME/src/dsh-main-agent/tutorial/grade.sh" doctor
 ```
 
 | 里程碑 | 章节 | 评的是什么 |

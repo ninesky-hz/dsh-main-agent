@@ -26,11 +26,11 @@
 <h2>课程应用如何启动</h2>
 <p>
   你能看到本页，说明已经克隆了本课程所在的仓库 <code>dsh-main-agent</code>（本地目录
-  <code>$HOME/src/dsh-supervisor</code>）。就在这份克隆里，那一条本地
+  <code>$HOME/src/dsh-main-agent</code>）。就在这份克隆里，那一条本地
   安装命令会创建隔离的 Python 环境、只安装评分器所需的 PyYAML 与 zstd
   解码器依赖、挑选一个未占用的 localhost 端口，并启动课程服务，且评分按钮可用：
 </p>
-<pre><code>cd "$HOME/src/dsh-supervisor"
+<pre><code>cd "$HOME/src/dsh-main-agent"
 ./tutorial/setup.sh</code></pre>
 <p>
   保持那个终端打开，并使用它打印出的 URL。该脚本刻意<strong>不</strong>
@@ -57,7 +57,7 @@ Python。最后核验 Harness 的前置条件：</p>
 node --version       # v22.19+ in 22.x, or v24+
 npm --version</code></pre>
 <pre><code>python3 --version
-test -x "$HOME/src/dsh-supervisor/tutorial/.venv/bin/python"</code></pre>
+test -x "$HOME/src/dsh-main-agent/tutorial/.venv/bin/python"</code></pre>
 
 <h2>安装 DeepSeek Harness</h2>
 <pre><code>npm install --global @deepseek-ai/dsh
@@ -69,7 +69,7 @@ dsh --version</code></pre>
 
 <h2>把 DeepSeek Harness 克隆到课程旁边</h2>
 <p>
-  课程仓库已经位于 <code>$HOME/src/dsh-supervisor</code>。把 Harness 源码克隆到
+  课程仓库已经位于 <code>$HOME/src/dsh-main-agent</code>。把 Harness 源码克隆到
   它旁边，用于课程引用的代码导览。全局 npm 包仍是运行时；不要修改这份
   源码检出。
 </p>
@@ -77,7 +77,7 @@ dsh --version</code></pre>
 git clone https://github.com/deepseek-ai/deepseek-harness.git \
   "$HOME/src/deepseek-harness"
 
-test -f "$HOME/src/dsh-supervisor/package.json"
+test -f "$HOME/src/dsh-main-agent/package.json"
 test -f "$HOME/src/deepseek-harness/docs/architecture.md"</code></pre>
 
 <div class="box warn">
@@ -101,7 +101,7 @@ test -f "$HOME/src/deepseek-harness/docs/architecture.md"</code></pre>
 
 <h2>创建实验工作区</h2>
 <pre><code>mkdir -p "$HOME/agi-lab/.agi/subagents"
-cp "$HOME/src/dsh-supervisor/agi-template/config.json" \
+cp "$HOME/src/dsh-main-agent/agi-template/config.json" \
   "$HOME/agi-lab/.agi/config.json"
 touch "$HOME/agi-lab/.agi/NOTES.md" \
       "$HOME/agi-lab/.agi/progress.jsonl" \

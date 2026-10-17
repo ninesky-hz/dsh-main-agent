@@ -38,11 +38,11 @@ To keep an experiment, implement a normal … plugin through the regular develop
 <div class="box why">
   <span class="box-title">这个仓库已经在用这个模式</span>
   <p>
-    监督者项目本身就是这么打包的：<code>$HOME/src/dsh-supervisor/package.json</code> 声明了
+    监督者项目本身就是这么打包的：<code>$HOME/src/dsh-main-agent/package.json</code> 声明了
     <code>dsh.bundle.patch</code>，它的 <code>cordis.patch.yml</code> 插入了 schedule 行，外加一个 setup
     插件（<code>lib/index.js</code>，纯 ESM，没有构建步骤），这个插件在启动时把打包的
     <code>main-agent</code> preset 装进用户 preset 根目录 —— 端到端验证过：
-    <code>dsh plugin --profile web add file:$HOME/src/dsh-supervisor</code> 同时注册了依赖 <em>和</em>
+    <code>dsh plugin --profile web add file:$HOME/src/dsh-main-agent</code> 同时注册了依赖 <em>和</em>
     bundles 条目，而且从“preset 被删掉”的状态重启会自动把一切装回来。在动手写下面的 <code>agi-extras</code> 之前，
     先把那三个文件读成最小可用范例；注意，
     一个职责是文件系统<em>安装</em>（而不是运行时注册）的插件，理所应当
@@ -52,11 +52,11 @@ To keep an experiment, implement a normal … plugin through the regular develop
 
 <h2>你装好的模板就是这个监督者 bundle</h2>
 <p>
-  第 6 章已经把 <code>$HOME/src/dsh-supervisor</code> 装进了 web profile。就拿这个你已经检查过、
+  第 6 章已经把 <code>$HOME/src/dsh-main-agent</code> 装进了 web profile。就拿这个你已经检查过、
   并且成功跑过的包当模板 —— 这里不假设你另外检出过任何无关的第三方仓库。
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/package.json（关键字段）</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-main-agent/package.json（关键字段）</figcaption>
 <pre><code>{
   "name": "dsh-main-agent",
   "type": "module",
@@ -81,7 +81,7 @@ To keep an experiment, implement a normal … plugin through the regular develop
 }</code></pre>
 </figure>
 <figure class="code">
-<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-supervisor/cordis.patch.yml（基本结构）</figcaption>
+<figcaption><span class="badge cite">CITED</span>$HOME/src/dsh-main-agent/cordis.patch.yml（基本结构）</figcaption>
 <pre><code># One bundle layer can mount native services and its own host plugin.
 - insert:
     - id: agi-schedule

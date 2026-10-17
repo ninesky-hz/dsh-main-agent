@@ -101,10 +101,10 @@ touch $HOME/agi-acceptance/.agi/{NOTES.md,progress.jsonl,questions.jsonl,CHANGEL
   <code>agentPreset.copy</code>（roster 的创作写入，走 HTTP）。仓库把它们包成
   <code>tutorial/drive.py</code>：
 </p>
-<pre><code>S=$(python3 $HOME/src/dsh-supervisor/tutorial/drive.py create --cwd $HOME/agi-acceptance)
-python3 $HOME/src/dsh-supervisor/tutorial/drive.py send  "$S" "Goal: produce SUMMARY.md … deliver."
-python3 $HOME/src/dsh-supervisor/tutorial/drive.py steer "$S" "kill that worker and rescope"
-python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
+<pre><code>S=$(python3 $HOME/src/dsh-main-agent/tutorial/drive.py create --cwd $HOME/agi-acceptance)
+python3 $HOME/src/dsh-main-agent/tutorial/drive.py send  "$S" "Goal: produce SUMMARY.md … deliver."
+python3 $HOME/src/dsh-main-agent/tutorial/drive.py steer "$S" "kill that worker and rescope"
+python3 $HOME/src/dsh-main-agent/tutorial/drive.py tail  "$S"</code></pre>
 
 <h2>重启演练</h2>
 <p>
@@ -147,7 +147,7 @@ python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
 
 <h2>评分与失败台账</h2>
 <p>
-  <strong>给整场运行自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m7</code> —— 它会针对 <code>$HOME/agi-acceptance</code>
+  <strong>给整场运行自动评分：</strong><code>"$HOME/src/dsh-main-agent/tutorial/grade.sh" m7</code> —— 它会针对 <code>$HOME/agi-acceptance</code>
   把里程碑 2 到 5 的评分器再跑一遍，然后检查验收特有的
   证据（监督者日志里的重启恢复标记、完成之后的
   修正案）。只有人能判断的步骤会以 MANUAL 提醒打印出来。
@@ -156,7 +156,7 @@ python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
   否则 m6 那几项 HTTP 检查读到的是未认证的 401。
 </p>
 <p>
-  维护一本验收台账（<code>$HOME/src/dsh-supervisor/</code> 里的一个文件，放在设计文档旁边）：每次运行
+  维护一本验收台账（<code>$HOME/src/dsh-main-agent/</code> 里的一个文件，放在设计文档旁边）：每次运行
   每一步一行 —— <code>pass</code> / <code>fail(reason)</code> / <code>coached(what)</code>。设计的退出判据，
   原文是：每个步骤<strong>连续两次通过</strong>。首次运行常见的发现与其修法：
 </p>

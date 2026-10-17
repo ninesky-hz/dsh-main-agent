@@ -28,7 +28,7 @@
 
 <h2>这门课走的是什么路子</h2>
 <p>
-  你的设计文档（<code>$HOME/src/dsh-supervisor/DESIGN.md</code> 和 <code>$HOME/src/dsh-supervisor/IMPLEMENTATION_PLAN.md</code>）
+  你的设计文档（<code>$HOME/src/dsh-main-agent/DESIGN.md</code> 和 <code>$HOME/src/dsh-main-agent/IMPLEMENTATION_PLAN.md</code>）
   描述的监督者是“一份 preset 加五个自定义插件”。这门课有意走一条
   <strong>原生优先</strong>的路：复用并配置 harness 已经自带的东西，
   保留原生的生命周期机器，只在自带工具无法落实监督者契约的地方，
@@ -91,10 +91,10 @@
   <li><strong>实机验证</strong> —— 每个里程碑结尾都有一个绿色小框，给出确切的步骤和
       预期看到的现象。没通过就别往下走；后面的章节默认它已经过了。</li>
   <li><strong>自动评分</strong> —— 每个里程碑框里都有 <em>运行评分器</em> 按钮，以及命令行兜底：
-      <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m0…m7</code> 会给持久证据打分（preset 文件、patch
+      <code>"$HOME/src/dsh-main-agent/tutorial/grade.sh" m0…m7</code> 会给持久证据打分（preset 文件、patch
       行、<code>.agi/</code> 状态、会话事件日志），并在 90% 这条线上以 0/1 退出。<code>all</code> 会把
       m0–m6 合成一份报告跑；<code>doctor</code> 显示它能看见什么。细节见
-      <code>$HOME/src/dsh-supervisor/tutorial/GRADING.md</code>。</li>
+      <code>$HOME/src/dsh-main-agent/tutorial/GRADING.md</code>。</li>
 </ul>
 
 <p class="part-label">第 I 部分 —— 理解这台机器（第 1–5 章）</p>

@@ -42,8 +42,8 @@
 </p>
 
 <h2>第 1 步 —— 确认干净的前置状态</h2>
-<pre><code>test -f "$HOME/src/dsh-supervisor/package.json"
-test -f "$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml"
+<pre><code>test -f "$HOME/src/dsh-main-agent/package.json"
+test -f "$HOME/src/dsh-main-agent/agent-presets/main-agent/agent.cordis.yml"
 test -f "$HOME/.dsh/profiles/web/package.json"
 
 # On the clean course path this should print no supervisor dependency yet:
@@ -70,7 +70,7 @@ grep -n 'dsh-main-agent' "$HOME/.dsh/profiles/web/package.json" || true</code></
 <p>
   或者用你刚克隆下来的本地仓库（本章课程路径）：
 </p>
-<pre><code>cd "$HOME/src/dsh-supervisor"
+<pre><code>cd "$HOME/src/dsh-main-agent"
 dsh plugin --profile web add "file:$PWD"</code></pre>
 <p>
   0.9.4 及以前的版本发布在旧仓库
@@ -126,7 +126,7 @@ dsh --profile web --dump-config | grep -A4 'id: preset-main-agent'</code></pre>
 
 <h2>第 4 步 —— 查看这个包装进来的那些行</h2>
 <p>
-  用只读方式打开 <code>$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml</code> ——
+  用只读方式打开 <code>$HOME/src/dsh-main-agent/agent-presets/main-agent/agent.cordis.yml</code> ——
   声明行 <code>preset-main-agent</code> 的 <code>config.plugins</code> 就是这份文件的逐行副本
   （<code>tests/preset-patch.test.mjs</code> 保证两者一致；<code>.agent-presets/</code> 里那份兼容副本
   内容相同）。那些关键的策略替换已经做好了：
@@ -154,10 +154,10 @@ dsh --profile web --dump-config | grep -A4 'id: preset-main-agent'</code></pre>
 </figure>
 <p>现在验证那些“绕过”都不存在：</p>
 <pre><code>grep -nE 'subagent_fork|@deepseek-ai/dsh-tool-goal' \
-  "$HOME/src/dsh-supervisor/agent-presets/main-agent/agent.cordis.yml" || true</code></pre>
+  "$HOME/src/dsh-main-agent/agent-presets/main-agent/agent.cordis.yml" || true</code></pre>
 <p>
   这条命令应该什么都不打印。让那三个自定义名字能被解析出来的包导出，在
-  <code>$HOME/src/dsh-supervisor/package.json</code> 里能看得到，也就是 <code>./goal</code>、
+  <code>$HOME/src/dsh-main-agent/package.json</code> 里能看得到，也就是 <code>./goal</code>、
   <code>./control</code> 和 <code>./spawn</code>。它们背后的生命周期后端仍然是原生的；这几个前端额外
   加上了有依据的目标、下一步纠偏，以及由设置项掌管的模型/推理强度策略。
 </p>
@@ -171,7 +171,7 @@ dsh --profile web --dump-config | grep -A4 'id: preset-main-agent'</code></pre>
 <div class="box test">
   <span class="box-title">里程碑 1 验收</span>
   <p><strong>自动评分：</strong>
-     <code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m1 --ws "$HOME/agi-lab"</code></p>
+     <code>"$HOME/src/dsh-main-agent/tutorial/grade.sh" m1 --ws "$HOME/agi-lab"</code></p>
   <ol>
     <li>会话能启动，没有 <code>Cannot find package</code> 那种挂载错误。</li>
     <li>工具里有 <code>subagent</code>、<code>send_message</code>、<code>interrupt_agent</code>、
