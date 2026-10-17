@@ -243,13 +243,12 @@ export function apply(ctx) {
   配置。下面是随包携带的监督者所基于的 standard preset 里的两行真实内容：
 </p>
 <figure class="code">
-<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml（第 24–33、44–46 行）</figcaption>
+<figcaption><span class="badge cite">引用</span>$HOME/src/deepseek-harness/apps/cli/config/agent-presets/standard/agent.cordis.yml（第 24–33 行；0.2.x 的 <code>prefix</code> 契约）</figcaption>
 <pre><code>- id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: &gt;-
-      You are a coding agent powered by the {{model}} model. Your working
-      directory is {{cwd}}.
+    prefix: |-
+      You are a coding agent powered by the {{model}} model.
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -267,7 +266,10 @@ export function apply(ctx) {
   <li><code>config</code> —— 传给该插件，并按它的 schema 校验。非法配置会在挂载时大声失败。</li>
   <li><code>disabled: !!js …</code> —— 唯一允许可执行表达式的地方：<code>!!js</code> 让一行
       随环境切换（此处：在 Windows 上跳过 bash）。文件里其它一切都是字面数据。</li>
-  <li><code>{{model}}</code>、<code>{{cwd}}</code> —— 模板变量，某些插件（如人格）会按 agent 解析它们。</li>
+  <li><code>{{model}}</code> —— 模板变量，某些插件（如人格）会按本 agent 的路由解析它。
+      0.2.1 起 loop 只注册 <code>provider</code> 与 <code>model</code>；工作目录由必需的
+      working-directory 运行时上下文注入，<strong>不要</strong>在人格里写 <code>{{cwd}}</code>
+      —— 未注册的变量会在装配期直接报错（第 7 章遇到的就是这个）。</li>
 </ul>
 <p>
   这是关于 harness 最需要理解的一点：<strong>改变一个 agent 能做什么，就是改变为它组合了

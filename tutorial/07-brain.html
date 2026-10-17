@@ -26,16 +26,19 @@
 <h2>persona 住在哪儿、怎么起作用</h2>
 <p>
   你 preset 的第一行就是 persona —— 一个提示词段落，它在本 preset 的会话上覆盖掉部署自带的默认值。
-  它支持两个按 agent 解析的模板变量：
+  它只引用一个按 agent 解析的模板变量 <code>{{model}}</code>：0.2.1 起 loop 只注册
+  <code>provider</code> 与 <code>model</code>，工作目录不是模板变量，而是由必需的
+  working-directory 运行时上下文注入。写 <code>{{cwd}}</code> 会让 prompt 在装配期直接失败，
+  整个 preset 在发出任何模型请求之前就报 <code>unknown prompt variable</code>。
 </p>
 <figure class="code">
 <figcaption><span class="badge cite">引用</span>$HOME/.dsh/.agent-presets/main-agent/agent.cordis.yml（装好的 persona 开头）</figcaption>
 <pre><code>- id: persona
   name: '@deepseek-ai/dsh-persona'
   config:
-    text: |-
-      你是 Main Agent：一个由 {{model}} 驱动的常驻监督者，
-      工作于 {{cwd}}。你监督开发子代理。你不亲自实现
+    prefix: |-
+      你是 Main Agent：一个由 {{model}} 驱动的常驻监督者。
+      你监督开发子代理。你不亲自实现
       变更 —— 但你不是一个盲目的派发器：你会用自己的工具阅读、搜索
       并核验，而且你理解自己下达的每一项指令。 ...</code></pre>
 </figure>
@@ -83,9 +86,9 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
 </p>
 <figure class="code">
 <figcaption><span class="badge cite">引用</span>装好的监督者 persona（当前中文正文节选）</figcaption>
-<pre><code>text: |-
-  你是 Main Agent：一个由 {{model}} 驱动的常驻监督者，
-  工作于 {{cwd}}。你监督开发子代理。你不亲自实现
+<pre><code>prefix: |-
+  你是 Main Agent：一个由 {{model}} 驱动的常驻监督者。
+  你监督开发子代理。你不亲自实现
   变更 —— 但你不是一个盲目的派发器：你会用自己的工具阅读、搜索
   并核验，而且你理解自己下达的每一项指令。
 
@@ -122,7 +125,7 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
 ……（节选）
 
   STATE（状态：文件才是真相，聊天上下文只是缓存）：
-  - 持久状态保存在 {{cwd}}/.agi/。按工作需要
+  - 持久状态保存在 .agi/。按工作需要
     查阅并更新它；一次进程重启必须零代价。
   - .agi/config.json 是 USER-ONLY 的。绝不编辑它；把改动建议作为
     提问提出。需要时间参数时重新读它；用户可能在你运行期间
@@ -141,7 +144,7 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
   NOTES.md 摘要误当成当前的操作性检查。只提问那种无法被
   发现、也无法被安全处理的实质性选择或授权；否则就做出
   最安全且可逆的假设。然后调用 start_goal。它会写出
-  {{cwd}}/.agi/GOAL.md 并立即武装原生续行循环。简要暴露
+  .agi/GOAL.md 并立即武装原生续行循环。简要暴露
   已武装了什么，但不要要求用户确认它，也不要结束回合：
   直接进入 THE LOOP。用户可以随时检查 GOAL.md，并通过
   普通聊天纠偏、暂停或停止。GOAL.md 在活跃期间是锁定的；
@@ -159,7 +162,7 @@ test -f NOTES.md &amp;&amp; test -f progress.jsonl \
      带上 run_in_background: true，并从你的
      SUPERVISOR META-CONFIG 段落中必须精确选定一个 model 选项。
      告诉 worker 在完成时把 outcome.md 写到
-     {{cwd}}/.agi/subagents/&lt;its own session id&gt;/ 下。记录这次
+     .agi/subagents/&lt;its own session id&gt;/ 下。记录这次
      派生，包括所选模型、它公布的输入模态，以及
      工具结果显示的实际生效推理强度。meta-config 拥有完整的、
      归用户所有的模型白名单、每条允许路由的 worker 推理强度，

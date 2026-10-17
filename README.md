@@ -12,11 +12,11 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
 流程、交付物核验（它抓到了自己那个有 bug 的链接检查器并重跑），
 以及整进程重启后恢复。评分结果：m0–m5 与 m7 均为 100%。
 
-## dsh 0.2.0 兼容性
+## dsh 0.2.x 兼容性
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.0-rc.2** 的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.2）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -25,10 +25,14 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
   （`ctx.configForms.get(<entry id>)` + `whileServed` + `scope.mutate`），取代 `settingsScope`
   与旧的 `settings.plugin.item` 槽位；
 - worker 消息使用 `subagents.sendMessage`（`followup` 别名已移除），worker
-  活动状态读作 `running` / `inactive`。
+  活动状态读作 `running` / `inactive`；
+- persona 使用 0.2.x 的 `prefix` / `suffix` 契约，正文只引用 loop 注册的
+  `{{provider}}`、`{{model}}` 模板变量。工作目录由必需的 working-directory 运行时上下文
+  注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
+  抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-已针对 dsh `0.2.0-rc.2` 验证：51/51 单元测试、完整 profile 的 `--dump-config` 组合成功，
-以及同一 profile 的实机启动，其 `/supervisor/models` 路由返回 `200`。
+本仓库的 69 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
+完整 profile 的 `--dump-config` 组合与实机启动验证（`/supervisor/models` 返回 `200`）。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
 记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、

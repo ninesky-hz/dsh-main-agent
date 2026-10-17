@@ -173,6 +173,25 @@ test('声明行里的行名都是可解析的说明符，而不是遗留写法',
   }
 })
 
+test('persona 模板只引用 loop 注册的变量', () => {
+  // `@deepseek-ai/dsh-agent-loop` 只注册 `provider` 与 `model`（0.2.1-rc.2
+  // 实测；全归档仅这两处 `.variable(`）。模板里出现别的名字时，装配期会抛
+  //   unknown prompt variable "{{name}}" in "deployment:persona-prefix"
+  // 并让整个 preset 在发出任何模型请求之前挂掉 —— 这就是 0.10.0 带
+  // `{{cwd}}` 时的故障。工作目录由必需的 working-directory 运行时上下文
+  // 提供（prompt 顶部 `Current working directory:` 一行），不是模板变量。
+  const persona = ROWS.find(([id]) => id === 'persona')
+  assert.ok(persona !== undefined, 'the preset must carry the persona row')
+  const template = persona[2]
+    .split('\n')
+    .filter((line) => !/^\s*#/.test(line))
+    .join('\n')
+  const names = [...template.matchAll(/\{\{\s*([^}\s]+)\s*\}\}/g)].map((match) => match[1])
+  const unknown = names.filter((name) => name !== 'provider' && name !== 'model')
+  assert.deepEqual(unknown, [], `persona 引用了未注册的模板变量：${unknown.join(', ')}`)
+  assert.match(template, /^\s*prefix: \|-/m, 'persona 正文写进 prefix')
+})
+
 test('every preset row resolves against the packaged DSH runtime', { skip: RUNTIME_SKIP }, () => {
   assert.ok(runtimePackages.size > 50, `expected a populated runtime, found ${runtimePackages.size}`)
 
