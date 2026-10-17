@@ -31,7 +31,7 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 69 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
+本仓库的 75 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
 完整 profile 的 `--dump-config` 组合与实机启动验证（`/supervisor/models` 返回 `200`）。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
@@ -132,6 +132,58 @@ cp "$HOME/src/dsh-supervisor/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 历史写法 —— 针对 id 的 `- id: agi-schedule` / `disabled: true` ——
 **不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
 不会与守卫冲突），不必回退。
+</details>
+
+## 升级与卸载
+
+> 0.10.2 起随包携带 `scripts/repair-profile.mjs`，下面三种卡住的情况都能一条命令处理。
+
+**升级请「先卸载再安装」，不要点「更新」。** 已安装的旧副本和新版本会在组合期
+同时声明同一条 `preset-main-agent`，插件管理器会报
+`user-patch: duplicate loader entry id "preset-main-agent"`，然后回滚并恢复原文件。
+
+**卸载可能被拒，报 `{"code":"bundle-in-use"}`。** `preset-main-agent` 是宿主级
+preset 注册行：插件管理器「先禁用、再检查」，而那条行在运行中的进程里不会立刻
+消失（`reload()` 只重算配置，真正卸载要重启），于是检查必然命中。关掉 bundle
+开关**并完整退出、重启 DSH** 之后再卸载；仍被拒就走下面的脚本。
+
+| 现象 | 原因 | 处置 |
+| --- | --- | --- |
+| `unknown prompt variable "{{cwd}}"` | 旧版 persona 引用了 loop 未注册的变量 | 升级到 0.10.1+；或按「兜底」覆盖文件 |
+| `duplicate loader entry id "preset-main-agent"` | 新旧两份 bundle patch 同时声明 preset 行 | 卸载后重装，别点「更新」 |
+| `{"code":"bundle-in-use"}` | 运行中的宿主级 preset 行挡住了卸载 | 关开关 + 重启；或 `--uninstall` |
+| 安装报「这个包已经安装」 | `package.json` 里还留着依赖记录 | `--uninstall` 之后再安装 |
+
+```sh
+# 只诊断，不写任何文件（有发现时退出码为 1）
+node scripts/repair-profile.mjs
+
+# 清掉重复的 preset 声明（写前自动备份 cordis.patch.yml）
+node scripts/repair-profile.mjs --apply
+
+# 彻底回到可安装状态：删依赖 / bundles 条目 / 残留 node_modules
+node scripts/repair-profile.mjs --apply --uninstall
+```
+
+脚本只写 `${DSH_HOME:-~/.dsh}/profiles/*` 下的 `package.json` 与
+`cordis.patch.yml`，每次写入前生成 `.bak-<时间戳>`；`cordis.yml` 是生成物，
+只报告、不修改。跑完**完全退出 DSH 再启动**（配置在启动时才重新组合），
+然后用安装地址重装：
+
+```sh
+https://gitee.com/n-sky/dsh-main-agent.git
+```
+
+<details>
+<summary>兜底：不卸载，直接覆盖文件</summary>
+
+UI 实在卸不掉时（比如被运行中的 preset 行锁住），可以让已安装副本就地变成
+新版：`git clone https://gitee.com/n-sky/dsh-main-agent.git`，把
+`package.json`、`presets/main-agent.patch.yml`、
+`agent-presets/main-agent/agent.cordis.yml` 覆盖到
+`${DSH_HOME:-~/.dsh}/profiles/<profile>/node_modules/dsh-main-agent/` 的对应
+位置，重启即可。版本号会显示成新版本，但 `pnpm-lock.yaml` 仍指向旧 commit，
+下次重装前建议先用 `repair-profile` 清干净。
 </details>
 
 ## 运行
@@ -335,6 +387,7 @@ agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
+| `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、残留依赖与 node_modules（见「升级与卸载」） |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N7、G1）与 v2 计划 |
 
 ## 评分
