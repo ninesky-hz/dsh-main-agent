@@ -358,6 +358,12 @@ harness 的 client-modules 扫描提供），外加三个宿主路由：
 每-run worker 列表（宿主不再暴露 `subagent.list` RPC，其 catalog 也不报告
 activity），`GET /supervisor/health` 报告宿主 `ctx.subagents` 是否具备本插件
 所需的 0.2.x 方法（不兼容时 Feed 顶部显示红色横幅，而不是静默假装正常）。
+feed 的读取是**有界且自述的**：单文件只保留末尾 64KB、每个 JSONL 只保留最新
+300 条、worker 产物只保留最新 20 个目录，被截断的部分会在 Feed 顶部明说
+（`truncated`）；请求失败与"该工作区没有 .agi/"是两种不同的 UI 状态，
+只有 400/404 才算后者。标签页隐藏时停止轮询，重新可见时立即刷新一次。
+`POST /supervisor/stop` 额外拒绝跨站请求（插件路由不经过宿主的 token 门
+—— 没有 Origin 的 curl/脚本调用仍然允许）。
 无需重建前端，无需动态插件审批。
 
 ### Full stop（完全停止：监督动态 Feed 头部的按钮）

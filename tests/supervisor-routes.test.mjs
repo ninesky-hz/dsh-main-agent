@@ -16,10 +16,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { register } from 'node:module'
+import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 register('./harness-stub-loader.js', import.meta.url)
 
-const { healthHandler, workersHandler } = await import('../lib/index.js')
+const { feedHandler, healthHandler, stopHandler, workersHandler } = await import('../lib/index.js')
 
 /** A 0.2.x-shaped `ctx.subagents` service. */
 function compatibleService(children = []) {
@@ -163,4 +166,100 @@ test('workers reports an empty inventory after a Full stop', async () => {
   assert.deepEqual(body.workers, [])
   assert.equal(body.running, 0)
   assert.equal(body.total, 0)
+})
+
+test('workers separates "session never existed" (404) from "service down" (503)', async () => {
+  // A durable catalog lookup for an unknown id is a client error. Reporting it
+  // as 503 told the Feed to render a stale inventory as a host outage.
+  const unknown = compatibleService()
+  unknown.listChildren = async () => { throw new Error('session "ghost" not found') }
+  const missing = recorder()
+  missing.req.url = '/supervisor/workers?session=ghost'
+  await workersHandler({ subagents: unknown }, missing.req, missing.res)
+  const notFound = missing.read()
+  assert.equal(notFound.status, 404)
+  assert.match(notFound.body.error, /未找到该 session/)
+
+  const outage = compatibleService()
+  outage.listChildren = async () => { throw new Error('persistence offline') }
+  const broken = recorder()
+  broken.req.url = '/supervisor/workers?session=root'
+  await workersHandler({ subagents: outage }, broken.req, broken.res)
+  const failed = broken.read()
+  assert.equal(failed.status, 503)
+  assert.match(failed.body.error, /persistence offline/)
+})
+
+test('Full stop refuses a POST a foreign page initiated', async () => {
+  // Plugin routes sit on the raw web server and bypass the host token gate, so
+  // the destructive route needs its own cross-site check.
+  const crossSite = recorder('POST')
+  crossSite.req.url = '/supervisor/stop?session=root'
+  crossSite.req.headers = { origin: 'https://evil.example', host: '127.0.0.1:54677' }
+  await stopHandler({}, crossSite.req, crossSite.res)
+  const refused = crossSite.read()
+  assert.equal(refused.status, 403)
+  assert.match(refused.body.error, /跨站/)
+
+  // Same origin (and the no-Origin CLI case) stays allowed; it then fails at
+  // the liveness check instead of at the CSRF gate.
+  const sameOrigin = recorder('POST')
+  sameOrigin.req.url = '/supervisor/stop?session=root'
+  sameOrigin.req.headers = { origin: 'http://127.0.0.1:54677', host: '127.0.0.1:54677' }
+  await stopHandler({ agents: { get: () => undefined } }, sameOrigin.req, sameOrigin.res)
+  const allowed = sameOrigin.read()
+  // The test host has no schedule stub, so it stops at that gate (500); what
+  // matters is that the CSRF gate did NOT reject it.
+  assert.notEqual(allowed.status, 403)
+
+  const cli = recorder('POST')
+  cli.req.url = '/supervisor/stop?session=root'
+  cli.req.headers = {}
+  await stopHandler({ agents: { get: () => undefined } }, cli.req, cli.res)
+  assert.notEqual(cli.read().status, 403)
+})
+
+test('feed reports what the poller truncated instead of silently dropping it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-feed-'))
+  const agi = join(root, '.agi')
+  mkdirSync(agi)
+  // Over the 64KB text cap.
+  writeFileSync(join(agi, 'GOAL.md'), 'g'.repeat(64 * 1024 + 100))
+  // Over the 300-entry JSONL cap.
+  writeFileSync(join(agi, 'progress.jsonl'), Array.from({ length: 350 }, (_, index) =>
+    JSON.stringify({ ts: `t${index}`, text: `step ${index}` })).join('\n'))
+  // Over the 20-directory worker cap, each holding a small outcome.
+  const subagents = join(agi, 'subagents')
+  mkdirSync(subagents)
+  for (let index = 0; index < 25; index += 1) {
+    const dir = join(subagents, `w${index}`)
+    mkdirSync(dir)
+    writeFileSync(join(dir, 'outcome.md'), `outcome ${index}`)
+    // Deterministic recency: w24 is newest.
+    const stamp = new Date(Date.now() - (25 - index) * 60_000)
+    utimesSync(dir, stamp, stamp)
+  }
+
+  const { req, res, read } = recorder()
+  req.url = `/supervisor/feed?ws=${encodeURIComponent(root)}`
+  feedHandler(req, res)
+  const { status, body } = read()
+  assert.equal(status, 200)
+  assert.equal(body.goal.truncated, true)
+  assert.equal(body.goal.text.length, 64 * 1024, 'the tail is kept, not the head')
+  assert.equal(body.progress.length, 300)
+  assert.deepEqual(body.truncated, {
+    text: ['goal'],
+    jsonl: { progress: 50 },
+    workers: 5,
+  })
+  assert.equal(body.subagents.length, 20)
+  assert.equal(body.subagents[0].name, 'w24', 'newest worker artifacts come first')
+  assert.equal(body.subagents[0].outcome.text, 'outcome 24')
+
+  // A workspace with no state stays a plain 404, not a "truncated" document.
+  const empty = recorder()
+  empty.req.url = `/supervisor/feed?ws=${encodeURIComponent(join(root, 'nope'))}`
+  feedHandler(empty.req, empty.res)
+  assert.equal(empty.read().status, 404)
 })
