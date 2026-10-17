@@ -70,7 +70,10 @@
 <div class="box test">
   <span class="box-title">实机验证 —— 里程碑 6 验收</span>
   <p><strong>自动评分：</strong><code>"$HOME/src/dsh-supervisor/tutorial/grade.sh" m6</code> —— 核验已安装的
-     客户端那一半、<code>__DSH_BOOT__</code> 那一行、被提供出去的 bundle，以及 feed 路由。然后是肉眼环节：
+     客户端那一半、<code>__DSH_BOOT__</code> 那一行、被提供出去的 bundle，以及 feed 路由。
+     你的 <code>dsh web</code> 带令牌启动时，把令牌一并交给它
+     （<code>--token &lt;t&gt;</code>，或 <code>DSH_TOKEN</code>，或 <code>DSH_URL</code> 里带
+     <code>?token=…</code>）—— 否则这几项读到的是未认证的 401。然后是肉眼环节：
      打开你的 <code>main-agent</code> 会话 → 点视图环里的 <strong>监督动态</strong> → 目标卡片、
      worker、进展时间线都在，并在刷新（约 5 秒），同时 <strong>■ Full stop</strong>
      在监督者活动期间可用。</p>

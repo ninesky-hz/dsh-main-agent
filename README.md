@@ -339,6 +339,11 @@ agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full
 ./tutorial/grade.sh all --ws ~/agi-lab    # m0–m6 report with bar chart
 ./tutorial/grade.sh m7 --ws ~/agi-acceptance  # acceptance + restart evidence
 ./tutorial/grade.sh doctor                # what the grader can see
+
+# dsh web 带令牌启动时（启动行里的 ?token=…），把令牌也交给评分器 ——
+# 否则 m6 的 HTTP 检查读到的是未认证的 401，而不是真实结果：
+./tutorial/grade.sh m6 --token <t>        # 或 DSH_TOKEN=<t>
+                                          # 或 DSH_URL="http://127.0.0.1:3080/?token=<t>"
 ```
 
 评分器只读取持久产物（preset 文件、patch/bundle 行、`.agi/`、会话

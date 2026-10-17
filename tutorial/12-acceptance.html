@@ -151,6 +151,9 @@ python3 $HOME/src/dsh-supervisor/tutorial/drive.py tail  "$S"</code></pre>
   把里程碑 2 到 5 的评分器再跑一遍，然后检查验收特有的
   证据（监督者日志里的重启恢复标记、完成之后的
   修正案）。只有人能判断的步骤会以 MANUAL 提醒打印出来。
+  你的 <code>dsh web</code> 带令牌启动时，把令牌一并交给评分器
+  （<code>--token &lt;t&gt;</code>，或 <code>DSH_TOKEN</code>，或 <code>DSH_URL</code> 里带 <code>?token=…</code>），
+  否则 m6 那几项 HTTP 检查读到的是未认证的 401。
 </p>
 <p>
   维护一本验收台账（<code>$HOME/src/dsh-supervisor/</code> 里的一个文件，放在设计文档旁边）：每次运行

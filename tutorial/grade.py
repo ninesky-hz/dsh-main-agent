@@ -23,12 +23,15 @@ MANUAL（不计分 —— 提醒你有些东西只有人能判断）。
 from __future__ import annotations
 
 import argparse
+import http.cookiejar
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -693,16 +696,95 @@ def _(ws):
 
 m6 = milestone("m6", "UI：监督动态 Feed 视图标签页（第 11 章）")
 
-BASE_URL = os.environ.get("DSH_URL", "http://127.0.0.1:3080")
+AUTH_HINT = ("服务带令牌启动时，用 --token <t> 或 DSH_TOKEN，"
+             "或把令牌放进 DSH_URL（…?token=<t>）")
 
-def _http(path: str):
-    """GET BASE_URL+path -> (status, body-bytes) or (None, reason)."""
-    import urllib.request
+
+def _split_dsh_url(raw: str):
+    """`DSH_URL` -> (base, token). `http://h:p/?token=x` becomes `http://h:p` + token.
+
+    The token must never leak into every request path, so the query string is
+    stripped off the base and remembered separately.
+    """
+    parts = urllib.parse.urlsplit(raw)
+    token = ""
+    for key, value in urllib.parse.parse_qsl(parts.query, keep_blank_values=True):
+        if key == "token":
+            token = value
+    base = urllib.parse.urlunsplit((parts.scheme, parts.netloc,
+                                    parts.path.rstrip("/"), "", ""))
+    return (base or raw), token
+
+
+BASE_URL, _URL_TOKEN = _split_dsh_url(os.environ.get("DSH_URL", "http://127.0.0.1:3080"))
+# 令牌优先级：--token（main() 里覆盖）> DSH_TOKEN > DSH_URL 内嵌的 ?token=…
+TOKEN = os.environ.get("DSH_TOKEN") or _URL_TOKEN
+
+# dsh web 对未认证的请求回 401，只认 `GET /?token=…` 换来的 `dsh-auth-…` cookie，
+# 所以评分器要带一个 cookie 罐，并懒做一次握手。
+_COOKIE_JAR = http.cookiejar.CookieJar()
+_OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_COOKIE_JAR))
+_HANDSHAKE_DONE = False
+
+
+def _handshake():
+    """One `GET <base>/?token=…` so the cookie jar receives the `dsh-auth-…` cookie.
+
+    The host answers 303 + Set-Cookie there; the opener follows it and stores the
+    cookie, which every later request then carries. A failure is not reported
+    here —— the request that follows reports it with its own status code.
+    """
+    global _HANDSHAKE_DONE
+    _HANDSHAKE_DONE = True
+    if not TOKEN:
+        return
+    url = f"{BASE_URL}/?token={urllib.parse.quote(TOKEN, safe='')}"
     try:
-        with urllib.request.urlopen(f"{BASE_URL}{path}", timeout=10) as resp:
+        with _OPENER.open(urllib.request.Request(url, method="GET"), timeout=10) as resp:
+            resp.read()
+    except urllib.error.HTTPError as e:
+        e.read()
+    except Exception:  # noqa: BLE001 - grading, not serving
+        pass
+
+
+def _once(path: str):
+    """One GET through the cookie-carrying opener -> (status, body-bytes)."""
+    try:
+        with _OPENER.open(urllib.request.Request(f"{BASE_URL}{path}", method="GET"),
+                          timeout=10) as resp:
             return resp.status, resp.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.read()
     except Exception as e:  # noqa: BLE001 - grading, not serving
         return None, str(e).encode()
+
+
+def _http(path: str):
+    """GET BASE_URL+path -> (status, body-bytes) or (None, reason).
+
+    A real HTTP status is always reported as itself (4xx included); only a
+    transport-level failure yields (None, reason). With a token in hand a
+    401/403 triggers exactly one re-handshake and one retry.
+    """
+    global _HANDSHAKE_DONE
+    if not _HANDSHAKE_DONE:
+        _handshake()
+    status, body = _once(path)
+    if status in (401, 403) and TOKEN:
+        _HANDSHAKE_DONE = False
+        _handshake()
+        status, body = _once(path)
+    return status, body
+
+
+def _auth_fail(status: int) -> str:
+    """The FAIL detail for a non-200 status, naming a missing or rejected token."""
+    if status in (401, 403) and not TOKEN:
+        return f"未提供令牌（HTTP {status}）：{AUTH_HINT}"
+    if status in (401, 403):
+        return f"令牌被拒（HTTP {status}）：核对 --token / DSH_TOKEN 与这次 dsh web 的令牌"
+    return f"HTTP {status}：{AUTH_HINT}"
 
 @m6.check("已安装的 bundle 带客户端半边（dsh.client + lib/client.js）")
 def _(ws):
@@ -723,6 +805,8 @@ def _(ws):
     status, body = _http("/")
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达 —— {body.decode()[:80]}")
+    if status != 200:
+        return FAIL(f"GET / 返回 {status}：{_auth_fail(status)}")
     ok = b"__DSH_BOOT__" in body and b"dsh-main-agent" in body
     return PASS() if ok else FAIL("index 页的 __DSH_BOOT__ 图里没有 dsh-main-agent 行 —— 安装后重启过了吗？")
 
@@ -759,7 +843,7 @@ def _(ws):
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达 —— {body.decode()[:80]}")
     if status != 200:
-        return FAIL(f"GET / 返回 {status}（服务带令牌启动时，把令牌放进 DSH_URL）")
+        return FAIL(f"GET / 返回 {status}：{_auth_fail(status)}")
     payload = _boot_payload(body)
     if payload is None:
         return FAIL("index 页里没有可解析的 __DSH_BOOT__ 启动图")
@@ -780,7 +864,7 @@ def _(ws):
     if status is None:
         return WARN(f"dsh web 在 {BASE_URL} 不可达")
     if status != 200:
-        return FAIL(f"/supervisor/feed 返回 {status}：{body.decode()[:120]}")
+        return FAIL(f"/supervisor/feed 返回 {status}：{_auth_fail(status)}；正文 {body.decode()[:120]}")
     try:
         doc = json.loads(body)
     except Exception:
@@ -826,6 +910,8 @@ def _(ws):
 def doctor():
     print(f"{BOLD}评分器 doctor{RESET}")
     print(f"  DSH_HOME:          {DSH_HOME}  {'（正常）' if DSH_HOME.is_dir() else '（缺失）'}")
+    print(f"  DSH_URL:           {BASE_URL}  "
+          f"{'（已带令牌）' if TOKEN else '（无令牌 —— 服务要求令牌时加 --token <t>）'}")
     print(f"  preset 目录:       {PRESET_DIR}  {'（正常）' if PRESET_DIR.is_dir() else '（不存在）'}")
     print(f"  profile 补丁:      {PATCH_FILE}  {'（正常）' if PATCH_FILE.exists() else '（缺失）'}")
     z = shutil.which("zstd")
@@ -854,11 +940,17 @@ def doctor():
 
 
 def main():
+    global TOKEN
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("target", choices=[*MILESTONES.keys(), "all", "doctor"])
     ap.add_argument("--ws", help=f"工作区（默认 {DEFAULT_WS}；m7 默认 {ACCEPTANCE_WS}）")
+    ap.add_argument("--token", metavar="<t>",
+                    help="dsh web 的访问令牌（优先级：--token > DSH_TOKEN > DSH_URL 里的 ?token=…）")
     args = ap.parse_args()
+
+    if args.token:
+        TOKEN = args.token
 
     if args.target == "doctor":
         doctor()
