@@ -430,6 +430,66 @@ test('feed reports what the poller truncated instead of silently dropping it', a
   assert.equal(empty.read().status, 404)
 })
 
+/** One worker artifact directory under `.agi/subagents/`. */
+function workerArtifact(agi, dirName, outcome) {
+  const dir = join(agi, 'subagents', dirName)
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'outcome.md'), outcome)
+  return dir
+}
+
+/**
+ * Outcome ownership (0.10.9). A worker's artifact directory is normally named
+ * after its session id, but a hand-named one (`ui-polish-0107`) only carries the
+ * id in the machine-readable header of its outcome.md — so the host parses that
+ * header into `workerId` and the Feed can attach the result to its own row.
+ * `name` (the directory) stays the primary key.
+ */
+test('an outcome header declares its worker id, for either accepted form', () => {
+  const { root, agi } = feedWorkspace()
+  workerArtifact(agi, 'ui-polish-0107', '<!-- worker: abc-123 -->\n# report\n')
+  workerArtifact(agi, 'plain-header', 'worker: abc-123\n# report\n')
+  workerArtifact(agi, 'quoted', '  <!-- WORKER: `abc-123` -->  \n')
+  workerArtifact(agi, 'line-four', 'l1\nl2\nl3\nworker: abc-123\n')
+  workerArtifact(agi, 'sentence', '<!-- worker: not an id -->\n')
+  workerArtifact(agi, 'empty-id', '<!-- worker: -->\n')
+  workerArtifact(agi, 'no-header', '# report\nno header here\n')
+
+  const { status, body } = readFeed(root)
+  assert.equal(status, 200)
+  const byName = new Map(body.subagents.map(sub => [sub.name, sub]))
+  assert.deepEqual([...byName.keys()].sort(), [
+    'empty-id', 'line-four', 'no-header', 'plain-header', 'quoted', 'sentence', 'ui-polish-0107',
+  ])
+
+  assert.equal(byName.get('ui-polish-0107').workerId, 'abc-123', 'the html-comment form is read')
+  assert.equal(byName.get('plain-header').workerId, 'abc-123', 'the bare form is read too')
+  assert.equal(byName.get('quoted').workerId, 'abc-123', 'key case, quotes and padding are tolerated')
+  assert.equal(byName.get('line-four').workerId, null, 'the header must sit on the first 3 lines')
+  assert.equal(byName.get('sentence').workerId, null, 'a prose payload is not an id')
+  assert.equal(byName.get('empty-id').workerId, null, 'an empty id is not an id')
+
+  const bare = byName.get('no-header')
+  assert.equal(bare.workerId, null)
+  assert.equal(bare.name, 'no-header', 'the directory name is never rewritten')
+  assert.equal(bare.outcome.text, '# report\nno header here\n')
+})
+
+test('a huge outcome keeps only its tail but still declares its worker', () => {
+  const { root, agi } = feedWorkspace()
+  // The header lives on line 1, exactly the part a 64KB tail cap throws away.
+  workerArtifact(agi, 'label-named-big', `<!-- worker: big-1 -->\n${'x'.repeat(64 * 1024 + 100)}`)
+
+  const { status, body } = readFeed(root)
+  assert.equal(status, 200)
+  const big = body.subagents.find(sub => sub.name === 'label-named-big')
+  assert.ok(big, 'the artifact must be in the payload')
+  assert.equal(big.workerId, 'big-1', 'the header is read from the head of the file')
+  assert.equal(big.outcome.text.length, 64 * 1024, 'the body view stays tail-capped')
+  assert.doesNotMatch(big.outcome.text, /worker: big-1/, 'the header is gone from the tail-capped body')
+  assert.equal(big.outcome.truncated, true)
+})
+
 /**
  * Conditional refresh (0.10.8). The Feed polls every 5 seconds and almost
  * always sees the same `GOAL.md`/`NOTES.md`/`progress.jsonl`, so the route
@@ -453,7 +513,7 @@ function readFeed(root, method = 'GET', headers = undefined) {
   return { res, ...read() }
 }
 
-test('feed sends a quoted strong etag, stable while nothing changes', () => {
+test('feed sends a quoted strong etag, stable while nothing changes', async () => {
   const { root } = feedWorkspace()
   const first = readFeed(root)
   assert.equal(first.status, 200)
@@ -461,6 +521,9 @@ test('feed sends a quoted strong etag, stable while nothing changes', () => {
   assert.match(first.res.headers.etag, /^"[^"]+"$/)
   assert.equal(first.res.headers['cache-control'], 'no-store', 'revalidation must not license caching')
 
+  // Two reads inside the same millisecond would carry the SAME `generatedAt`,
+  // which made this assertion fail about once in 40 runs on a fast machine.
+  await new Promise(resolve => setTimeout(resolve, 2))
   const second = readFeed(root)
   assert.equal(second.res.headers.etag, first.res.headers.etag, 'an untouched workspace keeps its etag')
   // `generatedAt` is the wall clock of the read, so it moves on every call; the

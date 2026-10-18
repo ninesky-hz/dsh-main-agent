@@ -359,6 +359,88 @@ test('each worker row carries its own outcome, matched by session id', async () 
   assert.doesNotMatch(textOf(fallback), /sleep worker result/)
 })
 
+/** The Feed's own row for a worker, found by its label. */
+function workerRow(card, label) {
+  return findElement(card, node => node.type === 'li' && textOf(node).includes(label))
+}
+
+const TWO_WORKERS = {
+  compatible: true,
+  workers: [
+    { id: 'worker-1', label: 'first worker', running: false },
+    { id: 'worker-2', label: 'second worker', running: false },
+  ],
+  running: 0,
+  total: 2,
+}
+
+// Outcome ownership (0.10.9): a label-named artifact directory carries its
+// worker's session id only in the header of its outcome.md, which the host
+// parses into `workerId`. The directory name stays the primary key.
+test('a label-named artifact reaches its row through the declared worker id', async () => {
+  const feed = {
+    ...FEED,
+    subagents: [
+      { name: 'ui-polish-0107', workerId: 'worker-1', outcome: { text: 'declared result', mtime: 1 }, files: ['outcome.md'] },
+      { name: 'older-label', workerId: null, outcome: { text: 'unclaimed result', mtime: 1 }, files: [] },
+    ],
+  }
+  const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: TWO_WORKERS })
+  const card = cardTitled(tree, 'Workers')
+  const row = workerRow(card, 'first worker')
+  assert.ok(row, 'the worker row must render')
+  assert.match(textOf(row), /declared result/, 'the header wins over the directory name')
+  const folderHint = findElement(row, node => node.type === 'summary' && node.props.title === 'artifact 目录：ui-polish-0107')
+  assert.ok(folderHint, 'the row names the artifact folder it read')
+
+  // A directory with no header is not guessed into a row (its name matches no
+  // session id), so it stays in the fallback block.
+  assert.doesNotMatch(textOf(workerRow(card, 'second worker')), /unclaimed result/)
+  const fallback = findElement(card, node => node.type === 'div' && textOf(node).includes('历史结果'))
+  assert.match(textOf(fallback), /unclaimed result/)
+  assert.doesNotMatch(textOf(fallback), /declared result/, 'a claimed artifact never repeats in the fallback')
+})
+
+test('one artifact is claimed by one row only, even when its dir name fits another', async () => {
+  // Contradictory artifact: the directory is named after worker-1 but declares
+  // worker-2. A row prefers the declared id, and the artifact is claimed once —
+  // so it renders exactly once. Row order decides a contradictory match: the
+  // worker-2 row is resolved first here and takes it by its declared id.
+  const rows = { ...TWO_WORKERS, workers: [TWO_WORKERS.workers[1], TWO_WORKERS.workers[0]] }
+  const feed = {
+    ...FEED,
+    subagents: [
+      { name: 'worker-1', workerId: 'worker-2', outcome: { text: 'claimed once', mtime: 1 }, files: [] },
+    ],
+  }
+  const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: rows })
+  const card = cardTitled(tree, 'Workers')
+  assert.match(textOf(workerRow(card, 'second worker')), /claimed once/,
+    'the declared workerId wins over the directory name')
+  assert.doesNotMatch(textOf(workerRow(card, 'first worker')), /claimed once/,
+    'the row whose directory name matched must not render the same artifact')
+  assert.equal(textOf(card).split('claimed once').length - 1, 1, 'one outcome renders once')
+  assert.equal(findElement(card, node => node.type === 'div'
+    && textOf(node).includes('历史结果')), undefined,
+  'nothing is left unclaimed, so the fallback block is absent')
+})
+
+test('a label-named artifact without a header stays in 历史结果', async () => {
+  const feed = {
+    ...FEED,
+    subagents: [
+      { name: 'ui-polish-0107', workerId: null, outcome: { text: 'headerless result', mtime: 1 }, files: [] },
+    ],
+  }
+  const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: TWO_WORKERS })
+  const card = cardTitled(tree, 'Workers')
+  assert.doesNotMatch(textOf(workerRow(card, 'first worker')), /headerless result/)
+  assert.doesNotMatch(textOf(workerRow(card, 'second worker')), /headerless result/)
+  const fallback = findElement(card, node => node.type === 'div' && textOf(node).includes('历史结果'))
+  assert.match(textOf(fallback), /headerless result/, 'an unowned artifact is never silently dropped')
+  assert.match(textOf(fallback), /ui-polis…/, 'the fallback shows the artifact folder')
+})
+
 test('the loop card shows whether the loop is armed and when it wakes next', async () => {
   const soon = Date.now() + 2 * 60_000
   const later = Date.now() + 90 * 60_000
