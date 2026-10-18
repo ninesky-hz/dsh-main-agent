@@ -136,55 +136,138 @@ cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 
 ## 升级与卸载
 
-> 0.10.2 起随包携带 `scripts/repair-profile.mjs`，下面三种卡住的情况都能一条命令处理。
+> 0.10.2 起随包携带 `scripts/repair-profile.mjs`；0.10.10 起它能在 **DSH 完全关闭**
+> 的状态下把「卸不掉」一次性救回来：清重复 preset 声明、清本 bundle 在用户层
+> `cordis.patch.yml` 里的行、把 preset 目录改名备份，并诊断 pnpm 侧的漂移与冷静期。
 
 **升级请「先卸载再安装」，不要点「更新」。** 已安装的旧副本和新版本会在组合期
 同时声明同一条 `preset-main-agent`，插件管理器会报
 `user-patch: duplicate loader entry id "preset-main-agent"`，然后回滚并恢复原文件。
 
-**卸载可能被拒，报 `{"code":"bundle-in-use"}`。** `preset-main-agent` 是宿主级
-preset 注册行：插件管理器「先禁用、再检查」，而那条行在运行中的进程里不会立刻
-消失（`reload()` 只重算配置，真正卸载要重启），于是检查必然命中。关掉 bundle
-开关**并完整退出、重启 DSH** 之后再卸载；仍被拒就走下面的脚本。
+### 卸载被拒到底撞在哪
 
-| 现象 | 原因 | 处置 |
-| --- | --- | --- |
-| `unknown prompt variable "{{cwd}}"` | 旧版 persona 引用了 loop 未注册的变量 | 升级到 0.10.1+；或按「兜底」覆盖文件 |
-| `duplicate loader entry id "preset-main-agent"` | 新旧两份 bundle patch 同时声明 preset 行 | 卸载后重装，别点「更新」 |
-| `{"code":"bundle-in-use"}` | 运行中的宿主级 preset 行挡住了卸载 | 关开关 + 重启；或 `--uninstall` |
-| 安装报「这个包已经安装」 | `package.json` 里还留着依赖记录 | `--uninstall` 之后再安装 |
+插件管理器的 `removeBundle()`（`@deepseek-ai/dsh-plugin-manager` 的
+`lib/index.js:2137-2164`）真实判定顺序是：
+
+```
+not-removable → stop-profile → bundle-in-use → runPnpm(["remove", ...])
+```
+
+- `stop-profile`（`lib/index.js:2142`）先抛：没有 hmr 服务时，只要 bundle 名还在
+  `dsh.profile.bundles` 里、或某条 patch 行有活着的 entry（`entry.fiber !== void 0`），
+  就直接拒绝。桌面 app 没有 hmr，所以**运行中的 bundle 先撞的是 `stop-profile`**，
+  而不是常被误传的 `bundle-in-use`。关掉开关不够 —— `reload()` 只重算配置，
+  真正释放要重启进程。
+- `bundle-in-use`（`lib/index.js:2148`）要等 entry 的 fiber 真的没了才会命中，
+  真正的来源是**用户层** `cordis.patch.yml` 里本 bundle 的行（`agi-supervisor-setup`、
+  `preset-main-agent`，含 `- insert:` 里的内嵌行）。bundle 自己的 patch 文件里那几行
+  不会造成它 —— 卸载时那些行随包一起消失。
+- 两条都过了，才轮到 `runPnpm(["remove", name, ...])`（`lib/index.js:2152-2156`）；
+  pnpm 非 0 退出会把这行输出原样抛给你。
+
+### pnpm 侧的坎：版本漂移 + 冷静期
+
+插件管理器固定用 DSH 自带的 pnpm（本机实测 **11.7.0**，
+`<home>/dsh-runtimes/dsh-primary-runtime/dependencies/`），这条 `remove` 路径没有接
+`handleResolutionPolicyViolations` 回调。于是只要 profile 的 `package.json` 与
+`pnpm-lock.yaml` 有**精确版本漂移**（例如 manifest 写 `0.1.199`、锁文件还停在
+`0.1.198`），而漂移版本又没被 `minimumReleaseAgeExclude` 白名单覆盖，任何解析都会报：
+
+```
+[ERR_PNPM_RESOLUTION_POLICY_VIOLATIONS_UNHANDLED] 1 resolution-policy violation was
+produced but no handleResolutionPolicyViolations callback was wired to react to them.
+```
+
+此时卸载卡死在 pnpm 这一步，脚本不会替你改策略、也不会替你跑 pnpm。两种处置
+（A 临时、B 长期，二选一）：
+
+```sh
+# 方案 A（不动白名单）：DSH 完全退出后，用 DSH 自带的 node + pnpm 直接卸
+"<home>/dsh-runtimes/dsh-primary-runtime/dependencies/node/bin/node.exe" \
+  "<home>/dsh-runtimes/dsh-primary-runtime/dependencies/pnpm/bin/pnpm.mjs" \
+  remove dsh-main-agent --config.minimumReleaseAge=0
+
+# 方案 B（推荐，长期有效）：在 pnpm-workspace.yaml 的 minimumReleaseAgeExclude 里加整包豁免
+minimumReleaseAgeExclude:
+  - "billion-context"
+```
+
+**冷静期到底生不生效，脚本会分开报**：`pnpm-workspace.yaml` 里的
+`minimumReleaseAge` 是**当前**配置；`node_modules/.pnpm-workspace-state-v1.json`
+的 `settings` 只是**上一次安装解析时** pnpm 用过的值（带 `lastValidatedTimestamp`），
+pnpm 把它当缓存写下来，之后配置被改掉/删掉它也不会变。所以：
+
+- 配置里有 `minimumReleaseAge` → 报「当前生效」，重跑 pnpm 就会撞上；
+- 只在缓存里留下 1440（本机 10-17 22:25 那次失败正是这种）→ 报「上一次解析时生效」，
+  当前配置里其实已经没有它了，但仍建议按方案 A 显式关掉再重跑，免得配置一变又踩回去。
+  这也是为什么本机 `pnpm config list` 里看不到 `minimumReleaseAge`，日志里却有这次失败。
+
+`repair-profile --json` / 普通输出在检测到这种漂移时会把上面两段**按实测路径**
+打印出来（找不到自带运行时才退化成 `<node>` / `<pnpm>` 占位符）。
+脚本本身只做诊断，不改 `pnpm-workspace.yaml`、不跑 pnpm、不动 `pnpm-lock.yaml`。
+
+### 用脚本收尾
 
 ```sh
 # 只诊断，不写任何文件（有发现时退出码为 1）
 node scripts/repair-profile.mjs
 
-# 清掉重复的 preset 声明（写前自动备份 cordis.patch.yml）
+# 只去重：清掉重复的 preset 声明（保留第一条），写前自动备份 cordis.patch.yml
 node scripts/repair-profile.mjs --apply
 
-# 彻底回到可安装状态：删依赖 / bundles 条目 / 残留 node_modules
+# 彻底回到可安装状态（--uninstall 隐含 --apply）
 node scripts/repair-profile.mjs --apply --uninstall
 ```
 
-脚本只写 `${DSH_HOME:-~/.dsh}/profiles/*` 下的 `package.json` 与
-`cordis.patch.yml`，每次写入前生成 `.bak-<时间戳>`；`cordis.yml` 是生成物，
-只报告、不修改。跑完**完全退出 DSH 再启动**（配置在启动时才重新组合），
-然后用安装地址重装：
+`--apply` 是保守的：只删重复的 `preset-main-agent` 声明，**绝不删唯一的那条**
+legacy 行。`--apply --uninstall` 才做完整清理：
+
+1. 删 `package.json` 里的依赖记录与 `dsh.profile.bundles` 条目；
+2. 删残留的 `node_modules/dsh-main-agent`（含 `node_modules/.ignored/` 下的）；
+3. 删 `cordis.patch.yml` 里**所有**本 bundle 的行 —— `agi-supervisor-setup`、
+   `agi-schedule`、`preset-main-agent`，顶层 override 与 `- insert:` 内嵌行都算，
+   删空的 `- insert:` 一并移除，其它行（`ui-settings`、`ui-chat` 等）原样保留；
+4. 把 `<home>/.agent-presets/main-agent` **改名**为 `main-agent.bak-<时间戳>`
+   （同目录内 rename，可逆，不会 `rm -rf`；确认不需要后自行删除）。
+
+每次写入前生成 `.bak-<时间戳>`：`package.json.bak-<stamp>`、
+`cordis.patch.yml.bak-<stamp>`。`cordis.yml` 是生成物，只报告、不修改。
+脚本**不改** `pnpm-lock.yaml`（不在同一层解决版本漂移），第二次跑不会产生任何
+新动作。
+
+`--home <目录>` 可以指到任意 profile 根（诊断副本、备份目录），
+`--profile <名字|目录>` 只处理一个 profile，`--help` 看全部参数。
+
+| 现象 | 原因 | 处置 |
+| --- | --- | --- |
+| `unknown prompt variable "{{cwd}}"` | 旧版 persona 引用了 loop 未注册的变量 | 升级到 0.10.1+；或按「兜底」覆盖文件 |
+| `duplicate loader entry id "preset-main-agent"` | 新旧两份 bundle patch 同时声明 preset 行 | 卸载后重装，别点「更新」 |
+| `{"code":"stop-profile"}` | 桌面 app 无 hmr，运行中的 bundle 被判定仍在用 | 关开关 + 完整退出；或 `--apply --uninstall` |
+| `{"code":"bundle-in-use"}` | 用户层 `cordis.patch.yml` 里还留着本 bundle 的行 | `--apply --uninstall` 清行 |
+| `ERR_PNPM_RESOLUTION_POLICY_VIOLATIONS_UNHANDLED` | manifest 与 lockfile 精确版本漂移 + 冷静期生效（当前配置，或上次解析记录）且白名单没覆盖 | 上面的方案 A 或 B |
+| 安装报「这个包已经安装」 | `package.json` 里还留着依赖记录 | `--apply --uninstall` 之后再安装 |
+
+`--apply --uninstall` 跑完**完全退出 DSH 再启动**（配置在启动时才重新组合），
+然后用安装地址重装（不要点「更新」）：
 
 ```sh
 https://gitee.com/n-sky/dsh-main-agent.git
 ```
 
+装好后重启一次，模型选择器里应出现 **Main Agent（监督者）**。
+
 <details>
 <summary>兜底：不卸载，直接覆盖文件</summary>
 
-UI 实在卸不掉时（比如被运行中的 preset 行锁住），可以让已安装副本就地变成
-新版：`git clone https://gitee.com/n-sky/dsh-main-agent.git`，把
-`package.json`、`presets/main-agent.patch.yml`、
+UI 实在卸不掉时（比如被运行中的 preset 行锁住，而 pnpm 侧又卡在策略报错），
+可以让已安装副本就地变成新版：`git clone https://gitee.com/n-sky/dsh-main-agent.git`，
+把 `package.json`、`presets/main-agent.patch.yml`、
 `agent-presets/main-agent/agent.cordis.yml` 覆盖到
 `${DSH_HOME:-~/.dsh}/profiles/<profile>/node_modules/dsh-main-agent/` 的对应
 位置，重启即可。版本号会显示成新版本，但 `pnpm-lock.yaml` 仍指向旧 commit，
 下次重装前建议先用 `repair-profile` 清干净。
 </details>
+
 
 ## 运行
 
@@ -474,7 +557,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
-| `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、残留依赖与 node_modules（见「升级与卸载」） |
+| `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N7、G1）与 v2 计划 |
 
 ## 评分
