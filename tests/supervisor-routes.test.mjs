@@ -304,6 +304,86 @@ test('Full stop does not resume an agent that is already live', async () => {
   assert.equal(resumed, 0, 'a published agent must not be resumed again')
 })
 
+test('stop status projects each reminder as a record, not a bare id', async () => {
+  // The Feed's loop card has to say WHICH reminder wakes the supervisor and
+  // WHEN it fires. Bare ids forced it to render an unreadable list, so the
+  // route now projects { id, kind, title?, everySeconds?, scheduledAt? }, with
+  // the durable ISO instant converted to epoch milliseconds.
+  const events = [
+    { type: 'schedule/change', data: { version: 1, operation: 'create', schedule: {
+      id: 'wake-1', kind: 'every', title: '监督者巡检', prompt: 'wake',
+      everySeconds: 300, scheduledAt: '2026-01-01T00:00:00.000Z',
+    } } },
+    { type: 'schedule/change', data: { version: 1, operation: 'create', schedule: {
+      id: 'wait-1', kind: 'at', prompt: 'ask', scheduledAt: '2026-01-01T00:05:00.000Z',
+    } } },
+    // A record without a usable instant must simply omit the field.
+    { type: 'schedule/change', data: { version: 1, operation: 'create', schedule: {
+      id: 'cron-1', kind: 'cron', title: '每日总结', prompt: 'summarize',
+      expression: '0 9 * * *', timeZone: 'Asia/Shanghai', scheduledAt: 'not-an-instant',
+    } } },
+    { type: 'message', data: {} },
+  ]
+  const agent = {
+    session: {
+      header: { id: 'root', origin: 'root', agentPreset: 'main-agent' },
+      inheritedEventCount: 0,
+      snapshotEvents: () => events,
+    },
+    status: 'idle',
+  }
+  const ctx = {
+    agents: {
+      get: id => (id === 'root' ? agent : id === 'worker-1' ? { status: 'running' } : undefined),
+    },
+    sessions: { flush: async () => {} },
+    subagents: compatibleService([{ id: 'worker-1', mode: 'continuable', label: 'auditing' }]),
+  }
+  const { req, res, read } = recorder()
+  req.url = '/supervisor/stop?session=root'
+  await stopHandler(ctx, req, res)
+
+  const { status, body } = read()
+  assert.equal(status, 200)
+  assert.deepEqual(body.reminders, [
+    {
+      id: 'wake-1', kind: 'every', title: '监督者巡检', everySeconds: 300,
+      scheduledAt: Date.parse('2026-01-01T00:00:00.000Z'),
+    },
+    {
+      id: 'wait-1', kind: 'at',
+      scheduledAt: Date.parse('2026-01-01T00:05:00.000Z'),
+    },
+    { id: 'cron-1', kind: 'cron', title: '每日总结' },
+  ])
+  assert.deepEqual(body.runningWorkers, ['worker-1'])
+  assert.equal(body.running, false)
+  assert.equal(body.stopped, false, 'an armed reminder or a running worker is not stopped')
+})
+
+test('stop status stays "stopped" only with no reminder and no running worker', async () => {
+  const agent = {
+    session: {
+      header: { id: 'root', origin: 'root', agentPreset: 'main-agent' },
+      inheritedEventCount: 0,
+      snapshotEvents: () => [],
+    },
+    status: 'idle',
+  }
+  const ctx = {
+    agents: { get: id => (id === 'root' ? agent : undefined) },
+    sessions: { flush: async () => {} },
+    subagents: compatibleService([{ id: 'worker-1', mode: 'continuable' }]),
+  }
+  const { req, res, read } = recorder()
+  req.url = '/supervisor/stop?session=root'
+  await stopHandler(ctx, req, res)
+  const { body } = read()
+  assert.deepEqual(body.reminders, [])
+  assert.deepEqual(body.runningWorkers, [])
+  assert.equal(body.stopped, true)
+})
+
 test('feed reports what the poller truncated instead of silently dropping it', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-feed-'))
   const agi = join(root, '.agi')

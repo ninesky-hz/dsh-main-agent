@@ -366,6 +366,18 @@ feed 的读取是**有界且自述的**：单文件只保留末尾 64KB、每个
 —— 没有 Origin 的 curl/脚本调用仍然允许）。
 无需重建前端，无需动态插件审批。
 
+Feed 上有三处读法值得单独说清（0.10.7）：
+**提问栈**读 `.agi/questions.jsonl` 的 `q` 字段，并把
+`pending/assumed/answered/withdrawn` 显示成待答/已假设/已回答/已撤回 ——
+看到的是问题本身，而不是问题 id；
+**worker 卡片**把每份 `outcome.md` 挂回它自己那一行（按 worker session id
+匹配，行上同时显示短 id，`title` 里有完整 id），当前目录已不包含的历史结果
+收进下方的「历史结果」兜底区，而不是和行混在一起；
+**监督循环**卡片消费 `GET /supervisor/stop?session=…`，显示循环是否还武装着、
+有几个活动 worker、以及下一条提醒大约几分钟后醒来（`reminders` 是记录数组
+`{ id, kind, title?, everySeconds?, scheduledAt? }`，其中 `scheduledAt` 为毫秒
+时间戳；读取失败时卡片里给一行弱化报错，而不是静默消失）。
+
 ### Full stop（完全停止：监督动态 Feed 头部的按钮）
 
 原生停止方块只会中止当前回合 —— 监督者的周期性

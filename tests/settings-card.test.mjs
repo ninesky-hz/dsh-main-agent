@@ -20,7 +20,7 @@ function findElement(node, predicate) {
   return undefined
 }
 
-async function renderSettingsCard(value) {
+async function renderSettingsCard(value, catalog = 'ok') {
   const source = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   const state = []
   let hook = 0
@@ -41,6 +41,10 @@ async function renderSettingsCard(value) {
   let pluginFactory
   const fetch = async url => {
     assert.equal(url, '/supervisor/models')
+    // 'pending' models a slow catalog: the request never settles, so the card
+    // stays in catalogStatus === 'loading'. 'error' is a failed read.
+    if (catalog === 'pending') return new Promise(() => {})
+    if (catalog === 'error') return { ok: false, status: 503, json: async () => ({}) }
     return {
       ok: true,
       json: async () => ({
@@ -137,4 +141,47 @@ test('Settings preserves a configured fixed effort and exposes native capability
     && node.props.title?.includes('antigravity/gemini-3.7-flash')))
   assert.ok(findElement(tree, node => node.type === 'span'
     && node.children.includes('[text,image; effort low/medium/high]')))
+})
+
+test('a still-loading catalog never claims a stored effort is unsupported', async () => {
+  // Loading the catalog must not degrade into a warning: the model has simply
+  // not been read yet, so the row may only offer a neutral hint.
+  const tree = await renderSettingsCard({
+    workerModels: ['antigravity/gemini-3.7-flash'],
+    workerEfforts: { 'antigravity/gemini-3.7-flash': 'high' },
+  }, 'pending')
+  const placeholder = findElement(tree, node => node.type === 'option'
+    && node.props.value === 'high' && node.props.disabled === true)
+  assert.ok(placeholder, 'the saved value stays visible while the catalog loads')
+  const label = placeholder.children.join(' ')
+  assert.match(label, /暂不校验强度/)
+  assert.doesNotMatch(label, /未声明支持/)
+  assert.equal(findElement(tree, node => node.type === 'span'
+    && node.children.join(' ').includes('⚠ 强度未声明')), undefined)
+})
+
+test('a failed catalog read suppresses the unsupported-effort warning too', async () => {
+  const tree = await renderSettingsCard({
+    workerModels: ['antigravity/gemini-3.7-flash'],
+    workerEfforts: { 'antigravity/gemini-3.7-flash': 'high' },
+  }, 'error')
+  const placeholder = findElement(tree, node => node.type === 'option'
+    && node.props.value === 'high' && node.props.disabled === true)
+  assert.ok(placeholder)
+  assert.match(placeholder.children.join(' '), /暂不校验强度/)
+  assert.equal(findElement(tree, node => node.type === 'span'
+    && node.children.join(' ').includes('⚠ 强度未声明')), undefined)
+})
+
+test('a ready catalog still flags an effort the model really does not declare', async () => {
+  const tree = await renderSettingsCard({
+    workerModels: ['antigravity/gemini-3.7-flash'],
+    workerEfforts: { 'antigravity/gemini-3.7-flash': 'max' },
+  })
+  const placeholder = findElement(tree, node => node.type === 'option'
+    && node.props.value === 'max' && node.props.disabled === true)
+  assert.ok(placeholder)
+  assert.match(placeholder.children.join(' '), /该模型未声明支持/)
+  assert.ok(findElement(tree, node => node.type === 'span'
+    && node.children.join(' ').includes('⚠ 强度未声明')))
 })

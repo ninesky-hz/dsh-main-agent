@@ -34,7 +34,12 @@ export function foldScheduleEvents(events, inheritedCount = 0) {
     if (event?.type !== 'schedule/change') continue
     const change = event.data ?? {}
     if (change.operation === 'delete') active.delete(change.id)
-    else if (change.operation === 'create') active.set(change.id, { id: change.id })
+    else if (change.operation === 'create') {
+      // A create change carries the committed schedule record itself; keep the
+      // record so routes can project its kind/title/scheduledAt.
+      const record = change.schedule ?? {}
+      active.set(record.id ?? change.id, record)
+    }
   }
   return { active: [...active.values()] }
 }
