@@ -378,6 +378,43 @@ Feed 上有三处读法值得单独说清（0.10.7）：
 `{ id, kind, title?, everySeconds?, scheduledAt? }`，其中 `scheduledAt` 为毫秒
 时间戳；读取失败时卡片里给一行弱化报错，而不是静默消失）。
 
+### 交互（0.10.8）：worker 跳会话 / 暂停刷新 / ETag 条件刷新
+
+三处让 Feed 从「只读快照」变成可操作面板的改动：
+
+**worker 行可以点开它自己的会话。** worker 卡片里的标签现在是一个链接式按钮，
+点击后通过客户端的 `uiWorkspace` 服务（`openSession(id)`）跳进那个 worker 的
+原生会话 —— `conversation.view` 的 props 里只有 `inspectCall / viewRequest /
+openView / completeViewRequest`，其中 `openView` 是**视图标签**切换，不是会话
+切换，所以会话导航只能走这个服务。只有该 worker 的 session 仍在当前会话列表里
+时标签才可点；否则保持纯文本，`title` 明说「该 worker 会话不在当前会话列表中，
+无法直接打开」—— 不给一个点了没反应的空按钮。宿主没有暴露 `uiWorkspace` 时
+整个标签页照常渲染（服务用 `ctx.get` 读取而不进 `inject`，缺服务只降级、不阻塞
+插件加载）。行本身不可点，「结果」文本仍然可以选中复制。
+
+**暂停 / 手动刷新。** 头部在 Full stop 左边多了 `⏸ 暂停` / `▶ 继续`
+（带 `aria-pressed`）与 `↻ 刷新`。暂停是**把 5 秒轮询整个停掉**
+（feed、worker 列表、循环状态一起停），不是把请求藏起来；标签页重新可见也不会
+自动恢复轮询 —— 只有再点一次「继续」。暂停期间头部显示弱化的
+「已暂停自动刷新」（标签页仅仅不可见时不显示这句，那不是暂停）。
+`↻ 刷新` 只手动拉取一次，不改变暂停开关。
+
+**ETag 条件刷新。** `GET /supervisor/feed` 现在返回强校验器 `etag`：把 `.agi/`
+下被读取的每个文件（`GOAL.md`、`GOAL_AMENDMENTS.md`、`NOTES.md`、
+`MISSION_REPORT.md`、`progress.jsonl`、`questions.jsonl`、`CHANGELOG.jsonl`、
+`config.json`）加上每个 `subagents/<id>/outcome.md` 的
+`mtimeMs:size` 串起来做 SHA-1，**只 stat 不读内容**，所以一次条件轮询的代价
+与文件大小无关。客户端下一次轮询带 `if-none-match`，命中则返回 `304` 空响应，
+连文档组装都省掉；`200` 的 JSON 形状与原来逐字节一致，
+`cache-control: no-store` 保留，`HEAD` 非条件请求仍是 `200` + `etag` + 无 body，
+`400/404` 路径不变（不产生 etag）。`if-none-match` 接受字符串或数组，
+会剥掉 `W/` 弱前缀、按逗号拆分。
+头部的时间标签随之改成「N 秒前 检查」（最后一次轮询完成的时刻，200 或 304），
+并在 304 时追加弱化的「· 内容无变化」—— 原来那句「N 秒前 更新」读的是
+`generatedAt`，一旦开始条件刷新就不再前进，继续说它就是撒谎。
+指纹是 stat 级的：同一文件在同一毫秒内被改成同样大小的内容不会被发现，
+下一次真实变化时会自动纠正。
+
 ### Full stop（完全停止：监督动态 Feed 头部的按钮）
 
 原生停止方块只会中止当前回合 —— 监督者的周期性

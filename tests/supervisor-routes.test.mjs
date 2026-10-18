@@ -36,8 +36,9 @@ function compatibleService(children = []) {
   }
 }
 
-/** Capture a handler's status, headers and JSON body. */
-function recorder(method = 'GET') {
+/** Capture a handler's status, headers and JSON body. `headers` (optional)
+ * become the request's headers, which conditional refresh reads. */
+function recorder(method = 'GET', headers = undefined) {
   const res = {
     status: undefined,
     headers: undefined,
@@ -53,7 +54,7 @@ function recorder(method = 'GET') {
     },
   }
   return {
-    req: { method, url: '/' },
+    req: { method, url: '/', headers: headers ?? {} },
     res,
     read() {
       return {
@@ -428,3 +429,119 @@ test('feed reports what the poller truncated instead of silently dropping it', a
   feedHandler(empty.req, empty.res)
   assert.equal(empty.read().status, 404)
 })
+
+/**
+ * Conditional refresh (0.10.8). The Feed polls every 5 seconds and almost
+ * always sees the same `GOAL.md`/`NOTES.md`/`progress.jsonl`, so the route
+ * answers a strong ETag and lets the client revalidate: a 304 skips both the
+ * document assembly and the transfer, while every 200 keeps its byte-identical
+ * JSON shape.
+ */
+function feedWorkspace() {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-etag-'))
+  const agi = join(root, '.agi')
+  mkdirSync(agi)
+  writeFileSync(join(agi, 'GOAL.md'), '# goal\n')
+  writeFileSync(join(agi, 'progress.jsonl'), `${JSON.stringify({ ts: 't0', text: 'step' })}\n`)
+  return { root, agi }
+}
+
+function readFeed(root, method = 'GET', headers = undefined) {
+  const { req, res, read } = recorder(method, headers)
+  req.url = `/supervisor/feed?ws=${encodeURIComponent(root)}`
+  feedHandler(req, res)
+  return { res, ...read() }
+}
+
+test('feed sends a quoted strong etag, stable while nothing changes', () => {
+  const { root } = feedWorkspace()
+  const first = readFeed(root)
+  assert.equal(first.status, 200)
+  // A quoted string is a STRONG validator; an unquoted one would be ignored.
+  assert.match(first.res.headers.etag, /^"[^"]+"$/)
+  assert.equal(first.res.headers['cache-control'], 'no-store', 'revalidation must not license caching')
+
+  const second = readFeed(root)
+  assert.equal(second.res.headers.etag, first.res.headers.etag, 'an untouched workspace keeps its etag')
+  // `generatedAt` is the wall clock of the read, so it moves on every call; the
+  // validator must not, or nothing would ever revalidate.
+  assert.notEqual(second.body.generatedAt, first.body.generatedAt)
+  const strip = body => ({ ...body, generatedAt: 0 })
+  assert.deepEqual(strip(second.body), strip(first.body), 'the document itself is unchanged')
+})
+
+test('feed etag changes when a watched artifact changes', () => {
+  const { root, agi } = feedWorkspace()
+  const before = readFeed(root).res.headers.etag
+
+  writeFileSync(join(agi, 'GOAL.md'), '# goal changed\n')
+  const afterText = readFeed(root).res.headers.etag
+  assert.notEqual(afterText, before, 'GOAL.md content must invalidate the feed')
+
+  // A new worker artifact invalidates it too: those are part of the document.
+  const dir = join(agi, 'subagents', 'w1')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'outcome.md'), 'done')
+  const afterWorker = readFeed(root).res.headers.etag
+  assert.notEqual(afterWorker, afterText, 'a new outcome.md must invalidate the feed')
+
+  // A stat-only fingerprint: same size, newer mtime still counts.
+  const stamp = new Date(Date.now() + 5_000)
+  utimesSync(join(agi, 'GOAL.md'), stamp, stamp)
+  assert.notEqual(readFeed(root).res.headers.etag, afterWorker)
+})
+
+test('a matching if-none-match answers 304 with the etag and no body', () => {
+  const { root } = feedWorkspace()
+  const etag = readFeed(root).res.headers.etag
+  const revalidated = readFeed(root, 'GET', { 'if-none-match': etag })
+  assert.equal(revalidated.status, 304)
+  assert.equal(revalidated.res.headers.etag, etag)
+  assert.equal(revalidated.res.headers['cache-control'], 'no-store')
+  assert.equal(revalidated.res.body, undefined, 'a 304 carries no document')
+})
+
+test('a stale or unrelated if-none-match still gets the document', () => {
+  const { root } = feedWorkspace()
+  const stale = readFeed(root, 'GET', { 'if-none-match': '"not-the-etag"' })
+  assert.equal(stale.status, 200)
+  assert.ok(stale.body.goal?.text != null)
+})
+
+test('if-none-match parsing tolerates weak and comma-list forms', () => {
+  const { root } = feedWorkspace()
+  const etag = readFeed(root).res.headers.etag
+  for (const header of [
+    `W/${etag}`,
+    [`"other"`, etag],
+    `"a", ${etag}`,
+    `  ${etag}  `,
+  ]) {
+    assert.equal(readFeed(root, 'GET', { 'if-none-match': header }).status, 304,
+      `must revalidate for ${JSON.stringify(header)}`)
+  }
+})
+
+test('HEAD stays 200 + etag + no body', () => {
+  const { root } = feedWorkspace()
+  const etag = readFeed(root).res.headers.etag
+  const head = readFeed(root, 'HEAD')
+  assert.equal(head.status, 200)
+  assert.equal(head.res.headers.etag, etag, 'HEAD is a probe: same validator, no document')
+  assert.equal(head.res.body, undefined, 'HEAD never carries the body')
+
+  // A conditional HEAD is still revalidation (RFC 9110 §13.1.3), so it answers
+  // 304 like a GET — with the validator and no body.
+  const conditional = readFeed(root, 'HEAD', { 'if-none-match': etag })
+  assert.equal(conditional.status, 304)
+  assert.equal(conditional.res.headers.etag, etag)
+  assert.equal(conditional.res.body, undefined)
+})
+
+test('a workspace without .agi is still 404 and carries no etag', () => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-etag-empty-'))
+  const missing = readFeed(root)
+  assert.equal(missing.status, 404)
+  assert.equal(missing.res.headers.etag, undefined)
+})
+

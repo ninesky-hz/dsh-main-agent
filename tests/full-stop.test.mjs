@@ -233,6 +233,9 @@ test('Feed stops the root supervisor from a worker view and removes the button',
     Fragment: Symbol('Fragment'),
     createElement(type, props, ...children) { return { type, props: props ?? {}, children } },
     useEffect() {},
+    // The Feed keeps the conditional-refresh ETag in a ref; this harness never
+    // runs effects, so a fresh handle per render is enough.
+    useRef(initial) { return { current: initial } },
     useState(initial) {
       const index = hook++
       if (!(index in state)) state[index] = initial
@@ -298,7 +301,14 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   }
   const render = () => {
     hook = 0
-    return FeedView(props)
+    // Since 0.10.8 the slot registers a wrapper that threads the session-
+    // navigation capability into the view, so one expansion is needed before
+    // the host tree exists — exactly what a real renderer does.
+    let node = FeedView(props)
+    while (node != null && typeof node === 'object' && typeof node.type === 'function') {
+      node = node.type(node.props)
+    }
+    return node
   }
 
   const first = render()
