@@ -24,6 +24,21 @@ export function defineTool(definition) {
   return definition
 }
 `],
+  // `stopHandler` imports the schedule fold dynamically for its Full-stop
+  // transaction. The real fold is a full event-sourced state machine; these
+  // tests only need create/delete bookkeeping to prove the route contract.
+  ['@deepseek-ai/dsh-schedule', `
+export function foldScheduleEvents(events, inheritedCount = 0) {
+  const active = new Map()
+  for (const event of events.slice(inheritedCount)) {
+    if (event?.type !== 'schedule/change') continue
+    const change = event.data ?? {}
+    if (change.operation === 'delete') active.delete(change.id)
+    else if (change.operation === 'create') active.set(change.id, { id: change.id })
+  }
+  return { active: [...active.values()] }
+}
+`],
   // `lib/index.js` only needs its Config schema to be *constructible* at import
   // time; these tests never parse a value through it. A self-returning builder
   // stands in for schemastery's chainable schema API.

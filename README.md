@@ -372,8 +372,10 @@ feed 的读取是**有界且自述的**：单文件只保留末尾 64KB、每个
 巡检提醒（`wakeMinutes`，下限 5 分钟）是持久的 schedule 事件，因此
 agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full stop**
 按钮才真正终结它。从某个 worker 的监督动态 Feed 出发，它会沿继承链回溯到
-根 `main-agent`；如果那个监督者已冷，浏览器会先通过 Harness 既有的
-同 id `session.create` 路径把它恢复，但不启动回合。
+根 `main-agent`；如果那个监督者已冷，宿主侧的 `/supervisor/stop`
+用 Harness 自己的 `sessionController.resolveAgent` 把它恢复（预设组合、
+blank 规则、写入者归属都由控制器负责），但不启动回合 ——
+浏览器不再自己发任何恢复 RPC。
 随后 `POST /supervisor/stop?session=…` 会中止活跃回合、等待空闲，并
 递归释放每个常驻的可续行 worker 分支；它在折叠前冲刷，
 并在 agent 的独占维护窗口内删除**每一条**活跃的 schedule 提醒，

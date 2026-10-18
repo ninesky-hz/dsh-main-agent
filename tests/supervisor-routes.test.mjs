@@ -219,6 +219,91 @@ test('Full stop refuses a POST a foreign page initiated', async () => {
   assert.notEqual(cli.read().status, 403)
 })
 
+test('Full stop cold-resumes a supervisor through the host controller', async () => {
+  // The bug this pins: the browser half used to cold-resume with an RPC whose
+  // endpoint shape no longer existed, so the button reported
+  // "无法恢复监督者" and no stop transaction ever ran. Resume now belongs to the
+  // host, whose `sessionController` owns preset composition and writer claims.
+  const calls = []
+  const agent = {
+    session: {
+      header: { id: 'root', origin: 'root', agentPreset: 'main-agent' },
+      inheritedEventCount: 0,
+      snapshotEvents: () => [],
+      append() {},
+    },
+    status: 'idle',
+    cancel() {},
+    whenIdle: () => Promise.resolve(),
+    runMaintenance: task => task(),
+  }
+  const ctx = {
+    agents: { get: () => undefined },
+    sessions: { flush: async () => {} },
+    subagents: compatibleService([]),
+    get(name) {
+      if (name !== 'sessionController') return undefined
+      return {
+        async resolveAgent(sessionId) {
+          calls.push(sessionId)
+          return { agent }
+        },
+      }
+    },
+  }
+  const { req, res, read } = recorder('POST')
+  req.url = '/supervisor/stop?session=root'
+  req.headers = {}
+  await stopHandler(ctx, req, res)
+
+  const { status, body } = read()
+  assert.equal(status, 200)
+  assert.equal(body.live, true)
+  assert.equal(body.durable, true)
+  assert.equal(body.remindersDeleted, 0)
+  assert.equal(body.workersStopped, 0)
+  assert.deepEqual(calls, ['root'])
+})
+
+test('Full stop reports 409 when neither a live agent nor a controller exists', async () => {
+  const { req, res, read } = recorder('POST')
+  req.url = '/supervisor/stop?session=root'
+  req.headers = {}
+  await stopHandler({ agents: { get: () => undefined } }, req, res)
+  const { status, body } = read()
+  assert.equal(status, 409)
+  assert.match(body.error, /无法恢复 supervisor/)
+  assert.match(body.error, /sessionController/)
+})
+
+test('Full stop does not resume an agent that is already live', async () => {
+  const agent = {
+    session: {
+      header: { id: 'root', origin: 'root', agentPreset: 'main-agent' },
+      inheritedEventCount: 0,
+      snapshotEvents: () => [],
+      append() {},
+    },
+    status: 'idle',
+    cancel() {},
+    whenIdle: () => Promise.resolve(),
+    runMaintenance: task => task(),
+  }
+  let resumed = 0
+  const ctx = {
+    agents: { get: id => (id === 'root' ? agent : undefined) },
+    sessions: { flush: async () => {} },
+    subagents: compatibleService([]),
+    get: () => ({ resolveAgent: async () => { resumed += 1; return { agent } } }),
+  }
+  const { req, res, read } = recorder('POST')
+  req.url = '/supervisor/stop?session=root'
+  req.headers = {}
+  await stopHandler(ctx, req, res)
+  assert.equal(read().status, 200)
+  assert.equal(resumed, 0, 'a published agent must not be resumed again')
+})
+
 test('feed reports what the poller truncated instead of silently dropping it', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-feed-'))
   const agi = join(root, '.agi')

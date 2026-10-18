@@ -245,9 +245,6 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   const calls = []
   const fetch = async (url) => {
     calls.push(String(url))
-    if (url === '/api/session.create') {
-      return { json: async () => ({ result: { ok: true, value: { sessionId: 'root' } } }) }
-    }
     if (url === '/supervisor/stop?session=root') {
       return {
         ok: true,
@@ -311,7 +308,9 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   await new Promise(resolvePromise => setImmediate(resolvePromise))
   await new Promise(resolvePromise => setImmediate(resolvePromise))
 
-  assert.deepEqual(calls, ['/api/session.create', '/supervisor/stop?session=root'])
+  // The host route owns the cold resume, so the browser sends exactly one
+  // request — no RPC that can fail before the stop is even attempted.
+  assert.deepEqual(calls, ['/supervisor/stop?session=root'])
   const second = render()
   assert.equal(
     findElement(second, node => node.type === 'button' && node.children.includes('■ Full stop')),
