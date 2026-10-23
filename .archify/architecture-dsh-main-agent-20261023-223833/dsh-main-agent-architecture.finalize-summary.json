@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\candidate.json",
+    "sha256": "7db410ffcbc0b5d9598e26a65e9e73293f7371acfc5de12d32201a42071901b7",
+    "bytes": 9220
+  },
+  "artifact": {
+    "path": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\dsh-main-agent-architecture.html",
+    "sha256": "b2613ddc183a2fbf9cd2be279939eeec8a773cf1618f6aefb1372110c5e53635",
+    "bytes": 848380
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\dsh-main-agent-architecture.finalize.json",
+    "summaryReceipt": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\dsh-main-agent-architecture.finalize-summary.json",
+    "browserCheckReceipt": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\dsh-main-agent-architecture.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 10870,
+  "browserCheck": {
+    "requested": true,
+    "ran": true
+  }
+}

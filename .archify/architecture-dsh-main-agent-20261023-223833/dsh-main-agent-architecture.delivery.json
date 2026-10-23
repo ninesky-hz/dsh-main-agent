@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "497ea668-931b-4748-84f0-8d7ea0ea7f22",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\candidate.json",
+  "output": "E:\\Ai-project\\dsh-main-agent\\.archify\\architecture-dsh-main-agent-20261023-223833\\dsh-main-agent-architecture.html",
+  "specification": {
+    "sha256": "7db410ffcbc0b5d9598e26a65e9e73293f7371acfc5de12d32201a42071901b7",
+    "bytes": 9220
+  },
+  "artifact": {
+    "sha256": "b2613ddc183a2fbf9cd2be279939eeec8a773cf1618f6aefb1372110c5e53635",
+    "bytes": 848380
+  }
+}

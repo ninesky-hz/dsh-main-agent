@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "dsh-main-agent 插件架构",
+    "locale": "zh-CN",
+    "output": ".archify/architecture-dsh-main-agent-20261023-223833/dsh-main-agent-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/dat-lequoc/dsh-supervisor.git",
+      "provider": "github",
+      "revision": "59027dea427c15700ea13da4b356403d493c1e61"
+    }
+  },
+  "components": [
+    {
+      "id": "user",
+      "type": "external",
+      "label": "操作者",
+      "sublabel": "DSH Web 界面",
+      "icon": "person",
+      "pos": [20, 300],
+      "size": [128, 62]
+    },
+    {
+      "id": "feedView",
+      "type": "frontend",
+      "label": "监督动态 Feed",
+      "sublabel": "conversation.view",
+      "tag": "5s 轮询",
+      "icon": "frontend",
+      "sources": [{ "path": "lib/client.js", "line": 1942, "end_line": 1948 }],
+      "pos": [180, 200],
+      "size": [156, 62]
+    },
+    {
+      "id": "settingsCard",
+      "type": "frontend",
+      "label": "监督者设置卡",
+      "sublabel": "plugins.item",
+      "icon": "frontend",
+      "sources": [{ "path": "lib/client.js", "line": 1957, "end_line": 1966 }],
+      "pos": [180, 292],
+      "size": [156, 62]
+    },
+    {
+      "id": "sidebarEntry",
+      "type": "frontend",
+      "label": "左栏「监督者」行",
+      "sublabel": "sidebar.panellist · order 60",
+      "tag": "一级入口",
+      "icon": "frontend",
+      "sources": [{ "path": "lib/client.js", "line": 1994, "end_line": 2000 }],
+      "pos": [180, 470],
+      "size": [170, 62]
+    },
+    {
+      "id": "supervisorPage",
+      "type": "frontend",
+      "label": "监督者整页",
+      "sublabel": "main · keyed slot",
+      "tag": "复用同一份卡",
+      "icon": "frontend",
+      "sources": [
+        { "path": "lib/client.js", "line": 1976, "end_line": 1986 },
+        { "path": "lib/client.js", "line": 1987, "end_line": 1993 }
+      ],
+      "pos": [448, 470],
+      "size": [164, 62]
+    },
+    {
+      "id": "routes",
+      "type": "backend",
+      "label": "/supervisor/* 路由",
+      "sublabel": "6 条 exact 路由",
+      "tag": "嵌套 fiber",
+      "icon": "backend",
+      "sources": [
+        { "path": "lib/index.js", "line": 564, "end_line": 578 },
+        { "path": "lib/index.js", "line": 306, "end_line": 320 }
+      ],
+      "pos": [640, 200],
+      "size": [170, 62]
+    },
+    {
+      "id": "presetSync",
+      "type": "backend",
+      "label": "preset 行同步",
+      "sublabel": "syncSupervisedPresets",
+      "icon": "backend",
+      "sources": [{ "path": "lib/index.js", "line": 234, "end_line": 250 }],
+      "pos": [640, 292],
+      "size": [170, 62]
+    },
+    {
+      "id": "settingsSvc",
+      "type": "backend",
+      "label": "supervisorSettings 服务",
+      "sublabel": "volatile 配置 + 订阅",
+      "icon": "backend",
+      "sources": [{ "path": "lib/index.js", "line": 541, "end_line": 554 }],
+      "pos": [640, 384],
+      "size": [170, 62]
+    },
+    {
+      "id": "spawnTool",
+      "type": "backend",
+      "label": "subagent 工具",
+      "sublabel": "白名单 + 并发上限",
+      "icon": "backend",
+      "sources": [
+        { "path": "lib/spawn.js", "line": 204, "end_line": 220 },
+        { "path": "lib/spawn.js", "line": 305, "end_line": 320 }
+      ],
+      "pos": [640, 476],
+      "size": [170, 62]
+    },
+    {
+      "id": "agiState",
+      "type": "database",
+      "label": ".agi/ 状态目录",
+      "sublabel": "GOAL · progress · questions",
+      "tag": "单一事实源",
+      "icon": "database",
+      "sources": [{ "path": "lib/index.js", "line": 1119, "end_line": 1131 }],
+      "pos": [870, 200],
+      "size": [166, 62]
+    },
+    {
+      "id": "workerOutcome",
+      "type": "database",
+      "label": "worker outcome",
+      "sublabel": ".agi/subagents/<id>/",
+      "icon": "database",
+      "sources": [{ "path": "lib/index.js", "line": 1251, "end_line": 1258 }],
+      "pos": [870, 292],
+      "size": [166, 62]
+    },
+    {
+      "id": "llm",
+      "type": "external",
+      "label": "模型目录",
+      "sublabel": "llm · provider/model",
+      "icon": "cloud",
+      "sources": [{ "path": "lib/index.js", "line": 609, "end_line": 620 }],
+      "pos": [870, 108],
+      "size": [170, 56]
+    },
+    {
+      "id": "supAgent",
+      "type": "external",
+      "label": "监督者 Agent",
+      "sublabel": "宿主会话 + 注入人格",
+      "tag": "提示词驱动",
+      "icon": "person",
+      "sources": [{ "path": "lib/supervise.js", "line": 20, "end_line": 34 }],
+      "pos": [640, 640],
+      "size": [170, 62]
+    },
+    {
+      "id": "subagents",
+      "type": "cloud",
+      "label": "subagents 运行时",
+      "sublabel": "startActivation",
+      "icon": "cloud",
+      "sources": [{ "path": "lib/spawn.js", "line": 343, "end_line": 357 }],
+      "pos": [870, 640],
+      "size": [170, 62]
+    },
+    {
+      "id": "schedule",
+      "type": "messagebus",
+      "label": "schedule 工具",
+      "sublabel": "巡检提醒",
+      "icon": "calendar",
+      "sources": [{ "path": "lib/preset-files.js", "line": 208, "end_line": 212 }],
+      "pos": [340, 640],
+      "size": [150, 62]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "浏览器 · client bundle",
+      "wraps": ["feedView", "settingsCard", "sidebarEntry", "supervisorPage"]
+    },
+    {
+      "kind": "region",
+      "label": "宿主 · cordis fiber（Node）",
+      "wraps": ["routes", "presetSync", "settingsSvc", "spawnTool"]
+    },
+    {
+      "kind": "region",
+      "label": "工作区 · .agi/",
+      "wraps": ["agiState", "workerOutcome"]
+    }
+  ],
+  "connections": [
+    { "id": "open-feed", "from": "user", "to": "feedView", "label": "打开监督动态", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "open-settings", "from": "user", "to": "settingsCard", "label": "设置页", "fromSide": "right", "toSide": "left" },
+    { "id": "sidebar-click", "from": "user", "to": "sidebarEntry", "label": "点左栏行", "variant": "emphasis", "fromSide": "bottom", "toSide": "left" },
+    { "id": "select-panel", "from": "sidebarEntry", "to": "supervisorPage", "label": "selectPanel(id)", "variant": "emphasis", "fromSide": "right", "toSide": "left" },
+    { "id": "feed-poll", "from": "feedView", "to": "routes", "label": "GET feed", "variant": "emphasis" },
+    { "id": "settings-data", "from": "settingsCard", "to": "routes", "label": "models / presets" },
+    { "id": "read-state", "from": "routes", "to": "agiState", "label": "读盘 + ETag", "variant": "emphasis" },
+    { "id": "save-config", "from": "settingsCard", "to": "settingsSvc", "label": "保存 → patch.yml" },
+    { "id": "preset-rewrite", "from": "routes", "to": "presetSync", "label": "presets 处理器", "fromSide": "bottom", "toSide": "top" },
+    { "id": "settings-fanout", "from": "settingsSvc", "to": "spawnTool", "label": "读白名单/上限", "fromSide": "bottom", "toSide": "top" },
+    { "id": "spawn-worker", "from": "supAgent", "to": "spawnTool", "label": "调用工具", "fromSide": "top", "toSide": "bottom" },
+    { "id": "activate", "from": "spawnTool", "to": "subagents", "label": "startActivation" },
+    { "id": "write-outcome", "from": "subagents", "to": "workerOutcome", "label": "写 outcome.md", "fromSide": "top", "toSide": "bottom" },
+    { "id": "settle-back", "from": "subagents", "to": "supAgent", "label": "收敛即回调", "fromSide": "left", "toSide": "right" },
+    { "id": "wake", "from": "supAgent", "to": "schedule", "label": "巡检提醒", "fromSide": "left", "toSide": "right" },
+    { "id": "catalog", "from": "llm", "to": "routes", "label": "模型目录" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "一个插件，两个运行时",
+      "items": [
+        "服务端：cordis fiber 注册 6 条 /supervisor/* exact 路由、supervisorSettings 服务、subagent 工具",
+        "浏览器：client bundle 只注册 slot —— conversation.view、plugins.item、以及左栏的 sidebar.panellist + main 一对",
+        "两侧无直接引用，全部经 HTTP 路由通信"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "左栏行必须和一个 main 面板成对",
+      "items": [
+        "sidebar.panellist 出条目，main（keyed）出页面，两者共用 PANEL_ID = 'supervisor'",
+        "只有行没有页面：点击时 layout.selectPanel 抛 main panel \"supervisor\" is not registered，所以两侧共用同一个 whileServed 生命周期",
+        "图标是自绘 SVG：跨插件的 value import 被 client bundle purity gate 禁止"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "循环是提示词驱动的",
+      "items": [
+        "服务端没有调度循环：SUPERVISOR_PERSONA 要求 agent start_goal → 派生 worker → schedule_create 休眠 → 唤醒复查",
+        ".agi/ 是唯一事实源，feed 每次轮询直接读盘并用 ETag 短路未变更响应",
+        "preset 同步只负责把 tool-schedule / 本插件 subagent 行写进 profile 的 loader；并发上限在工具调用时读实时配置，0 表示不限"
+      ]
+    }
+  ]
+}

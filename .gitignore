@@ -4,4 +4,3 @@ node_modules/
 tutorial/.venv/
 *orig-backup*
 .agi/
-.archify/
