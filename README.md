@@ -389,8 +389,12 @@ Harness 行为。
 计时旋钮分两层：全局默认在设置卡片（`agi-supervisor-setup` 域里的
 `wakeMinutes` 与 `questionWaitMinutes`），而 `<workspace>/.agi/config.json` 里
 **带着同名键时会覆盖它们**（这个文件是 USER-ONLY 的：agent 可以提议修改，但
-绝不直接编辑它）。`wakeMinutes` 是巡检节奏（≥ 5 —— schedule 的下限），
-`questionWaitMinutes` 是记录假设并继续之前等待答复的时长。
+绝不直接编辑它）。`wakeMinutes` 是**空闲基线**，实际间隔由服务端按状态自适应
+（worker 在跑 60–120 秒、等你回答 5–15 分钟、连续无新证据一路退避到 30 分钟，
+下限 60 秒 = schedule 的硬下限），`questionWaitMinutes` 是记录假设并继续之前
+等待答复的时长。`watchdogEnabled` 让服务端在「目标还在、却没有任何提醒」时
+自己补一条兜底提醒，`workerDeadlineMinutes` 到点中断停滞的 worker，
+`maxSpawnTotal` 限制整个会话累计派生量。
 
 该 preset 把恢复与连续性当作明确的不变量。在升级一个阻塞项之前，
 监督者必须检查仓库本地的 runbook 与
@@ -444,7 +448,10 @@ runbook、自动化脚本或源码入口，`start_goal` 会被额外
 | `workerModels` | 必填 `subagent.model` 的完整白名单：`runtime/current` 和/或精确的 `provider/model-id` 路由；全新安装 = `runtime/current`；留空 = 禁用派生 | 下一次工具调用与下一份工具 schema（实时） |
 | `workerEfforts` | 从每条被允许路由到用户所选推理强度的映射；`provider/default` 不发送显式推理强度（全新安装与缺失条目的默认值），而 `high` 之类的固定 id 来自该路由的原生目录 | 下一次派生与下一份工具描述（实时） |
 | `maxParallelWorkers` | 同时打开的 worker 上限，在派生时**强制执行**；0 = 不限 | 下一次工具调用（实时） |
-| `wakeMinutes` | 监督者隔多久醒来巡检运行中的 worker（分钟；周期性提醒，≥ 5） | 下一回合（实时） |
+| `wakeMinutes` | 空闲基线（分钟，≥ 1）：实际唤醒间隔由 `GET /supervisor/loop` 按状态给出（worker 在跑 60–120 秒、等回答 5–15 分钟、无新证据退避到 30 分钟） | 下一回合（实时） |
+| `watchdogEnabled` | 服务端兜底：目标未完成且没有任何 active 提醒时，自己补一条 `watchdog · 监督循环兜底`（默认开） | 下一次巡检（实时） |
+| `workerDeadlineMinutes` | worker 停滞超时（分钟；0 = 不管）；到点由服务端 `interrupt` 并记停滞 | 下一次巡检（实时） |
+| `maxSpawnTotal` | 整个会话累计派生 worker 预算（0 = 不限）；与「同时上限」互补 | 下一次工具调用（实时） |
 | `questionWaitMinutes` | 监督者等待问题答复的时长；超时后记录一个假设并继续 | 下一回合（实时） |
 | `supervisedPresets` | 还要跑监督循环的 preset id 列表（`main-agent` 永远算，不在此列）；见下面「跨模式」 | 下一次对账即生效（实时，见该节） |
 | `syncPreset` | 随包 preset 装到 `.agent-presets/` 的策略：`if-absent`（默认，只在缺失时安装）/ `always` / `never` | **仅 mount 时**，不是 UI 旋钮、不随会话变化 |
@@ -663,8 +670,8 @@ artifact 目录），`workerId` 只是**二次匹配**。Feed 先在还没被认
 
 ### Full stop（完全停止：监督动态 Feed 头部的按钮）
 
-原生停止方块只会中止当前回合 —— 监督者的周期性
-巡检提醒（`wakeMinutes`，下限 5 分钟）是持久的 schedule 事件，因此
+原生停止方块只会中止当前回合 —— 监督者的
+巡检提醒是持久的 schedule 事件（存在宿主 domain 表里，不是日志），因此
 agent 几分钟后会自行再次运行。监督动态 Feed 头部的 **■ Full stop**
 按钮才真正终结它。从某个 worker 的监督动态 Feed 出发，它会沿继承链回溯到
 根 `main-agent`；如果那个监督者已冷，宿主侧的 `/supervisor/stop`

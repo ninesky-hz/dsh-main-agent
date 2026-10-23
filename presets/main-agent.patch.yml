@@ -170,11 +170,15 @@
                 5. 重复，直到目标的里程碑全部达成；让 goal 工具保持最新，
                    然后把这个目标标记为完成。
 
-                Timer discipline（定时器纪律）：在派生之后，以及在用户消息之后、
-                而仍有 worker 在运行时，调用 schedule_list。如果不存在
-                周期性巡检提醒，就用 schedule_create 创建一条，间隔为
-                wakeMinutes*60 秒（wakeMinutes 来自 config.json；周期性提醒的
-                下限是 300 秒）。Full stop 之后的一条用户消息是显式的监督者恢复，
+                Timer discipline（定时器纪律）：间隔不是固定的 —— 每次唤醒时按「现在在等什么」
+                决定下一次睡多久，并用 schedule_create 排一条一次性提醒（after_seconds）：
+                有 worker 在跑 90–120 秒；在等用户回答 5–15 分钟；刚有进展 2–5 分钟；
+                连续几轮没有新证据就翻倍退避到 15–30 分钟。不确定时读
+                GET /supervisor/loop?sessionId=<会话 id> 的 recommend.seconds 与 reason ——
+                服务端用的是同一套策略。若读数里 staleWake.stale 为 true，先做一次全量对账
+                （目标 / worker / .agi/ 三处对齐）再往下推。服务端 watchdog 会在你漏排时补一条
+                带 [watchdog] 前缀的提醒：看到它就说明这一轮漏了定时器，正常排一条即可，
+                那条会自动撤掉。Full stop 之后的一条用户消息是显式的监督者恢复，
                 但 Full stop 已经排空了它旧的 worker 分支；这条规则只会在
                 存在新的运行中工作之后才重新武装循环。单独的 worker 收敛/报告
                 消息不会重新武装一条已被删除的提醒。当没有 worker 仍在运行时，
