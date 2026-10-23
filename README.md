@@ -428,6 +428,40 @@ runbook、自动化脚本或源码入口，`start_goal` 会被额外
 检查、图表）派到那里；worker 用 `read_image` 读文件，而 harness
 仅在支持图像的模型路由上允许该工具。
 
+### 跨模式：让别的 preset 也跑监督循环
+
+监督循环默认只属于 `main-agent`。若希望 `standard`、`minimal`、`ptc` 这类
+preset 也能主动跑循环（而不只是让 Feed 面板可见），在同一张设置卡片里勾选
+**启用监督循环的模式** 即可 —— 列表来自 `agentPresets.list()`，一个 preset
+对应一个复选框。
+
+这个操作改写的是该 preset 的 loader 行 `plugins`，且只动四行，其余行逐字节不变：
+
+| 行 | 从 | 到 |
+|---|---|---|
+| `persona.config.prefix` | `""` | 监督者人格（目标 / 状态 / 循环 / 定时器 / 边界） |
+| `tool-goal.name` | `@deepseek-ai/dsh-tool-goal` | `dsh-main-agent/goal`（`start_goal`） |
+| `tool-subagent-control.name` | `@deepseek-ai/dsh-tool-subagent-control` | `dsh-main-agent/control`（运行中纠偏） |
+| `tool-subagent.name` | `@deepseek-ai/dsh-tool-subagent` | `dsh-main-agent/spawn`（强制从白名单选 model） |
+
+`tool-subagent-list-agents` 与 `tool-subagent-fork` 保持官方实现，`disabled`
+行、`!!js` 条件与 group 结构都不受影响。`main-agent` 恒为监督者，在列表里
+只展示不可勾选。
+
+生效是**热的**：preset 的 `Service.init` 是 async generator，注册返回的
+unregister 会在 fiber dispose 时自动调用，所以改写 `plugins` → 重启 fiber
+→ 旧定义先注销、新定义再注册，不会撞 `Duplicate agent preset`，也不需要
+重启进程。勾选结果持久化在 `agi-supervisor-setup` 域，进程启动后由一次幂等
+的对账重建。
+
+> 这一步改变的是**行为**，不只是面板可见性：勾选的 preset 每回合都会想锁定
+> 目标、派 worker、写 `.agi/`。对「只想快速改个文件」的会话，留在未勾选状态
+> 更省事。
+>
+> 静态写死等价于 `scripts/inject-supervisor.mjs --target <preset> --write`，
+> 它会往 profile patch 里写一份快照；设置卡片里的勾选则始终跟上游 preset
+> 内容走，升级 dsh 后不用重跑脚本。
+
 ## 监督动态 Feed 标签页
 
 每个会话的视图环（承载 **Chat** 与 **Trajectory** 的标签页）会多出一个
