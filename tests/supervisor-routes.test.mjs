@@ -103,6 +103,28 @@ test('health is a diagnostic route, so a missing service still answers 200', () 
   assert.ok(body.subagents.missing.length > 0)
 })
 
+test('health publishes which presets count as a supervisor', () => {
+  // The Feed tab decides who is a supervisor from this list, so it has to
+  // agree with whatever the Settings card switched on — and the built-in id
+  // is never absent, even before the user has saved anything.
+  const fresh = recorder()
+  healthHandler({ subagents: compatibleService() }, fresh.req, fresh.res)
+  assert.deepEqual(fresh.read().body.supervisorPresets, ['main-agent'])
+
+  const switched = recorder()
+  healthHandler({ subagents: compatibleService() }, switched.req, switched.res, {
+    config: { supervisedPresets: ['unrestricted', 'standard'] },
+  })
+  assert.deepEqual(switched.read().body.supervisorPresets, ['main-agent', 'unrestricted', 'standard'])
+
+  // Saving 'main-agent' explicitly must not duplicate it.
+  const deduped = recorder()
+  healthHandler({ subagents: compatibleService() }, deduped.req, deduped.res, {
+    config: { supervisedPresets: ['main-agent'] },
+  })
+  assert.deepEqual(deduped.read().body.supervisorPresets, ['main-agent'])
+})
+
 test('health rejects non-GET methods with 405 + Allow', () => {
   const { req, res } = recorder('POST')
   healthHandler({ subagents: compatibleService() }, req, res)
