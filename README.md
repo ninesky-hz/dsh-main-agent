@@ -31,8 +31,11 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 200+ 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
-完整 profile 的 `--dump-config` 组合与实机启动验证（`/supervisor/models` 返回 `200`）。
+本仓库的 **203 项**单元测试（`tests/` 下 21 个 `.test.mjs`）在 dsh `0.2.1-rc.2` 上跑出
+**194 通过 / 9 按平台跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
+（`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
+的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
 记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、
@@ -44,7 +47,7 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
 
 ```sh
 mkdir -p "$HOME/src"
-git clone https://github.com/dat-lequoc/dsh-supervisor.git "$HOME/src/dsh-main-agent"
+git clone https://gitee.com/n-sky/dsh-main-agent.git "$HOME/src/dsh-main-agent"
 cd "$HOME/src/dsh-main-agent"
 ./tutorial/setup.sh
 ```
@@ -108,10 +111,14 @@ dsh web
 2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 里的最后一份 patch）
    向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
    唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
-   「Main Agent（监督者）」，以及
+   「Main Agent（监督者）」；
 3. 运行本包的 setup 插件（`lib/index.js`），它把随包携带的
    **`main-agent` preset** 安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/` —— 仅在缺失时安装，
-   绝不覆盖你的修改（行配置 `syncPreset: always | if-absent | never`）。
+   绝不覆盖你的修改（行配置 `syncPreset: always | if-absent | never`），
+4. **对账跨模式勾选**：按设置里的 `supervisedPresets` 把监督层重新叠加到那几条
+   preset 的 loader 行上（mount 时一次 + 两次延迟重试，因为 preset 行未必在本插件
+   之后挂载）。这一步是幂等的，已在目标状态的 preset 不会触发 `entry.update`，
+   也就不会白白重启 fiber。
 
 然后为监督者的状态创建一个工作区：
 
@@ -379,9 +386,11 @@ Harness 行为。
 渲染进每个请求，因此监督者在规则上无法围绕
 “仍在运行”空转。
 
-用户所有的旋钮位于 `<workspace>/.agi/config.json`（agent 可以提议修改，但
-绝不直接编辑它）：`wakeMinutes`（巡检节奏，≥ 5 —— schedule 的下限）与
-`questionWaitMinutes`（在记录假设并继续之前等待答复的时长）。
+计时旋钮分两层：全局默认在设置卡片（`agi-supervisor-setup` 域里的
+`wakeMinutes` 与 `questionWaitMinutes`），而 `<workspace>/.agi/config.json` 里
+**带着同名键时会覆盖它们**（这个文件是 USER-ONLY 的：agent 可以提议修改，但
+绝不直接编辑它）。`wakeMinutes` 是巡检节奏（≥ 5 —— schedule 的下限），
+`questionWaitMinutes` 是记录假设并继续之前等待答复的时长。
 
 该 preset 把恢复与连续性当作明确的不变量。在升级一个阻塞项之前，
 监督者必须检查仓库本地的 runbook 与
@@ -437,6 +446,8 @@ runbook、自动化脚本或源码入口，`start_goal` 会被额外
 | `maxParallelWorkers` | 同时打开的 worker 上限，在派生时**强制执行**；0 = 不限 | 下一次工具调用（实时） |
 | `wakeMinutes` | 监督者隔多久醒来巡检运行中的 worker（分钟；周期性提醒，≥ 5） | 下一回合（实时） |
 | `questionWaitMinutes` | 监督者等待问题答复的时长；超时后记录一个假设并继续 | 下一回合（实时） |
+| `supervisedPresets` | 还要跑监督循环的 preset id 列表（`main-agent` 永远算，不在此列）；见下面「跨模式」 | 下一次对账即生效（实时，见该节） |
+| `syncPreset` | 随包 preset 装到 `.agent-presets/` 的策略：`if-absent`（默认，只在缺失时安装）/ `always` / `never` | **仅 mount 时**，不是 UI 旋钮、不随会话变化 |
 
 修改是**实时**的 —— 无需重启、无需新会话：插件会重新解析
 白名单并重新挂载 `subagent`，使其 `model` 枚举与能力标签只显示
@@ -509,9 +520,9 @@ unregister 会在 fiber dispose 时自动调用，所以改写 `plugins` → 重
 > 目标、派 worker、写 `.agi/`。对「只想快速改个文件」的会话，留在未勾选状态
 > 更省事。
 >
-> 静态写死等价于 `scripts/inject-supervisor.mjs --target <preset> --write`，
-> 它会往 profile patch 里写一份快照；设置卡片里的勾选则始终跟上游 preset
-> 内容走，升级 dsh 后不用重跑脚本。
+> 静态写死等价于 `scripts/inject-supervisor.mjs --target <preset> --write`
+> （`--dry-run` 只打印将改的行，`--revert` 把快照撤回），它会往 profile patch
+> 里写一份快照；设置卡片里的勾选则始终跟上游 preset 内容走，升级 dsh 后不用重跑脚本。
 
 #### 由插件直接注册的模式
 
@@ -527,12 +538,25 @@ composition 文件 `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`：
 - `redteam` 的 composition 没有 `tool-schedule`，这一行会被补上，否则循环里的
   定时器分支指向不存在的工具。
 
-代价是**需要重启 DSH 才生效**：这类 preset 的定义在插件启动时读一次文件。
-卡片上会显示`✓ 已写入磁盘，重启 DSH 后生效`。
+写盘是**持久的一半**，挂载是**即时的一半**（0.12.1 起）：这些 preset 的定义虽不经过
+loader，但注册表把整条记录放在 `definitions` 上、`activate()` 又是原型方法，所以插件
+换掉 `record.config.plugins` 再 `activate()` 一次，**之后新建的会话立刻就是监督者**，
+不用重启 DSH。已经在跑的会话不会被踢 —— 旧 generation 先置 `retired`，`collect()`
+要等 `users` 归零才真正 dispose，它们把旧的那份用完。
+
+这两个成员都是未公开接口，所以每次挂载失败都降级成 `false` 而不是抛异常：换了
+harness 版本就退回「写盘、下次启动生效」，绝不假装成功。卡片据此显示
+`✓ 已启用，立即生效` 或 `✓ 已写入磁盘，重启 DSH 后生效`；`GET /supervisor/presets`
+里对应的字段是 `fileBacked`（这个 preset 有没有可写的 composition 文件）与
+`pendingRestart`（磁盘上是否有待下次启动加载的改动）。
+
+这里是**两层还原**：文件层用 `agent.cordis.yml.supervisor.bak` 覆盖回去（`redteam`
+自带 263 字指挥人格，反向剥离会把 persona 清空），内存层用首次见到时
+`structuredClone` 下来的原始 `plugins`（baseline），所以来回切换是字节级一致。
 
 少数 preset（如 `unrestricted` 派生的 `unrestricted-child-*`）完全由运行时生成，
 既没有 loader 行也没有文件，卡片上标注`由插件在运行时生成，没有可改写的文件`
-且不可勾选。
+且不可勾选（`fileBacked: false` 且无 baseline）。
 
 ## 监督动态 Feed 标签页
 
@@ -541,12 +565,19 @@ composition 文件 `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`：
 实时目标卡片、worker（含 `outcome.md`）、进度时间线、提问
 栈、动作变更日志、笔记与任务报告，每约 5 秒刷新一次。
 它作为持久客户端插件随本 bundle 发布（`lib/client.js`，通过
-harness 的 client-modules 扫描提供），外加三个宿主路由：
-`GET /supervisor/feed?ws=…` 读取 `.agi/` 目录树，
-`GET /supervisor/workers?session=…` 把子级目录与 live agent 状态合成
-每-run worker 列表（宿主不再暴露 `subagent.list` RPC，其 catalog 也不报告
-activity），`GET /supervisor/health` 报告宿主 `ctx.subagents` 是否具备本插件
-所需的 0.2.x 方法（不兼容时 Feed 顶部显示红色横幅，而不是静默假装正常）。
+harness 的 client-modules 扫描提供），外加**六个**宿主路由：
+
+| 路由 | 作用 |
+|---|---|
+| `GET /supervisor/feed?ws=…` | 读取 `.agi/` 目录树（带 ETag 条件刷新，见下） |
+| `GET /supervisor/workers?session=…` | 把子级目录与 live agent 状态合成每-run worker 列表（宿主不再暴露 `subagent.list` RPC，其 catalog 也不报告 activity） |
+| `GET /supervisor/health` | 宿主 `ctx.subagents` 是否具备本插件所需的 0.2.x 方法；额外带 `package`、`version` 与 `supervisorPresets`（内置 `main-agent` 恒在首位，其余来自设置里的 `supervisedPresets`）—— Feed 与设置卡片用同一份名单判定「谁是监督者」，不会各说各话 |
+| `GET /supervisor/models` | 合成 `runtime/current` + 宿主模型目录（`provider/model-id`、原生输入模态、推理能力），供设置卡片的下拉框 |
+| `GET`/`POST /supervisor/presets` | `GET` 列出每个 preset 的 `supervised` / `fileBacked` / `pendingRestart`；`POST {supervised: string[]}` 写回设置并立即对账（见「跨模式」） |
+| `GET`/`POST /supervisor/stop` | 循环状态查询与 Full stop（见下文） |
+
+`health` 报不兼容时 Feed 顶部显示红色横幅，而不是静默假装正常。
+
 feed 的读取是**有界且自述的**：单文件只保留末尾 64KB、每个 JSONL 只保留最新
 300 条、worker 产物只保留最新 20 个目录，被截断的部分会在 Feed 顶部明说
 （`truncated`）；请求失败与"该工作区没有 .agi/"是两种不同的 UI 状态，
@@ -559,8 +590,9 @@ Feed 上有三处读法值得单独说清（0.10.7）：
 **提问栈**读 `.agi/questions.jsonl` 的 `q` 字段，并把
 `pending/assumed/answered/withdrawn` 显示成待答/已假设/已回答/已撤回 ——
 看到的是问题本身，而不是问题 id；
-**worker 卡片**把每份 `outcome.md` 挂回它自己那一行（按 worker session id
-匹配，行上同时显示短 id，`title` 里有完整 id），当前目录已不包含的历史结果
+**worker 卡片**把每份 `outcome.md` 挂回它自己那一行（**目录名是主键**，
+产物头行的 `worker:` 声明是二次匹配 —— 细节见下面 0.10.9 一节；行上同时显示短 id，
+`title` 里有完整 id），当前目录已不包含的历史结果
 收进下方的「历史结果」兜底区，而不是和行混在一起；
 **监督循环**卡片消费 `GET /supervisor/stop?session=…`，显示循环是否还武装着、
 有几个活动 worker、以及下一条提醒大约几分钟后醒来（`reminders` 是记录数组
@@ -656,7 +688,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 
 | 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片） |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
 | `patches/schedule.patch.yml` | 声明随包 schedule 行（`agi-schedule`）的 bundle patch，自带 `disabled: !!js` 自判定守卫：组合里已有别的 `@deepseek-ai/dsh-schedule` 提供者时本行自动让位。`dsh.bundle.patch` 里排在 preset 声明之前 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
@@ -665,13 +697,16 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
 | `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
 | `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
-| `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N7、G1）与 v2 计划 |
+| `scripts/sync-preset-patch.mjs` | 从 `agent-presets/main-agent/` 重新生成 `presets/main-agent.patch.yml`（`npm run sync-preset`，`prepack` 也会跑） |
+| `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
+| `tests/` | 21 个 `node --test` 文件、203 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、install-spec、repair-profile 等 |
+| `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 评分
 
 ```sh
 ./tutorial/grade.sh all --ws ~/agi-lab    # m0–m6 report with bar chart
-./tutorial/grade.sh m7 --ws ~/agi-acceptance  # acceptance + restart evidence
+./tutorial/grade.sh m7 --ws ~/agi-acceptance  # m7 会先在验收工作区重跑 m2–m5，再做验收 + 重启证据
 ./tutorial/grade.sh doctor                # what the grader can see
 
 # dsh web 带令牌启动时（启动行里的 ?token=…），把令牌也交给评分器 ——
@@ -690,6 +725,8 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 S=$(python3 tutorial/drive.py create --cwd ~/agi-lab)       # new supervisor session
 python3 tutorial/drive.py send "$S" "your mission here"     # prompt + wait + tail
 python3 tutorial/drive.py tail "$S"                          # readable event tail
+python3 tutorial/drive.py wait "$S" --timeout 1800           # block until the turn ends
+python3 tutorial/drive.py watch "$S"                         # follow events live
 ```
 
 ## 从零学起
