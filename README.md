@@ -462,6 +462,27 @@ unregister 会在 fiber dispose 时自动调用，所以改写 `plugins` → 重
 > 它会往 profile patch 里写一份快照；设置卡片里的勾选则始终跟上游 preset
 > 内容走，升级 dsh 后不用重跑脚本。
 
+#### 由插件直接注册的模式
+
+`redteam`、`unrestricted` 这类由别的插件调用 `agentPresets.register()` 注册的
+preset 不在 loader 里，没有可改写的 `plugins` 数组。勾选它们时改写的是它自己的
+composition 文件 `${DSH_HOME}/.agent-presets/<id>/agent.cordis.yml`：
+
+- 首次改写前把原文整份留成 `agent.cordis.yml.supervisor.bak`；
+- 改写走 `yaml` 的 Document API，注释、`!!js` 标签原样保留；
+- 取消勾选直接用备份覆盖回去 —— 是字节级还原，不是反向变换；
+- 幂等：已经带监督层时再点保存不重写文件（`yaml` 每次序列化都会重排块标量
+  缩进，靠文本比较会误判成变更）；
+- `redteam` 的 composition 没有 `tool-schedule`，这一行会被补上，否则循环里的
+  定时器分支指向不存在的工具。
+
+代价是**需要重启 DSH 才生效**：这类 preset 的定义在插件启动时读一次文件。
+卡片上会显示`✓ 已写入磁盘，重启 DSH 后生效`。
+
+少数 preset（如 `unrestricted` 派生的 `unrestricted-child-*`）完全由运行时生成，
+既没有 loader 行也没有文件，卡片上标注`由插件在运行时生成，没有可改写的文件`
+且不可勾选。
+
 ## 监督动态 Feed 标签页
 
 每个会话的视图环（承载 **Chat** 与 **Trajectory** 的标签页）会多出一个
