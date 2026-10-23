@@ -1,6 +1,6 @@
 {
   "name": "dsh-main-agent",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 加 schedule 叠加层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
@@ -26,6 +26,7 @@
     "test": "node --test tests/*.test.mjs",
     "sync-preset": "node scripts/sync-preset-patch.mjs",
     "repair-profile": "node scripts/repair-profile.mjs",
+    "install-spec": "node scripts/install-spec.mjs",
     "prepack": "node scripts/sync-preset-patch.mjs"
   },
   "license": "MIT",

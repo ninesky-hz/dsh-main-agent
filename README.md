@@ -31,7 +31,7 @@ schedule 服务配置 —— 零自研循环机制。本仓库**就是一个可�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 75 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
+本仓库的 200+ 项单元测试在 dsh `0.2.1-rc.2` 的运行时归档上全部通过；0.2.0-rc.2 上还做过
 完整 profile 的 `--dump-config` 组合与实机启动验证（`/supervisor/models` 返回 `200`）。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
@@ -133,6 +133,57 @@ cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 **不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
 不会与守卫冲突），不必回退。
 </details>
+
+### 若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`
+
+安装时若撞到下面这条：
+
+```
+[ERR_PNPM_TARBALL_EXTRACT] Failed to add tarball from
+  "https://gitee.com/n-sky/dsh-main-agent" to store:
+  Invalid checksum for TAR header at offset 0. Expected NaN, got 47706
+```
+
+**那不是仓库坏了，是安装地址漏了 `.git`。** 注意报错里回显的 URL 就是漏掉后缀的那个。
+pnpm 用 npm-package-arg 判定 spec 类型，只有下面几种算 **git 依赖**（走 git 协议）：
+
+- 以 `.git` 结尾的 URL —— `https://gitee.com/n-sky/dsh-main-agent.git`
+- `git+…` / `git:` / `ssh://` 前缀，或 `git@host:owner/repo`
+- `github:` / `gitlab:` / `bitbucket:` / `gitea:` 简写
+
+**其余任何 http(s) URL 都被当成远程 tarball**（`type: remote`）直接 GET。而 gitee /
+github 的仓库页返回的是仓库说明文本（`200 text/plain`，以 `# dsh-main-agent` 开头）
+而不是 tar 流，tar 解析器在偏移 0 拿到的自然不是 512 字节 tar 头 —— `Expected NaN`
+就是这么来的，重试几次都不会变。
+
+补上三个字符即可：
+
+```sh
+# ✗ 浏览器地址栏里直接复制出来的
+dsh plugin --profile web add https://gitee.com/n-sky/dsh-main-agent
+
+# ✓ 带 .git
+dsh plugin --profile web add https://gitee.com/n-sky/dsh-main-agent.git
+```
+
+0.12.3 起随包带一个离线小工具，把地址栏 URL 直接换成能用的 spec，也能反查安装日志
+（不联网、不执行 pnpm、不改任何文件）：
+
+```sh
+node scripts/install-spec.mjs https://gitee.com/n-sky/dsh-main-agent
+# → https://gitee.com/n-sky/dsh-main-agent.git
+
+node scripts/install-spec.mjs --profile desktop https://gitee.com/n-sky/dsh-main-agent
+# → dsh plugin --profile desktop add https://gitee.com/n-sky/dsh-main-agent.git
+
+node scripts/install-spec.mjs --diagnose out.log
+# → pnpm 把 "https://gitee.com/n-sky/dsh-main-agent" 当成 tarball 下载了……
+#   改用 "https://gitee.com/n-sky/dsh-main-agent.git"。
+```
+
+它同时收掉几种常见的手抖写法：尾斜杠（`….git/`）、`/tree/<branch>/…` 或
+`/blob/<branch>/…` 页面地址（归约成 `owner/repo.git`）、`#<tag>` 片段（保留在 `.git`
+之后）。已经是 `git+…` / `github:` 简写 / `file:` 本地路径 / 真正的 `.tgz` 则原样放过。
 
 ## 升级与卸载
 
@@ -613,6 +664,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
 | `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
+| `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N7、G1）与 v2 计划 |
 
 ## 评分
