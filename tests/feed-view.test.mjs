@@ -468,7 +468,7 @@ test('the loop card shows whether the loop is armed and when it wakes next', asy
   assert.match(text, /约 90 分钟后/)
   // The nearest reminder is the highlighted one.
   const nearest = findElement(card, node => node.type === 'span' && textOf(node).includes('约 2 分钟后'))
-  assert.equal(nearest.props.style.fontWeight, 700)
+  assert.equal(nearest.props.style.fontWeight, 600)
   const far = findElement(card, node => node.type === 'span' && textOf(node).includes('约 90 分钟后'))
   assert.equal(far.props.style.fontWeight, 400)
 })
@@ -681,5 +681,94 @@ test('a failed poll drops the ETag, so a stale one cannot wedge the Feed on 304'
   assert.doesNotMatch(textOf(tree), /无法读取监督动态/, 'a later 200 clears the error state')
   assert.doesNotMatch(textOf(tree), /内容无变化/, 'unchanged must not be left true')
   assert.match(textOf(cardTitled(tree, '进度')), /还没有任何内容/, 'the document renders again')
+})
+
+test('long records are clamped and scroll inside their card, not down the page', async () => {
+  // Regression (0.12.4): 进度/提问/变更日志 把每条记录的全文原样铺开，一条几百字
+  // 的记录就是十几行，一堵字墙把整页拉到很长。三件事必须同时成立：长卡片的
+  // 内容区有高度上限并自己滚、单条记录折成固定行数并给「展开」（默认不折叠会让
+  // 断言看不见 clamp，默认折叠但不给展开按钮则是丢内容）、且所有卡片保持同一
+  // 列宽 —— 2.x 曾把两张卡整行宽铺，宽度在 1/3 之间跳变、行也对不齐，那正是
+  // 用户说的「不协调」。
+  const longText = '很长的记录'.repeat(60)
+  const feed = {
+    ...FEED,
+    progress: Array.from({ length: 20 }, (_, index) => ({
+      ts: Date.now() - index * 60_000, text: longText,
+    })),
+    questions: [{ ts: Date.now(), status: 'pending', q: longText }],
+    changelog: [{ ts: Date.now(), action: 'spawn', summary: longText }],
+  }
+  const harness = await mountFeed({ sessions: ROOT_SESSION, feed })
+  const tree = await harness.render()
+
+  for (const title of ['进度', '变更日志']) {
+    const card = cardTitled(tree, title)
+    assert.ok(card, `${title} must render`)
+    assert.equal(card.props.style.gridColumn, undefined,
+      `${title} 不再整行宽铺：宽度节奏统一后页面才对齐`)
+    const scroller = findElement(card,
+      node => typeof node.props?.style?.maxHeight === 'number' && node.props.style.overflow === 'auto')
+    assert.ok(scroller, `${title} 的内容区必须有内部滚动上限，否则整页跟着它变长`)
+  }
+
+  // 长列表卡片用的是同一个高度令牌，一行里的卡片下沿才对得齐。
+  const heights = ['进度', '提问', '变更日志'].map(title => {
+    const card = cardTitled(tree, title)
+    const scroller = findElement(card,
+      node => typeof node.props?.style?.maxHeight === 'number' && node.props.style.overflow === 'auto')
+    return scroller.props.style.maxHeight
+  })
+  assert.equal(new Set(heights).size, 1,
+    `长列表卡片应共用同一个高度上限，实际为 ${heights.join(' / ')}`)
+
+  // 每条长记录折叠成两行，并且带一个能展开的按钮（内容不能丢）。
+  const clamped = findElement(tree, node => node.props?.style?.WebkitLineClamp === 2)
+  assert.ok(clamped, '长记录必须默认 -webkit-line-clamp 折叠')
+  assert.equal(clamped.props.style.whiteSpace, 'pre-wrap', '折叠不能把换行压掉')
+  const expand = findElement(tree, node => node.type === 'button'
+    && typeof node.props?.onClick === 'function'
+    && /展开/.test(textOf(node)))
+  assert.ok(expand, '折叠的长记录必须给「展开」按钮')
+
+  // 提问卡片里的长问题同样折叠（3 行），否则一条提问就能撑满整列。
+  const question = cardTitled(tree, '提问')
+  assert.ok(findElement(question, node => node.props?.style?.WebkitLineClamp === 3))
+})
+
+test('every feed card shares one width/type scale, so the grid reads as one block', async () => {
+  // 卡片各自为政（gap 12/10、字号 11-14、圆角各不相同、标题 uppercase）是
+  // 「界面不协调」的另一半。这里锁住三条：网格用同一 gap、卡片不宽铺、
+  // 卡片标题不再靠 uppercase/字距 撑样式（对中文没有大小写，只会显得松散）。
+  const harness = await mountFeed({ sessions: ROOT_SESSION, feed: FEED })
+  const tree = await harness.render()
+
+  const grid = findElement(tree,
+    node => typeof node.props?.style?.gridTemplateColumns === 'string'
+      && node.props.style.gridTemplateColumns.startsWith('repeat(auto-fit'))
+  assert.ok(grid, '卡片容器必须是 auto-fit 网格')
+  assert.equal(grid.props.style.gap, 8, '卡片间距统一走 8px 栅格')
+  assert.equal(grid.props.style.alignItems, 'stretch', '同一行卡片必须等高，下沿不能锯齿')
+
+  const cards = []
+  const walk = node => {
+    if (node == null || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(walk); return }
+    const expanded = expand(node)
+    if (expanded !== node) { walk(expanded); return }
+    if (node.type === 'section' && node.props?.className === 'dsma-card') cards.push(node)
+    ;(node.children ?? []).forEach(walk)
+  }
+  walk(tree)
+  assert.ok(cards.length >= 4, `应渲染出多张卡片，实际 ${cards.length}`)
+  for (const card of cards) {
+    assert.equal(card.props.style.gridColumn, undefined, '没有卡片可以跨列')
+    assert.equal(card.props.style.padding, '11px 12px', '卡片内边距必须一致')
+    assert.equal(card.props.style.borderRadius, 10, '卡片圆角必须一致')
+  }
+
+  const title = findElement(cards[0], node => node.type === 'h3')
+  assert.equal(title.props.style.textTransform, undefined, '中文标题不需要 uppercase')
+  assert.equal(title.props.style.letterSpacing, 0, '标题不再用字距凑样式')
 })
 

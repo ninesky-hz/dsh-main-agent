@@ -20,7 +20,7 @@ function findElement(node, predicate) {
   return undefined
 }
 
-async function renderSettingsCard(value, catalog = 'ok') {
+async function renderSettingsCard(value, catalog = 'ok', presets = null) {
   const source = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
   const state = []
   let hook = 0
@@ -40,6 +40,13 @@ async function renderSettingsCard(value, catalog = 'ok') {
   }
   let pluginFactory
   const fetch = async url => {
+    // The preset list is a second, independent request. Without a stub the
+    // card must degrade to its "preset 列表读取失败" branch — that is what
+    // every test written before presets were stubbed relies on.
+    if (url === '/supervisor/presets') {
+      if (presets === null) throw new Error('no preset stub')
+      return { ok: true, json: async () => ({ presets }) }
+    }
     assert.equal(url, '/supervisor/models')
     // 'pending' models a slow catalog: the request never settles, so the card
     // stays in catalogStatus === 'loading'. 'error' is a failed read.
@@ -157,7 +164,7 @@ test('a still-loading catalog never claims a stored effort is unsupported', asyn
   assert.match(label, /暂不校验强度/)
   assert.doesNotMatch(label, /未声明支持/)
   assert.equal(findElement(tree, node => node.type === 'span'
-    && node.children.join(' ').includes('⚠ 强度未声明')), undefined)
+    && node.props.role === 'status'), undefined)
 })
 
 test('a failed catalog read suppresses the unsupported-effort warning too', async () => {
@@ -170,7 +177,7 @@ test('a failed catalog read suppresses the unsupported-effort warning too', asyn
   assert.ok(placeholder)
   assert.match(placeholder.children.join(' '), /暂不校验强度/)
   assert.equal(findElement(tree, node => node.type === 'span'
-    && node.children.join(' ').includes('⚠ 强度未声明')), undefined)
+    && node.props.role === 'status'), undefined)
 })
 
 test('a ready catalog still flags an effort the model really does not declare', async () => {
@@ -183,5 +190,84 @@ test('a ready catalog still flags an effort the model really does not declare', 
   assert.ok(placeholder)
   assert.match(placeholder.children.join(' '), /该模型未声明支持/)
   assert.ok(findElement(tree, node => node.type === 'span'
-    && node.children.join(' ').includes('⚠ 强度未声明')))
+    && node.props.role === 'status' && node.children.join(' ').includes('⚠')))
 })
+
+function collect(node, predicate, out = []) {
+  if (node == null || typeof node !== 'object') return out
+  if (Array.isArray(node)) {
+    for (const child of node) collect(child, predicate, out)
+    return out
+  }
+  if (predicate(node)) out.push(node)
+  for (const child of node.children ?? []) collect(child, predicate, out)
+  return out
+}
+
+/** 这个 fake React 只做 createElement，不会调用函数组件 —— 所以 `h(NumberRow)`
+ * 留在树里是一层没展开的壳，里面的 input 看不见。这里把无 hook 的纯展示组件
+ * 就地调用掉（SettingsSection / NumberRow 都没有 useState，安全）。 */
+function renderDeep(node) {
+  if (node == null || typeof node !== 'object') return node
+  if (Array.isArray(node)) return node.map(renderDeep)
+  if (typeof node.type === 'function') {
+    const children = node.children.length === 1 ? node.children[0] : node.children
+    return renderDeep(node.type({ ...node.props, children }))
+  }
+  return { ...node, children: (node.children ?? []).map(renderDeep) }
+}
+
+const PRESETS = [
+  { id: 'standard', name: 'standard', builtin: false, live: true, fileBacked: true, rows: 3 },
+  { id: 'main-agent', name: 'Main Agent', builtin: true, live: true },
+  { id: 'redteam', name: '红队模式', builtin: false, live: false, fileBacked: true, mounted: true },
+  { id: 'unrestricted-child-x', name: '无限制模式·子任务', builtin: false, broken: true },
+]
+
+test('the page reads as three divided sections, and a mode row is a whole clickable block', async () => {
+  const tree = await renderSettingsCard({ supervisedPresets: ['standard'] }, 'ok', PRESETS)
+
+  const sections = collect(tree, node => typeof node.type === 'function'
+    && node.type.name === 'SettingsSection')
+  assert.deepEqual(sections.map(node => node.props.title),
+    ['Worker 模型白名单', '启用监督循环的模式', '循环节律'])
+  // 第一段紧跟页头，不再画线；后两段各有一条分隔线，四块的节奏才对得上。
+  assert.deepEqual(sections.map(node => node.props.divider === true), [false, true, true])
+
+  // 函数组件在 fake React 里没被调用，展开后再看它们内部的结构。
+  const deep = renderDeep(tree)
+
+  // 选中的模式整块换底色：只靠 14px 勾选框，8 行里认不出哪几个开着。
+  const checkedRow = findElement(deep, node => node.type === 'label'
+    && node.props.style?.background === 'rgba(64,112,173,.08)')
+  assert.ok(checkedRow, 'the enabled preset row carries its own surface')
+  assert.equal(checkedRow.props.style.cursor, 'pointer')
+  const box = findElement(checkedRow, node => node.type === 'input')
+  assert.equal(box.props.type, 'checkbox')
+  assert.equal(box.props.checked, true)
+  assert.equal(box.props.className, 'dsma-check')
+
+  // 内置模式常开且不可切换；加载失败的 preset 只是变淡，不给 hover。
+  const builtinBox = findElement(deep, node => node.type === 'input'
+    && node.props['aria-label'] === '在 Main Agent 模式启用监督循环')
+  assert.equal(builtinBox.props.checked, true)
+  assert.equal(builtinBox.props.disabled, true)
+  const brokenRow = findElement(deep, node => node.type === 'label'
+    && node.props.style?.opacity === 0.62)
+  assert.ok(brokenRow, 'a broken preset stays visible but muted')
+  assert.equal(brokenRow.props.className, undefined)
+
+  // 数字字段：标签在左、输入框靠右对齐成一列（原来固定 220px 标签宽）。
+  const numberBox = findElement(deep, node => node.type === 'input'
+    && node.props.type === 'number')
+  assert.equal(numberBox.props.style.width, 76)
+  assert.equal(numberBox.props.style.textAlign, 'right')
+  assert.equal(numberBox.props.className, 'dsma-field')
+
+  // 主按钮与次按钮共用一套按钮令牌。
+  const addButton = findElement(deep, node => node.type === 'button'
+    && node.children.includes('添加'))
+  assert.equal(addButton.props.className, 'dsma-btn')
+  assert.equal(addButton.props.style.height, 28)
+})
+
