@@ -36,22 +36,12 @@ else
   echo "preset: 已安装 main-agent"
 fi
 
-# ── 2. schedule 叠加层（host-plane patch 行） ───────────────────────────────
-PATCH="$DSH_HOME/profiles/web/cordis.patch.yml"
-mkdir -p "$(dirname "$PATCH")"
-ROWS='- insert:
-    - id: schedule
-      name: '\''@deepseek-ai/dsh-schedule'\'''
-if [ -f "$PATCH" ] && grep -q 'dsh-schedule' "$PATCH"; then
-  echo "patch:  已存在 schedule 叠加层 —— 跳过"
-elif [ -f "$PATCH" ] && grep -qv '^\s*\(#\|\[\]\|$\)' "$PATCH" && [ "$FORCE" != 1 ]; then
-  echo "patch:  $PATCH 已有内容 —— 请自行追加这些行："
-  echo "$ROWS" | sed 's/^/        /'
-else
-  cp "$PATCH" "$PATCH.bak" 2>/dev/null || true
-  printf '%s\n' "# Profile patch 层 —— 实时监视。dsh-main-agent 的 schedule 叠加层。" "$ROWS" > "$PATCH"
-  echo "patch:  已安装 schedule 叠加层（若此前有备份，位于 $PATCH.bak）"
-fi
+# ── 2. schedule 无需安装 ───────────────────────────────────────────────────
+# `@deepseek-ai/dsh-schedule` 的 service 由 dsh-web-app 的 host 层提供
+# （那条 `- id: schedule` 行），四个提醒工具由 main-agent preset 自己声明。
+# 这里以前会往 profile 写一行 `- id: schedule`，那是重复注册，启动即报：
+#   service "schedule" has been registered at <ScheduleService>
+echo "patch:  跳过 —— schedule 服务由 dsh-web-app 的 host 层提供，无需写入 profile"
 
 # ── 3. 工作区 .agi 骨架 ─────────────────────────────────────────────────────
 mkdir -p "$WS/.agi/subagents"

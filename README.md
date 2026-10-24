@@ -95,19 +95,19 @@ dsh web
 安装就这么多。这一条命令把该包注册为 **profile bundle**
 （依赖项 + `dsh.profile.bundles` 条目），启动时该 bundle 会：
 
-1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`，声明在
-   `patches/schedule.patch.yml`）。这一行**自带守卫**：启动时它会检查
-   loader 里是否已有别的 `@deepseek-ai/dsh-schedule` 提供者，有就
-   **自动让位**（禁用自己），因此默认安装**不再需要**你在 profile 里
-   手写任何 patch —— 即使你的 profile 已经通过
-   `@deepseek-ai/dsh-experimental-schedule-bundle` 挂了 schedule。
-   边界：守卫只能看见**排在它之前**的 loader 行，所以「提供 schedule 的
-   bundle 必须列在 `dsh-main-agent` 之前」是本机制的前提（默认组合
-   满足）；若你在**自己 profile 的 `cordis.patch.yml`** 里声明 schedule
-   行，它排在本 bundle **之后**、守卫看不到它，此时仍请在 profile 里
-   保留 id 级 `- id: agi-schedule` / `disabled: true`（写了也无害）。
+1. **不声明 schedule 服务。** `@deepseek-ai/dsh-schedule` 的 service 由 host
+   平面提供 —— `dsh-web-app` 的 `- id: schedule` 行，每个挂了 Web GUI 的
+   profile 都有。本包只在自己的 `main-agent` preset 里声明四个提醒工具
+   （`schedule_create` / `schedule_list` / `schedule_update` / `schedule_remove`），
+   与 `standard` / `cordis` / `ptc` 的做法一致。
    （不挂 `dsh-time-context` —— 它会往每个请求注入时间戳块，
-   而 Schedule 不依赖它）；
+   而 Schedule 不依赖它。）
+
+   > 0.13.3 及更早版本曾用 `patches/schedule.patch.yml` + `!!js` 让位守卫自己挂
+   > 这个服务。守卫挡不住重复注册（patch 求值时 `ctx.loader` 看不到排在别的
+   > bundle 里的行），插件页会显示「任务调度 · 异常」：
+   > `service "schedule" has been registered at <ScheduleService>`。
+   > 0.13.4 删掉那一层；0.13.5 把安装脚本里同样会重复注册的那一行也删了。
 2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 里的最后一份 patch）
    向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
    唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
@@ -130,15 +130,9 @@ cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 <details>
 <summary>替代方案：不用插件管理器的手动安装</summary>
 
-`./scripts/install-manual.sh ~/agi-lab` 则会把 preset 复制到用户 preset 根目录，
-并把 schedule 行写进你 profile 的 `cordis.patch.yml`。只选
-一条路径，不要两条都用 —— schedule 服务每进程只注册一次，因此 bundle 行
-与手动 patch 行不能共存。如果你的 profile 已从别处挂载
-`dsh-schedule`（**且那份提供者来自排在 `dsh-main-agent` 之前的 bundle**），
-本 bundle 里的 `agi-schedule` 行会**自己让位**，你什么都不用做。
-历史写法 —— 针对 id 的 `- id: agi-schedule` / `disabled: true` ——
-**不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
-不会与守卫冲突），不必回退。
+`./scripts/install-manual.sh ~/agi-lab` 只把 preset 复制到用户 preset 根目录。
+schedule 完全不用管：service 由 host 提供（`dsh-web-app` 的 `- id: schedule`），
+四个工具由 preset 自己声明，两条安装路径都不往 profile 里写 schedule 行。
 </details>
 
 ### 若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`
@@ -283,7 +277,8 @@ legacy 行。`--apply --uninstall` 才做完整清理：
 1. 删 `package.json` 里的依赖记录与 `dsh.profile.bundles` 条目；
 2. 删残留的 `node_modules/dsh-main-agent`（含 `node_modules/.ignored/` 下的）；
 3. 删 `cordis.patch.yml` 里**所有**本 bundle 的行 —— `agi-supervisor-setup`、
-   `agi-schedule`、`preset-main-agent`，顶层 override 与 `- insert:` 内嵌行都算，
+   `preset-main-agent`，以及 0.13.3 及更早版本可能留下的 `agi-schedule` 孤儿行；
+   顶层 override 与 `- insert:` 内嵌行都算，
    删空的 `- insert:` 一并移除，其它行（`ui-settings`、`ui-chat` 等）原样保留；
 4. 把 `<home>/.agent-presets/main-agent` **改名**为 `main-agent.bak-<时间戳>`
    （同目录内 rename，可逆，不会 `rm -rf`；确认不需要后自行删除）。
@@ -697,7 +692,6 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 |---|---|
 | `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
-| `patches/schedule.patch.yml` | 声明随包 schedule 行（`agi-schedule`）的 bundle patch，自带 `disabled: !!js` 自判定守卫：组合里已有别的 `@deepseek-ai/dsh-schedule` 提供者时本行自动让位。`dsh.bundle.patch` 里排在 preset 声明之前 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
