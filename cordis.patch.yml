@@ -6,11 +6,15 @@
 #     `main-agent` preset 安装到 ${DSH_HOME:-~/.dsh}/.agent-presets/
 #     （若不存在；config syncPreset: if-absent | always | never）。
 #
-# schedule 行（`agi-schedule`，`@deepseek-ai/dsh-schedule`）已拆到
-# `patches/schedule.patch.yml`：那一层带自判定守卫 —— profile 已经从别处挂了
-# schedule 服务时，本包这一行自动让位，不需要用户在 profile 里写 id 级
-# `disabled: true`。schedule 服务每进程只注册一次，重复注册会抛
-# `service "schedule" has been registered at <ScheduleService>`。
+# schedule 的 service（`@deepseek-ai/dsh-schedule`）由 host 平面提供 ——
+# dsh-web-app 的 `- id: schedule` 行，每个挂了 Web GUI 的 profile 都有。
+# 本包不再声明它：service 每进程只能注册一次，重复注册会抛
+# `service "schedule" has been registered at <ScheduleService>`，那一行在插件页
+# 显示成「异常」。曾经的 `!!js` 让位守卫挡不住这种情况 —— patch 求值时的
+# `ctx.loader` 看不到排在别的 bundle 里的行，于是守卫恒为 false。
+#
+# 四个 reminder 工具（schedule_create / list / update / remove）改由
+# main-agent preset 自己声明，与 `standard` / `cordis` / `ptc` 的做法一致。
 # （dsh-time-context 是刻意不挂载的：它会往每个请求注入一段逐步时间戳，
 # 对本监督者而言纯属噪声 —— 它的定时器用的是相对时间 `after_seconds`，
 # 而 Schedule 不依赖 time-context。）

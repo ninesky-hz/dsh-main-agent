@@ -1,6 +1,6 @@
 {
   "name": "dsh-main-agent",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 加 schedule 叠加层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
@@ -41,7 +41,6 @@
     "bundle": {
       "patch": [
         "./cordis.patch.yml",
-        "./patches/schedule.patch.yml",
         "./presets/main-agent.patch.yml"
       ]
     },

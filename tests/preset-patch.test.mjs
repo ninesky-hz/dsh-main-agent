@@ -34,15 +34,15 @@ test('presets/main-agent.patch.yml 与预设源文件保持同步', () => {
   assert.equal(actual, expected, '生成物过期：请运行 `npm run sync-preset` 后提交')
 })
 
-test('bundle patch 清单同时包含 host 层、schedule 层与 preset 声明', () => {
+test('bundle patch 清单只有 host 层与 preset 声明，不再挂 schedule 层', () => {
   const manifest = JSON.parse(read(join(ROOT, 'package.json')))
   const patch = manifest.dsh?.bundle?.patch
   assert.ok(Array.isArray(patch), 'dsh.bundle.patch 应当是文件路径数组')
-  assert.deepEqual(patch, [
-    './cordis.patch.yml',
-    './patches/schedule.patch.yml',
-    './presets/main-agent.patch.yml',
-  ])
+  assert.deepEqual(patch, ['./cordis.patch.yml', './presets/main-agent.patch.yml'])
+  assert.ok(
+    !patch.some((file) => file.includes('schedule')),
+    'schedule 服务由 dsh-web-app 在 host 层统一提供，重复挂载必抛 service "schedule" has been registered',
+  )
   for (const file of patch) read(join(ROOT, file))
 })
 

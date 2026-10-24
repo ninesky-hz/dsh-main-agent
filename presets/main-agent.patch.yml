@@ -280,6 +280,17 @@
           - id: tool-goal
             name: dsh-main-agent/goal
 
+          # 定时提醒的四个工具（schedule_create / schedule_list / schedule_update /
+          # schedule_remove）。`@deepseek-ai/dsh-schedule` 的 **service** 由 host 平面
+          # 统一提供（dsh-web-app 的 `- id: schedule` 行），preset 只声明面向模型的前端，
+          # 与 `standard` / `cordis` / `ptc` 的做法一致。
+          #
+          # 这一行此前整块缺失：persona 反复要求「用 schedule_create 排下一次唤醒」，
+          # 而工具根本没注册，服务端 watchdog 也失去了让模型重新排提醒的手段 —— 循环
+          # 只能靠一次性的 heartTimeout 撑着。
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+
           # ── plan mode（计划模式） ───────────────────────────────────────────────────
 
           # plan 状态天生就是 per-agent 的，因此 entry-local realm 在这里
