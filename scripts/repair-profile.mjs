@@ -37,8 +37,12 @@ import { fileURLToPath } from 'node:url'
 export const PACKAGE_NAME = 'dsh-main-agent'
 export const PRESET_ROW_ID = 'preset-main-agent'
 export const PRESET_ID = 'main-agent'
-/** 本 bundle 的三条挂载行（见 cordis.patch.yml、patches/schedule.patch.yml、
- * presets/main-agent.patch.yml）。用户层出现其中任意一条都可能是卸载残留。 */
+/** 本 bundle 曾经或正在声明的挂载行（见 cordis.patch.yml、presets/main-agent.patch.yml）。
+ * 用户层出现其中任意一条都可能是卸载残留。
+ *
+ * `agi-schedule` 自 0.13.4 起不再由本包声明（service 归 host 平面），但升级前
+ * 的 profile 里可能还留着这条孤儿行，所以仍列入检测范围 —— 命中时只报告、不判
+ * fixable，--apply --uninstall 会顺手清掉。 */
 export const BUNDLE_ROW_IDS = ['agi-supervisor-setup', 'agi-schedule', PRESET_ROW_ID]
 export const INSTALL_URL = 'https://gitee.com/n-sky/dsh-main-agent.git'
 

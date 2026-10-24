@@ -95,19 +95,20 @@ dsh web
 安装就这么多。这一条命令把该包注册为 **profile bundle**
 （依赖项 + `dsh.profile.bundles` 条目），启动时该 bundle 会：
 
-1. 挂载监督者定时器所需的 schedule 服务（`dsh-schedule`，声明在
-   `patches/schedule.patch.yml`）。这一行**自带守卫**：启动时它会检查
-   loader 里是否已有别的 `@deepseek-ai/dsh-schedule` 提供者，有就
-   **自动让位**（禁用自己），因此默认安装**不再需要**你在 profile 里
-   手写任何 patch —— 即使你的 profile 已经通过
-   `@deepseek-ai/dsh-experimental-schedule-bundle` 挂了 schedule。
-   边界：守卫只能看见**排在它之前**的 loader 行，所以「提供 schedule 的
-   bundle 必须列在 `dsh-main-agent` 之前」是本机制的前提（默认组合
-   满足）；若你在**自己 profile 的 `cordis.patch.yml`** 里声明 schedule
-   行，它排在本 bundle **之后**、守卫看不到它，此时仍请在 profile 里
-   保留 id 级 `- id: agi-schedule` / `disabled: true`（写了也无害）。
+1. **不声明 schedule 服务。** `@deepseek-ai/dsh-schedule` 的 service 由 host
+   平面提供 —— `dsh-web-app` 的 `- id: schedule` 行，每个挂了 Web GUI 的
+   profile 都有。本包只在自己的 `main-agent` preset 里声明四个提醒工具
+   （`schedule_create` / `schedule_list` / `schedule_update` / `schedule_remove`），
+   与 `standard` / `cordis` / `ptc` 的做法一致。
    （不挂 `dsh-time-context` —— 它会往每个请求注入时间戳块，
-   而 Schedule 不依赖它）；
+   而 Schedule 不依赖它。）
+
+   > 0.13.3 及更早版本曾用 `patches/schedule.patch.yml` + `!!js` 让位守卫自己挂
+   > 这个服务。守卫挡不住重复注册（patch 求值时 `ctx.loader` 看不到排在别的
+   > bundle 里的行），插件页会显示「任务调度 · 异常」：
+   > `service "schedule" has been registered at <ScheduleService>`。
+   > 0.13.4 删掉了那一层。升级前在 profile 里手写过 `- id: agi-schedule` 的，
+   > 现在可以删掉（`npm run repair -- --apply --uninstall` 也会清）。
 2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 里的最后一份 patch）
    向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
    唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
@@ -130,15 +131,9 @@ cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 <details>
 <summary>替代方案：不用插件管理器的手动安装</summary>
 
-`./scripts/install-manual.sh ~/agi-lab` 则会把 preset 复制到用户 preset 根目录，
-并把 schedule 行写进你 profile 的 `cordis.patch.yml`。只选
-一条路径，不要两条都用 —— schedule 服务每进程只注册一次，因此 bundle 行
-与手动 patch 行不能共存。如果你的 profile 已从别处挂载
-`dsh-schedule`（**且那份提供者来自排在 `dsh-main-agent` 之前的 bundle**），
-本 bundle 里的 `agi-schedule` 行会**自己让位**，你什么都不用做。
-历史写法 —— 针对 id 的 `- id: agi-schedule` / `disabled: true` ——
-**不再需要**；已经写过的 profile **保留也安全**（等效于手动兜底，
-不会与守卫冲突），不必回退。
+`./scripts/install-manual.sh ~/agi-lab` 则会把 preset 复制到用户 preset 根目录。
+schedule 不用管：service 由 host 提供（`dsh-web-app` 的 `- id: schedule`），
+四个工具由 preset 自己声明，两条安装路径都不需要往 profile 里写 schedule 行。
 </details>
 
 ### 若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`
