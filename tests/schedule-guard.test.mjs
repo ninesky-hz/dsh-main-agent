@@ -113,9 +113,9 @@ test('schedule 行的 disabled 是 !!js 守卫，不再是 id 级压制', () => 
   assert.ok(!/^\s*disabled: true\s*$/m.test(row.text), '不该再用字面 disabled: true')
   const source = guardSource(row.text)
   assert.ok(source, 'disabled 应当是一个 !!js 表达式')
-  assert.match(source, /e\.options\.name === '@deepseek-ai\/dsh-schedule'/, '必须比较模块名')
-  assert.match(source, /e\.options\.id !== 'agi-schedule'/, '必须排除自己')
-  assert.match(source, /!e\.disabled/, '对方自己被禁用时不能让位，否则整个 profile 会失去 schedule')
+  assert.match(source, /e\??\.\s*options\??\.\s*name === '@deepseek-ai\/dsh-schedule'/, '必须比较模块名')
+  assert.match(source, /e\??\.\s*options\??\.\s*id !== 'agi-schedule'/, '必须排除自己')
+  assert.match(source, /!e\??\.\s*disabled/, '对方自己被禁用时不能让位，否则整个 profile 会失去 schedule')
   assert.match(source, /ctx\.loader\.entries\(\)/, '必须遍历 loader 里的所有行')
 })
 

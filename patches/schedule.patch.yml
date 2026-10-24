@@ -24,5 +24,5 @@
     - id: agi-schedule
       name: '@deepseek-ai/dsh-schedule'
       disabled: !!js >-
-        [...ctx.loader.entries()].some((e) => e.options.name ===
-        '@deepseek-ai/dsh-schedule' && e.options.id !== 'agi-schedule' && !e.disabled)
+        [...ctx.loader.entries()].some((e) => e?.options?.name ===
+        '@deepseek-ai/dsh-schedule' && e?.options?.id !== 'agi-schedule' && !e?.disabled)
