@@ -2,10 +2,10 @@
 # 常驻监督者（Always-On Supervisor）配置的手工安装（非 bundle 方式）。
 #
 # 优先用 README 里的 bundle 方式（`dsh plugin --profile web add …`），
-# 它会挂载 schedule 行并自动安装 preset。本脚本是备选路径，
-# 适用于那些更愿意手工编辑 profile patch 的部署。
-# 两者绝不可同时使用：schedule 服务每进程只注册一次，
-# 因此 bundle 的行与本脚本的 patch 行不可共存。
+# 它会注册 preset 行并自动安装 preset。本脚本是备选路径，
+# 适用于那些更愿意手工管理 profile 的部署。
+# 两条路径都不声明 schedule 服务（那个 service 归 dsh-web-app 的 host 层），
+# 所以不会再撞 `service "schedule" has been registered at <ScheduleService>`。
 #
 # 幂等且非破坏性：没有 --force 时，绝不覆盖已存在的 main-agent
 # preset，也不覆盖非空的 profile patch。

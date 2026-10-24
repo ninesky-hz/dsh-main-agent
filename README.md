@@ -3,14 +3,19 @@
 7×24 小时在线的 **Main Agent**：先记录一个可审阅的目标，然后无人值守地循环：派生开发
 子代理 → 休眠 → 因收敛 / 报告 / 定时器 / 你的消息而唤醒 → 巡检 → 纠偏、
 终止或继续。基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
-（dsh）以 **原生优先** 方式构建：核心就是一个 agent preset、一份人格、以及对
-原生 schedule 工具的直接复用 —— 零自研循环机制。本仓库**就是一个可安装的 dsh 插件包**：
+（dsh）以 **原生优先** 方式构建：核心就是一个 agent preset、一份人格，以及对
+原生 schedule 工具的直接复用 —— 决策留在模型侧，服务端只做兜底（补提醒、
+停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-已在 `glm-5.3`（Z.AI）上端到端实测：目标设置、有打底的委派、飞行中
-纠偏、回合中途终止 + 更严密的重新派生、静默提问 → 记录假设
-流程、交付物核验（它抓到了自己那个有 bug 的链接检查器并重跑），
-以及整进程重启后恢复。评分结果：m0–m5 与 m7 均为 100%。
+当前版本 **0.13.7**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+`node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
+
+在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
+服务端兜底未整体重跑）：目标设置、有打底的委派、飞行中纠偏、回合中途终止 +
+更严密的重新派生、静默提问 → 记录假设流程、交付物核验（它抓到了自己那个有
+bug 的链接检查器并重跑），以及整进程重启后恢复。评分结果：m0–m5 与 m7 均为 100%。
+当前版本改动的单元测试覆盖见下文「dsh 0.2.x 兼容性」里的数字。
 
 ## dsh 0.2.x 兼容性
 
@@ -31,8 +36,8 @@
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **203 项**单元测试（`tests/` 下 21 个 `.test.mjs`）在 dsh `0.2.1-rc.2` 上跑出
-**194 通过 / 9 按平台跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+本仓库的 **223 项**单元测试（`tests/` 下 22 个 `.test.mjs`）在 dsh `0.2.1-rc.2` 上跑出
+**221 通过 / 2 按平台跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
@@ -40,6 +45,28 @@
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
 记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、
 `settings.plugin.item`，或 worker 活动状态为 `active` 时，请按上表理解。
+
+## 版本沿革
+
+| 版本 | 变化 |
+|---|---|
+| 0.10.0 | 由 `n-sky/dsh-supervisor` 改名，移植到 dsh 0.2.x |
+| 0.10.1 | 修掉 `{{cwd}}` 这类未注册 prompt 变量导致的装配期崩溃 |
+| 0.10.7–0.10.9 | Feed 的 worker 跳会话 / 暂停刷新 / ETag 条件刷新；`outcome.md` 头行二次匹配 |
+| 0.11.0 | Settings 增加「启用监督循环的模式」，任意 preset 可热切换为监督者 |
+| 0.11.1 | `/supervisor/presets` 的 `changed` 改为报告观测到的终态（fibre 重启会抢跑） |
+| 0.12.0 | 由插件直接注册的 preset 改走 `agent.cordis.yml` 改写 + `.supervisor.bak` 备份 |
+| 0.12.1 | 无 loader 行的 preset 也能即时重挂载（`definitions` + `activate`），不必重启 |
+| 0.12.2 | 监督动态 Feed 认设置里开启的模式，不再只认 `main-agent` |
+| 0.12.3 | 安装地址补齐 `.git`，避免 pnpm 当成 tarball |
+| 0.13.0 | 循环兜底搬到服务端：watchdog 补提醒、自适应唤醒、worker 停滞超时、累计派生预算 |
+| 0.13.1 | 重启后监督层不再丢失：settings 文档落地时再对账一次 |
+| 0.13.2 | `stop` / `loop` 三处路由改用 `countsAsSupervisor`，不再 409 |
+| 0.13.3 | schedule 让位守卫加可选链；`/supervisor/health` 暴露 `schedule.available` |
+| 0.13.4 | 删掉 schedule 叠加层（host 层已有该 service），preset 自己声明 `tool-schedule` |
+| 0.13.5 | 包描述去掉「加 schedule 叠加层」 |
+| 0.13.6 | 安装脚本不再往 profile 写重复的 schedule 行 |
+| 0.13.7 | README 与 `files` 白名单对齐（去掉已删除的 `patches/`） |
 
 ## 在新 PC 上运行本地课程
 
@@ -107,7 +134,7 @@ dsh web
    > 这个服务。守卫挡不住重复注册（patch 求值时 `ctx.loader` 看不到排在别的
    > bundle 里的行），插件页会显示「任务调度 · 异常」：
    > `service "schedule" has been registered at <ScheduleService>`。
-   > 0.13.4 删掉那一层；0.13.5 把安装脚本里同样会重复注册的那一行也删了。
+   > 0.13.4 删掉那一层；0.13.6 把 `install-manual.sh` 里同样会重复注册的那一行也删了。
 2. 通过 `presets/main-agent.patch.yml`（`dsh.bundle.patch` 里的最后一份 patch）
    向 agent-preset 注册表**声明**随包的 **`main-agent` preset** —— 这是 0.2.x
    唯一被读取的注册路径，`dsh plugin add` 后重启即可在选择器里看到
@@ -116,9 +143,11 @@ dsh web
    **`main-agent` preset** 安装到 `${DSH_HOME:-~/.dsh}/.agent-presets/` —— 仅在缺失时安装，
    绝不覆盖你的修改（行配置 `syncPreset: always | if-absent | never`），
 4. **对账跨模式勾选**：按设置里的 `supervisedPresets` 把监督层重新叠加到那几条
-   preset 的 loader 行上（mount 时一次 + 两次延迟重试，因为 preset 行未必在本插件
-   之后挂载）。这一步是幂等的，已在目标状态的 preset 不会触发 `entry.update`，
-   也就不会白白重启 fiber。
+   preset 上。对账在四个时机跑：mount 时一次、两次延迟重试（0 / 2000 ms，因为
+   preset 行未必排在本插件之后），以及 `settings/document-updated` 落地时再补一次
+   —— 0.13.1 起这条是必需的：重启时 `config` 由 settings 文档 hydrate，可能晚于
+   前面三次，早跑的话 `supervisedPresets` 还是空数组，等于什么也没做。整条链幂等，
+   已在目标状态的 preset 不会触发 `entry.update`，也就不会白白重启 fiber。
 
 然后为监督者的状态创建一个工作区：
 
@@ -130,7 +159,9 @@ cp "$HOME/src/dsh-main-agent/agi-template/config.json" "$HOME/agi-lab/.agi/confi
 <details>
 <summary>替代方案：不用插件管理器的手动安装</summary>
 
-`./scripts/install-manual.sh ~/agi-lab` 只把 preset 复制到用户 preset 根目录。
+`./scripts/install-manual.sh ~/agi-lab` 只写两处：用户 preset 根目录下的
+`.agent-presets/main-agent/`，以及工作区里的 `.agi/` 骨架。它同样**不碰**
+profile 的 `cordis.patch.yml`。
 schedule 完全不用管：service 由 host 提供（`dsh-web-app` 的 `- id: schedule`），
 四个工具由 preset 自己声明，两条安装路径都不往 profile 里写 schedule 行。
 </details>
@@ -690,17 +721,17 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 
 | 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算），`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
 | `tutorial/` | 自包含的 15 步课程应用：HTML/CSS/JS、安装/服务器、私有依赖、评分 UI/CLI、里程碑评分器与可选的无头驱动器 |
-| `scripts/install-manual.sh` | 非 bundle 的兜底安装器 |
+| `scripts/install-manual.sh` | 非 bundle 的兜底安装器：只写 `.agent-presets/main-agent/` 与工作区 `.agi/` 骨架，**不碰** profile 的 `cordis.patch.yml`（0.13.4 起 schedule 服务归 host 层，重复声明会撞注册） |
 | `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
 | `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
 | `scripts/sync-preset-patch.mjs` | 从 `agent-presets/main-agent/` 重新生成 `presets/main-agent.patch.yml`（`npm run sync-preset`，`prepack` 也会跑） |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 21 个 `node --test` 文件、203 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、install-spec、repair-profile 等 |
+| `tests/` | 22 个 `node --test` 文件、223 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 评分
@@ -752,7 +783,7 @@ TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内
    向精选列表提 PR 可以增加人工收录位置。
 3. **发布到 npm**（可选）：`dsh plugin` 会转发给 pnpm，因此已发布的包
    可按名称安装。`package.json` 中的 `files` 列表已限定发布内容
-   （`lib`、`cordis.patch.yml`、`patches`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
+   （`lib`、`cordis.patch.yml`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
 
 以下是随包发布 preset 的插件的打包经验（0.2.x 实测）：
 
