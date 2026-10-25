@@ -7,12 +7,14 @@ import test from 'node:test'
 import {
   appendLoopEvent,
   briefPathFor,
+  ensureIgnored,
   LOOP_BRIEF_FILE,
   LOOP_STATE_FILE,
   progressMtime,
   readLoopEvents,
   readLoopState,
   renderBrief,
+  sessionKeyOf,
   writeBrief,
   writeLoopState,
 } from '../lib/loop-journal.js'
@@ -151,6 +153,90 @@ test('writeBrief: 落到 .agi/BRIEF.md 且返回同样的文本', () => {
     assert.equal(onDisk, text)
     assert.equal(briefPathFor(dir), join(dir, '.agi', LOOP_BRIEF_FILE))
     assert.equal(briefPathFor(''), undefined)
+  } finally {
+    cleanup()
+  }
+})
+
+test('sessionKeyOf: 取 session id 的后 8 位字母数字', () => {
+  // 'session-01JABCDEF' 去掉连字符后是 session01JABCDEF，取后 8 位。
+  assert.equal(sessionKeyOf({ id: 'session-01JABCDEF' }), '1JABCDEF')
+  assert.equal(sessionKeyOf({ id: 'abc' }), 'abc')
+  assert.equal(sessionKeyOf({ id: '' }), undefined)
+  assert.equal(sessionKeyOf({}), undefined)
+  assert.equal(sessionKeyOf(undefined), undefined)
+})
+
+test('多会话：两个 key 的状态各自独立，不会互相覆盖', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    writeLoopState(dir, { idleTicks: 4, pausedBy: 'idle' }, 'aaaa1111')
+    writeLoopState(dir, { idleTicks: 0 }, 'bbbb2222')
+
+    assert.equal(readLoopState(dir, 'aaaa1111').idleTicks, 4)
+    assert.equal(readLoopState(dir, 'aaaa1111').pausedBy, 'idle')
+    assert.equal(readLoopState(dir, 'bbbb2222').idleTicks, 0)
+    assert.equal(readLoopState(dir, 'bbbb2222').pausedBy, undefined)
+
+    // 写的是按 key 分开的文件，不是同一份。
+    const a = JSON.parse(readFileSync(join(dir, '.agi', 'loop-state.aaaa1111.json'), 'utf8'))
+    const b = JSON.parse(readFileSync(join(dir, '.agi', 'loop-state.bbbb2222.json'), 'utf8'))
+    assert.equal(a.idleTicks, 4)
+    assert.equal(b.idleTicks, 0)
+  } finally {
+    cleanup()
+  }
+})
+
+test('多会话：没有 key 时仍读写旧的单文件（向后兼容）', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    writeLoopState(dir, { idleTicks: 2 })
+    assert.equal(readLoopState(dir).idleTicks, 2)
+    assert.ok(readFileSync(join(dir, '.agi', LOOP_STATE_FILE), 'utf8').includes('"idleTicks": 2'))
+    // 带 key 的读不会看到单文件里的值。
+    assert.equal(readLoopState(dir, 'zzzz9999').idleTicks, 0)
+  } finally {
+    cleanup()
+  }
+})
+
+test('ensureIgnored: 追加两条规则，且只会追加一次', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    writeFileSync(join(dir, '.gitignore'), 'node_modules/\n')
+    assert.equal(ensureIgnored(dir), true)
+    const once = readFileSync(join(dir, '.gitignore'), 'utf8')
+    assert.match(once, /\.agi\/loop-state\*\.json/)
+    assert.match(once, /\.agi\/BRIEF\.md/)
+    assert.match(once, /^node_modules\/$/m)
+
+    ensureIgnored(dir)
+    assert.equal(readFileSync(join(dir, '.gitignore'), 'utf8'), once)
+  } finally {
+    cleanup()
+  }
+})
+
+test('ensureIgnored: 整个 .agi/ 已被忽略时不再追加', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    writeFileSync(join(dir, '.gitignore'), '.agi/re/\n.agi/\n')
+    assert.equal(ensureIgnored(dir), true)
+    assert.equal(readFileSync(join(dir, '.gitignore'), 'utf8'), '.agi/re/\n.agi/\n')
+  } finally {
+    cleanup()
+  }
+})
+
+test('renderBrief: 带 session 时声明这份摘要属于谁', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    const text = renderBrief({ cwd: dir, session: 'aaaa1111', state: { idleTicks: 1 } })
+    assert.match(text, /> 会话 `aaaa1111` 的循环状态/)
+    assert.match(text, /不在这里/)
+    // 不带时不多这一行（旧的调用点行为不变）。
+    assert.doesNotMatch(renderBrief({ cwd: dir, state: { idleTicks: 1 } }), /的循环状态。/)
   } finally {
     cleanup()
   }
