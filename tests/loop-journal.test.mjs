@@ -8,6 +8,7 @@ import {
   appendLoopEvent,
   briefPathFor,
   ensureIgnored,
+  readLessons,
   LOOP_BRIEF_FILE,
   LOOP_STATE_FILE,
   progressMtime,
@@ -18,7 +19,7 @@ import {
   writeBrief,
   writeLoopState,
 } from '../lib/loop-journal.js'
-import { idleVerdict, reviewDue, suggestedRounds } from '../lib/loop-policy.js'
+import { budgetVerdict, idleVerdict, reviewDue, suggestedRounds } from '../lib/loop-policy.js'
 
 const workspace = () => {
   const dir = mkdtempSync(join(tmpdir(), 'loop-journal-'))
@@ -237,6 +238,93 @@ test('renderBrief: 带 session 时声明这份摘要属于谁', () => {
     assert.match(text, /不在这里/)
     // 不带时不多这一行（旧的调用点行为不变）。
     assert.doesNotMatch(renderBrief({ cwd: dir, state: { idleTicks: 1 } }), /的循环状态。/)
+  } finally {
+    cleanup()
+  }
+})
+
+test('budgetVerdict: 只有「快用完 + 在产出 + 没续太多次」才续', () => {
+  const base = { roundsStarted: 80, maxGoalRounds: 100, idleTicks: 0, renewals: 0 }
+  const renew = budgetVerdict(base)
+  assert.equal(renew.renew, true)
+  assert.equal(renew.nextRounds, 150)
+  assert.match(renew.reason, /80\/100/)
+
+  // 还没到 80%
+  assert.equal(budgetVerdict({ ...base, roundsStarted: 79 }).renew, false)
+  // 最近没有产出
+  assert.equal(budgetVerdict({ ...base, idleTicks: 1 }).renew, false)
+  // 已经续满两次
+  assert.equal(budgetVerdict({ ...base, renewals: 2 }).renew, false)
+  // 小预算通常是刻意设的
+  assert.equal(budgetVerdict({ roundsStarted: 3, maxGoalRounds: 4 }).renew, false)
+  // 没有上限 / 轮次未知都退化成不续，而不是抛错
+  assert.equal(budgetVerdict({ roundsStarted: 5, maxGoalRounds: 0 }).renew, false)
+  assert.equal(budgetVerdict({}).renew, false)
+})
+
+test('budgetVerdict: 小预算也至少加 20 轮', () => {
+  const verdict = budgetVerdict({ roundsStarted: 8, maxGoalRounds: 10, idleTicks: 0, renewals: 0 })
+  assert.equal(verdict.renew, true)
+  assert.equal(verdict.step, 20)
+  assert.equal(verdict.nextRounds, 30)
+})
+
+test('readLessons: 只取以「- 」开头的行，最新在后', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    mkdirSync(join(dir, '.agi'), { recursive: true })
+    writeFileSync(join(dir, '.agi', 'LESSONS.md'), [
+      '# 教训',
+      '',
+      '这段说明不是条目。',
+      '- 第一条',
+      '  - 缩进的也算',
+      '- 第二条',
+      '',
+    ].join('\n'))
+    const lessons = readLessons(dir, 5)
+    assert.deepEqual(lessons, ['第一条', '缩进的也算', '第二条'])
+    assert.deepEqual(readLessons(dir, 1), ['第二条'])
+    // 没有文件时是空数组，不抛。
+    const other = workspace()
+    assert.deepEqual(readLessons(other.dir), [])
+    other.cleanup()
+  } finally {
+    cleanup()
+  }
+})
+
+test('renderBrief: 有成本数据时给出「上次推进 / 上一轮用时 / 续期次数」', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    const text = renderBrief({
+      cwd: dir,
+      state: { idleTicks: 0, renewals: 1, lastGapMs: 4 * 60_000, lastProgressAt: Date.now() - 3 * 60_000 },
+      roundsStarted: 12,
+      maxGoalRounds: 150,
+    })
+    assert.match(text, /上次推进：\d+ 分钟前/)
+    assert.match(text, /上一轮用了：4 分钟/)
+    assert.match(text, /预算已续期：1 次/)
+    // 没有数据时不写这几行，避免给读者「0 分钟」的错觉。
+    const bare = renderBrief({ cwd: dir, state: { idleTicks: 0 } })
+    assert.doesNotMatch(bare, /上一轮用了/)
+    assert.doesNotMatch(bare, /预算已续期/)
+  } finally {
+    cleanup()
+  }
+})
+
+test('renderBrief: 有 LESSONS.md 时附上「之前的目标留下的教训」', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    mkdirSync(join(dir, '.agi'), { recursive: true })
+    writeFileSync(join(dir, '.agi', 'LESSONS.md'), '- 先跑 go build 再看 diff\n- 别信静态扫描的路径\n')
+    const text = renderBrief({ cwd: dir, state: { idleTicks: 0 } })
+    assert.match(text, /之前的目标留下的教训/)
+    assert.match(text, /先跑 go build 再看 diff/)
+    assert.match(text, /别信静态扫描的路径/)
   } finally {
     cleanup()
   }
