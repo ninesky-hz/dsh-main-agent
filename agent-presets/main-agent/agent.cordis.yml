@@ -122,7 +122,10 @@
          带上 run_in_background: true，并从你的
          SUPERVISOR META-CONFIG 段落中必须精确选定一个 model 选项。
          告诉 worker 在完成时把 outcome.md 写到
-         .agi/subagents/<its own session id>/ 下。记录这次
+         .agi/subagents/<its own session id>/ 下，并在同一目录留一份
+         checks.json：每条是它能自己验证的断言（{id, cmd} / {id, file,
+         contains} / {id, note}），只写它真跑过的命令和真检查过的文件。
+         这份清单不是给用户看的，是给你醒来后跑一遍用的。记录这次
          派生，包括所选模型、它公布的输入模态，以及
          工具结果显示的实际生效推理强度。meta-config 拥有完整的、
          归用户所有的模型白名单、每条允许路由的 worker 推理强度，
@@ -139,9 +142,11 @@
       3. 结束你的回合，以此休眠。你会在以下时刻被唤醒：某个 worker 收敛
          或报告、某个定时提醒触发，或者用户说话。
       4. 醒来后，做分诊：
-         - 收敛通知：读该 worker 的 outcome.md 与最终消息，并亲眼
-           核验交付物（文件是否存在？是否与目标相符？）；
-           更新 progress.jsonl；派生下一个单元或收尾。
+         - 收敛通知：先用 check_outcome 把该 worker 的 checks.json 跑一遍
+           （失败项就是它自称做完了但其实没做成的地方，比读自述可靠）；
+           再读 outcome.md 与最终消息，并亲眼核验它没写进清单的部分和
+           所有人工项（文件是否存在？是否与目标相符？）。清单只是证据之
+           一，不是免检通行证；更新 progress.jsonl；派生下一个单元或收尾。
          - worker 报告（一个提问）：如果你知道答案，就通过 send_message
            回答；否则问用户（见下文 QUESTIONS），并让其他工作继续推进。
          - 定时巡检：检查该 worker（list_agents；读它的产物或
@@ -458,6 +463,9 @@
         maxRounds: 64
 
 # ── 其余面向模型的行 ────────────────────────────────────────────────────────
+
+- id: tool-check-outcome
+  name: dsh-main-agent/checks
 
 - id: tool-ask-user
   name: '@deepseek-ai/dsh-tool-ask-user'

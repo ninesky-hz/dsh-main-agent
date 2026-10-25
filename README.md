@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.15.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.16.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -93,6 +93,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 | 0.14.0 | 循环可观测：连续空转自动降级并收尾、暂停后不再被兜底唤醒、停止原因落盘、每轮重写 `.agi/BRIEF.md`、每 5 轮复核目标、worker 超时留痕、按里程碑估轮次预算 |
 | 0.14.1 | 重启后主动扫一遍根监督者补排提醒（原先只有新的回合才会触发兜底，空闲会话会静默停住）、循环状态按 session 分文件（同工作区两个监督者不再互相覆盖）、自动把派生的状态文件加进 `.gitignore` |
 | 0.15.0 | 轮次预算可在有产出时续期（最多两次）、摘要给出每轮耗时与续期次数、兜底唤醒比预期晚太多时留痕、`.agi/LESSONS.md` 让下一个目标继承本工作区的教训 |
+| 0.16.0 | worker 可以留 `checks.json`，`check_outcome` 把它的验收断言一次跑完：失败项直接列出来、人工项单独标注，不留「我核过了」这种无法核对的结论 |
 
 ## 在新 PC 上运行本地课程
 
@@ -774,7 +775,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 
 | 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算、空转收尾、目标复核），`lib/loop-journal.js` 负责把循环状态、事件与每轮摘要落到 `.agi/`（`loop-state.json` / `progress.jsonl` / `BRIEF.md`），`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算、空转收尾、目标复核），`lib/loop-journal.js` 负责把循环状态、事件与每轮摘要落到 `.agi/`（`loop-state.json` / `progress.jsonl` / `BRIEF.md`），`lib/checks.js` 是 worker 验收清单的读取与执行（纯函数，不碰 `ctx`，所以测试不依赖 `node_modules`）、`lib/checks-tool.js` 注册 `check_outcome`，`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |

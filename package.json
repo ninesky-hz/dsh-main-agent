@@ -1,6 +1,6 @@
 {
   "name": "dsh-main-agent",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 承载目标循环、worker 编队与跨模式监督层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
@@ -10,6 +10,7 @@
     "./spawn": "./lib/spawn.js",
     "./control": "./lib/control.js",
     "./goal": "./lib/goal.js",
+    "./checks": "./lib/checks-tool.js",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml"
   },
