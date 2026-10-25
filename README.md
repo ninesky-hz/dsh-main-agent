@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.13.7**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.13.8**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.2）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.3）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -41,6 +41,28 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
+
+**0.2.1-rc.3 无需改动。** 逐包比对 `npm pack` 下来的 rc.3 与本地 rc.2 原版（比对基准用
+`*.dshpurge.bak`，否则会把 dsh-purge 的宿主补丁误判成版本差异）后，本插件触及的 14 个包
+运行时 JS **逐字节一致**，`web-app/presets/{standard,minimal,ptc,cordis}.patch.yml` 也完全
+没变 —— 这四份正是「启用监督循环的模式」改写 `plugins` 的对象。rc.3 全局只有两处变化，
+都与本插件无关：
+
+- `dsh-web-app/cordis.patch.yml` 的 `system-prompt.personaPrefix` 从 `""` 变成
+  `You are a coding agent powered by the {{model}} model.`。它在 host 层注册为 section
+  `deployment:persona-prefix`，而 preset 内的 `persona` 行会用**同名** section 遮蔽它
+  （`dsh-system-prompt` 的 `section()` 契约原文：`A scoped section shadows a global section
+  with the same name`）—— main-agent 的监督者人格与四个官方 preset 的空 prefix 都盖住
+  这一句，宿主这句只对不挂 preset 的会话生效。
+- `dsh-web-app/cordis.patch.yml` 新增 `entry-customization`
+  （`@deepseek-ai/dsh-client-ui-entry-customization`）：More 菜单里置顶/取消置顶插件启动器。
+  纯 UI，不进入本插件的任何代码路径。
+
+`peerDependencies` 的区间（`>=0.1.0-rc.6 <0.3.0`，`dsh-subagent` 为
+`>=0.2.1-rc.2 <0.3.0`）本来就覆盖 rc.3，不需要放宽。单元测试不加载任何宿主包（全部是对
+`lib/*.js` 纯函数与 mock `ctx` 的断言），所以测试结论与宿主小版本无关；升级后请用
+`GET /supervisor/health`（看 `ok`、`version`、`supervisorPresets`、`schedule.available`）
+与 `GET /supervisor/presets`（看被启用模式的 `rows` 是否为 3）确认运行时接线。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
 记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、
@@ -67,6 +89,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 | 0.13.5 | 包描述去掉「加 schedule 叠加层」 |
 | 0.13.6 | 安装脚本不再往 profile 写重复的 schedule 行 |
 | 0.13.7 | README 与 `files` 白名单对齐（去掉已删除的 `patches/`） |
+| 0.13.8 | 核对 dsh 0.2.1-rc.3：相关 14 个包运行时逐字节一致，无需改动 |
 
 ## 在新 PC 上运行本地课程
 
