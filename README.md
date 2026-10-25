@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.13.8**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.14.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -90,6 +90,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 | 0.13.6 | 安装脚本不再往 profile 写重复的 schedule 行 |
 | 0.13.7 | README 与 `files` 白名单对齐（去掉已删除的 `patches/`） |
 | 0.13.8 | 核对 dsh 0.2.1-rc.3：相关 14 个包运行时逐字节一致，无需改动 |
+| 0.14.0 | 循环可观测：连续空转自动降级并收尾、暂停后不再被兜底唤醒、停止原因落盘、每轮重写 `.agi/BRIEF.md`、每 5 轮复核目标、worker 超时留痕、按里程碑估轮次预算 |
 
 ## 在新 PC 上运行本地课程
 
@@ -445,6 +446,14 @@ Harness 行为。
 自己补一条兜底提醒，`workerDeadlineMinutes` 到点中断停滞的 worker，
 `maxSpawnTotal` 限制整个会话累计派生量。
 
+兜底不是无限的：`progress.jsonl` 连续 5 轮没有新写入就判定空转，先拉长唤醒
+间隔、再以 `code: idle` 结束目标并写明原因 —— 一直叫醒一个不动的循环，只是
+把预算烧在「还在看」上。反过来，人类按下的 pause 会让兜底立刻撤掉（判据与
+宿主的驱动器一致：`phase === 'active' && activation === 'armed'`），否则
+「让它停」这件事永远停不下来。每轮还会把目标、最近进展、未答问题、上次停止
+原因写进 `.agi/BRIEF.md`，模型下一轮先读这份摘要而不是回翻历史；每 5 轮把
+本次提醒换成「先确认目标还成立吗」的复核提示。
+
 该 preset 把恢复与连续性当作明确的不变量。在升级一个阻塞项之前，
 监督者必须检查仓库本地的 runbook 与
 脚本，并尝试一组有界的、彼此不同的安全恢复动作；反复硬撞
@@ -744,7 +753,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 
 | 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算），`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算、空转收尾、目标复核），`lib/loop-journal.js` 负责把循环状态、事件与每轮摘要落到 `.agi/`（`loop-state.json` / `progress.jsonl` / `BRIEF.md`），`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
