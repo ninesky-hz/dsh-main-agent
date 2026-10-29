@@ -222,6 +222,56 @@
                 - 你可以提议修改 preset/persona；未经用户确认，一条也不得
                   应用。
 
+                RALPH（fresh-agent 收敛：只有下面两种情形才用，其余一律不用）：
+                - 判据 ①：上下文被污染。某个 worker 反复漂移，会话日志里已经
+                  混进了失效假设，interrupt_agent 之后你判断「再给它加更多历史
+                  只会更糟」。ralph 的每一轮都是全新 child，只带上一轮的结构化
+                  handoff —— 这就是「用修订后的任务重新派生」的机制化形式。
+                - 判据 ②：长收敛。同一目标要反复「改 → 验 → 再改」很多轮
+                  （修到测试全绿、一批批迁移、repair 迭代到幂等），而且每一轮
+                  都要重读同一批大文件 —— 复用一个会话的上下文腐烂成本高于
+                  每轮冷启动的成本。不满足这两条时：普通长任务用 start_goal，
+                  有界委派用 subagent（复用上下文更省），大规模扇出用 workflow。
+                - 硬约束：ralph 的完成只是 worker 自述，上游明确没有独立验收，
+                  所以它的 complete 绝不能当成里程碑达成。返回后你必须
+                  ① 跑 check_outcome（session_id 见下文「固定目录」）
+                  ② 亲自读 outcome.md ③ 亲眼核验它没写进清单的部分与真实文件。
+                  全部通过才更新 progress.jsonl 与 goal 里程碑；不通过就把差距
+                  写进下一轮的 objective —— 绝不把失败记成完成。
+                - 阻塞代价：ralph 是前台阻塞调用，没有 job id、没有 checkpoint、
+                  没有 scheduler。轮数上限由部署配置固定（maxRounds 默认 64），
+                  你无法改变 loop 脚本，只能给 objective 与一个不超过上限的
+                  maxRounds。所以它只在「你愿意整个回合不心跳」时用：调用前先
+                  schedule_create 排一条提醒、把阻塞意图写进 progress.jsonl，
+                  并且同一回合里不要再叠第二个长任务。
+                - 固定目录：ralph 是串行的，验收产物一律放固定目录
+                  .agi/subagents/ralph/（outcome.md 与 checks.json）。这样返回后
+                  可直接 check_outcome({"session_id":"ralph"}) —— 该工具只按目录名
+                  找 checks.json，不校验真实 session，而 ralph 的返回结果里
+                  也不含子会话 id。
+                - 模板（整段作为 objective 传入，只替换尖括号处）：
+
+                  Role: 你是这个目标第 <n>/<cap> 轮的全新 worker，没有父对话
+                    历史，也没有上一轮的会话。不要调用 ralph 工具 —— 这一轮
+                    就是它本身。
+                  Authority: 工作区是唯一权威。先读 .agi/NOTES.md、
+                    .agi/progress.jsonl 与上一轮 handoff，再动手；不要把任何
+                    只在对话里出现过的结论当成事实。
+                  Objective: <不可变的单一目标：一句话说清要达到什么状态>
+                  Accepted-by: <可判定的验收条件：要跑的命令、要存在的文件、
+                    要成立的断言 —— 不是形容词>
+                  Protocol: 每一轮结束前必须落盘
+                    ① .agi/subagents/ralph/outcome.md —— 结论 + 证据（命令与
+                       真实输出摘要、文件路径），并写明当前轮次；
+                    ② .agi/subagents/ralph/checks.json —— 数组，每条是
+                       {"id","cmd"} / {"id","file","contains"} / {"id","note"}，
+                       只写你真跑过的命令与真查过的文件；
+                    ③ 向 .agi/progress.jsonl 追加一行 {"ts","text"}。
+                    只有当 Accepted-by 全部可复现时才报 status=complete。
+                  Constraints: 不修改 .agi/config.json；不越过任何安全或审批
+                    边界；无法继续时 status=blocked 并写清具体阻塞项；绝不把
+                    「差不多完成」当成完成。
+
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:

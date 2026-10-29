@@ -94,6 +94,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 | 0.14.1 | 重启后主动扫一遍根监督者补排提醒（原先只有新的回合才会触发兜底，空闲会话会静默停住）、循环状态按 session 分文件（同工作区两个监督者不再互相覆盖）、自动把派生的状态文件加进 `.gitignore` |
 | 0.15.0 | 轮次预算可在有产出时续期（最多两次）、摘要给出每轮耗时与续期次数、兜底唤醒比预期晚太多时留痕、`.agi/LESSONS.md` 让下一个目标继承本工作区的教训 |
 | 0.16.0 | worker 可以留 `checks.json`，`check_outcome` 把它的验收断言一次跑完：失败项直接列出来、人工项单独标注，不留「我核过了」这种无法核对的结论 |
+| 0.17.0 | 修好 0.16.0 引入的致命缺陷：`check_outcome` 的返回值多带了一个未声明的 `render` 字段，被 dsh-tools 的严格输出校验整次拒收，于是它**从来没有成功过**（明细改为已声明字段 `detail`，并补工具壳测试）。同时给 `ralph` 补上使用判据与 objective 模板：只允许「上下文被污染」与「长收敛」两种情形，完成只是 worker 自述必须有 `check_outcome` 兜底，且它前台阻塞、同回合不得叠第二个长任务 |
 
 ## 在新 PC 上运行本地课程
 
@@ -497,6 +498,45 @@ Harness 行为。
 runbook、自动化脚本或源码入口，`start_goal` 会被额外
 拒绝，直到当前回合成功打开一个 `.agi` 之外的文件；宽泛的
 列目录，或只读 GOAL.md/NOTES.md，都不算满足打底要求。
+
+### Ralph：第三种执行载体（fresh-agent 收敛）
+
+`ralph` 不是本插件的工具，它来自官方的
+`@deepseek-ai/dsh-experimental-ralph-bundle`。本插件的 preset
+**自己插了一份配置相同的 `tool-ralph` 行**，所以即使那个实验性
+bundle 被关掉，`ralph` 也仍然可用 —— 插件不依赖它。
+
+它和本插件的 worker 模型是**相反方向**的：本插件的 worker 刻意复用
+会话（`send_message` 的消息在下一回合到达、上下文保留），ralph 则每一轮
+开一个全新 child，只带上一轮 ≤16KB 的结构化 handoff，以工作区为长期
+记忆。所以只有两种情形该用它：
+
+- **上下文被污染。** 某个 worker 反复漂移、会话日志里已经混进失效
+  假设，`interrupt_agent` 之后你判断「再加历史只会更糟」。ralph 就是
+  「用修订后的任务重新派生」的机制化形式。
+- **长收敛。** 同一目标要反复「改 → 验 → 再改」很多轮（修到测试全绿、
+  一批批迁移、迭代到幂等），并且每轮都要重读同一批大文件 —— 这时复用
+  会话的上下文腐烂成本高于每轮冷启动成本。
+
+其余一并不用：普通长任务走 `start_goal`，有界委派走 `subagent`（复用
+上下文更省），大规模扇出走 `workflow`。
+
+两条硬约束：
+
+1. **它的 `complete` 只是 worker 自述**（上游明确没有独立验收）。
+   返回后必须 `check_outcome` + 亲自读 `outcome.md` + 亲眼核验真实
+   文件，全部通过才可更新 `progress.jsonl` 与目标里程碑。
+2. **它是前台阻塞调用**，没有 job id、没有 checkpoint、没有 scheduler，
+   单次可能跑几十分钟。所以只在「你愿意整个回合不心跳」时用：调用前先
+   `schedule_create` 排一条提醒、把阻塞意图写进 `progress.jsonl`，并且
+   同一回合里不要再叠第二个长任务。
+
+验收产物放在**固定目录** `.agi/subagents/ralph/`（`outcome.md` +
+`checks.json`），返回后直接 `check_outcome({"session_id":"ralph"})` ——
+ralph 的返回结果里**不含子会话 id**，而 `check_outcome` 只按目录名找
+`checks.json`，所以固定目录是唯一可行的对接方式。完整的 objective
+模板写在 persona 里（`agent-presets/main-agent/agent.cordis.yml`），
+两处共用同一份文本，避免漂移。
 
 ## 元配置（Meta-config，Settings → Plugins → 监督者）
 
