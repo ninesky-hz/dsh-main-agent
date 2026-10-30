@@ -177,7 +177,10 @@ test('workers cannot open a child-local user question that the supervisor cannot
   assert.notStrictEqual(first.deny, second.deny)
 
   const spawnSource = await readFile(new URL('../lib/spawn.js', import.meta.url), 'utf8')
-  assert.match(spawnSource, /toolFilter: workerToolFilter\(\)/)
+  // The child restriction must always be built by `workerToolFilter`, never a
+  // hand-written literal. Preset-specific denials join it as an argument, so a
+  // preset narrowed by the retired `toolFilter.deny` spelling keeps its list.
+  assert.match(spawnSource, /toolFilter: workerToolFilter\(workerDeniedTools\(config\)\)/)
   assert.match(spawnSource, /ctx\.root\.on\('agent\/created'/)
   assert.match(spawnSource, /ctx\.root\.on\('agent\/request'/)
   assert.match(spawnSource, /ctx\.root\.on\('session\/event'/)

@@ -619,23 +619,69 @@ ralph 的返回结果里**不含子会话 id**，而 `check_outcome` 只按目�
 
 ### 跨模式：让别的 preset 也跑监督循环
 
-监督循环默认只属于 `main-agent`。若希望 `standard`、`minimal`、`ptc` 这类
+监督循环默认只属于 `main-agent`。若希望 `standard`、`ptc`、`cordis` 这类
 preset 也能主动跑循环（而不只是让 Feed 面板可见），在同一张设置卡片里勾选
 **启用监督循环的模式** 即可 —— 列表来自 `agentPresets.list()`，一个 preset
 对应一个复选框。
 
-这个操作改写的是该 preset 的 loader 行 `plugins`，且只动四行，其余行逐字节不变：
+**但不是每个 preset 都承载得了。** 监督层要落地靠的是下面表里那四行锚点，
+一行都不能缺：缺 `persona` 就没有人格；缺 `tool-goal` / `tool-subagent-control` /
+`tool-subagent` 就成了「自称监督者，却没有 `start_goal`、没有 worker、没有
+`send_message`」。所以判定按**锚点行是否存在**逐条来（`supervisorAnchorReport`），
+不看已经叠了几行 —— 没叠过的 preset 那个计数恒为 0，拿它判断会把 `standard`
+也一起判死。
 
-| 行 | 从 | 到 |
+官方 `minimal` 就是反例：它有 `persona`，却没有 `tool-goal`、没有
+`tool-subagent-control`、也没有 `delegation` 组，四个锚点缺三个。设置卡片把它
+灰掉并写明缺哪几行；即使绕过界面硬塞进去，服务端也会把它从勾选里剔除、在响应
+里返回 `rejected`，并且**不去改那个 preset** —— 半应用的监督层比没有更糟。
+
+这个操作改写的是该 preset 的 loader 行 `plugins`，只动三行 `name`、`persona.prefix`，
+以及 `tool-subagent` 的 `config`，其余行逐字节不变：
+
+| 位置 | 从 | 到 |
 |---|---|---|
-| `persona.config.prefix` | `""` | 监督者人格（目标 / 状态 / 循环 / 定时器 / 边界） |
+| `persona.config.prefix` | 原值（`""` 或该模式自己的人格） | **原值 + 过渡段 + 监督者人格**（拼接，不覆盖） |
 | `tool-goal.name` | `@deepseek-ai/dsh-tool-goal` | `dsh-main-agent/goal`（`start_goal`） |
 | `tool-subagent-control.name` | `@deepseek-ai/dsh-tool-subagent-control` | `dsh-main-agent/control`（运行中纠偏） |
 | `tool-subagent.name` | `@deepseek-ai/dsh-tool-subagent` | `dsh-main-agent/spawn`（强制从白名单选 model） |
+| `tool-subagent.config.persona` | 无 | `DEV_AGENT_PERSONA`（worker 协议） |
+| `tool-subagent.config.deny` | 无 | 旧式 `toolFilter.deny` 的副本（合并去重） |
 
 `tool-subagent-list-agents` 与 `tool-subagent-fork` 保持官方实现，`disabled`
 行、`!!js` 条件与 group 结构都不受影响。`main-agent` 恒为监督者，在列表里
 只展示不可勾选。
+
+**为什么还要搬 `deny`。** 新版 `@deepseek-ai/dsh-tool-subagent` 已经不再接受
+`persona` 与 `toolFilter`（配置里有任一字段就抛错），所以破甲模式改用「生成一个
+子预设 + `agentPreset`」来排除 `subagent_fork` / `workflow` / `ralph`。而监督层
+会把那一行改名成 `dsh-main-agent/spawn` —— 改名后 dsh-poja 的迁移就认不出它
+（它只匹配官方 name），子预设不再生成，限制会静默丢掉。所以限制必须有 spawn 侧
+的落点：`apply` 把 `toolFilter.deny` 复制进 `config.deny`，`dsh-main-agent/spawn`
+在构造请求时把两者合并成 `workerToolFilter(workerDeniedTools(config))`。
+旧字段刻意保留 —— `strip` 靠「`deny` 与 `toolFilter.deny` 同时存在」判断这是自己
+写的副本，从而在**没有 baseline** 时也能精确删掉它，同时不动用户自己写的 `deny`。
+
+**persona 是拼接，不是替换。** 勾一个自带人格的模式（例如破甲模式那 1835 字
+「操作者的执行端」），写入结果是 `原人格` + `<!-- dsh-main-agent:supervisor-layer v1 origin=1835 -->`
++ 过渡段 + `监督者人格`。原人格逐字保留在最前，监督者人格追加在后，中间那段
+交代分工：模式决定**怎么干活**（身份、执行风格、交付标准、边界），监督层决定
+**怎么推进目标**（锁定目标、派 worker、定时唤醒、状态落盘）；冲突时按这个切分，
+且「不要亲自做完」只约束长任务编排 —— 一次就能做完的读、查、核验、收尾仍然
+由 agent 自己动手。
+
+前缀为空的 preset（自定义精简版之类）行为不变：只得到监督者人格。
+
+标记行里的 `origin=` 是原文长度，它同时承担两件事：**幂等判定**（`origin` 之后
+到结尾逐字等于本层写过的尾部，才算「已叠过」）与**回滚定位**（取消勾选时
+`stripSupervisorPersona` 直接切到 `origin`，不去文本里找锚点）。所以用户自己
+的人格里出现这串标记字面量、甚至整段粘贴了监督者人格，都不会被误判成「已叠过」，
+也不会被从中间截断 —— 这是纯 `includes()` 判定做不到的。
+
+有一条边界要记住：`stripSupervisorLayer` 对 `persona` 与三处 `name` 是自足还原的，
+但 `tool-subagent.config.provider` 由 apply 钉成 `spawn`，没有快照时无法知道原值，
+所以**不回退**它。生产路径（`syncSupervisedLayer`、`lib/index.js`）都在 strip 之前
+先存 baseline，不依赖这条自足性。
 
 生效是**热的**：preset 的 `Service.init` 是 async generator，注册返回的
 unregister 会在 fiber dispose 时自动调用，所以改写 `plugins` → 重启 fiber
@@ -672,18 +718,36 @@ loader，但注册表把整条记录放在 `definitions` 上、`activate()` 又�
 要等 `users` 归零才真正 dispose，它们把旧的那份用完。
 
 这两个成员都是未公开接口，所以每次挂载失败都降级成 `false` 而不是抛异常：换了
-harness 版本就退回「写盘、下次启动生效」，绝不假装成功。卡片据此显示
-`✓ 已启用，立即生效` 或 `✓ 已写入磁盘，重启 DSH 后生效`；`GET /supervisor/presets`
-里对应的字段是 `fileBacked`（这个 preset 有没有可写的 composition 文件）与
-`pendingRestart`（磁盘上是否有待下次启动加载的改动）。
+harness 版本就退回「写盘、下次启动生效」，绝不假装成功。
 
-这里是**两层还原**：文件层用 `agent.cordis.yml.supervisor.bak` 覆盖回去（`redteam`
-自带 263 字指挥人格，反向剥离会把 persona 清空），内存层用首次见到时
-`structuredClone` 下来的原始 `plugins`（baseline），所以来回切换是字节级一致。
+**「挂载成功」不能只看 `activate()` 有没有抛错**：它自己 catch 掉挂载失败，只把
+诊断写进 `record.broken` 就正常返回。所以 `remountPreset` 在调用后再检查
+`broken` 有没有被新写入 —— 有就把 `config` 与 `generation` 一起回滚、返回
+`false`，让卡片老实说「需要重启」，而不是报「立即生效」却仍服务旧 revision。
+
+卡片据此显示 `✓ 已启用，立即生效` 或 `! 已写入磁盘，需要重启 DSH 才生效`；
+`GET /supervisor/presets` 里对应的字段是 `fileBacked`（这个 preset 有没有可写的
+composition 文件）与 `pendingRestart`（磁盘上是否有待下次启动加载的改动）。
+`POST` 的响应还会把需要重启的那几个 id 直接列在 `restartRequired` 里，卡片在保存
+提示里点名 —— 不必让用户自己去猜哪一项没生效、要不要重启。
+
+这里是**三层还原**：文件层用 `agent.cordis.yml.supervisor.bak` 覆盖回去；内存层
+用首次见到时 `structuredClone` 下来的原始 `plugins`（baseline）；最外层还有
+`stripSupervisorPersona` 的源码级还原 —— 它按标记行里的原文长度把监督层切掉，
+所以没有 baseline 的路径（运行时生成的 preset、首轮挂载之前）也能把用户自己
+的模式人格原样还回来，而不是清空。来回切换是字节级一致。
 
 少数 preset（如 `unrestricted` 派生的 `unrestricted-child-*`）完全由运行时生成，
 既没有 loader 行也没有文件，卡片上标注`由插件在运行时生成，没有可改写的文件`
 且不可勾选（`fileBacked: false` 且无 baseline）。
+
+另一类不可勾选的是**锚点不齐**的 preset（官方 `minimal` 是典型）：`GET /supervisor/presets`
+为每一项返回 `stackable` 与 `missing`，卡片据此灰掉整行并写明缺哪几行。判定同时
+覆盖两条路径 —— loader 行看 `plugins`，file-backed preset 读它的 `agent.cordis.yml`
+（`supervisorFileAnchorReport`），同一个 `supervisorAnchorReport` 规则，不写两份。
+这道闸同时在三处生效：卡片禁用、`POST /supervisor/presets` 剔除并在响应里返回
+`rejected`、`syncSupervisedLayer`（以及磁盘路径的 `applySupervisorToFile`）再拒绝
+一次 —— 旧配置里残留的无效勾选因此既不会施加、也不会卡住别人的保存。
 
 ## 监督动态 Feed 标签页
 

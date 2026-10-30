@@ -125,7 +125,10 @@ test('a preset with no delegation group still gets the top-level rows', () => {
     { id: 'tool-goal', name: '@deepseek-ai/dsh-tool-goal' },
   ]
   const supervised = applySupervisorLayer(plugins)
-  assert.equal(byId(supervised, 'persona').config.prefix, SUPERVISOR_PERSONA)
+  // 自带人格的 preset 走拼接：原 prefix 在最前，监督者人格追加在后。
+  const composedPrefix = byId(supervised, 'persona').config.prefix
+  assert.ok(composedPrefix.startsWith('minimal'))
+  assert.ok(composedPrefix.endsWith(SUPERVISOR_PERSONA))
   assert.equal(byId(supervised, 'tool-goal').name, 'dsh-main-agent/goal')
   assert.equal(countSupervisorRows(supervised), 1)
 })
