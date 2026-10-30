@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.16.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.18.1**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.3）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.5）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -36,8 +36,8 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **223 项**单元测试（`tests/` 下 22 个 `.test.mjs`）在 dsh `0.2.1-rc.2` 上跑出
-**221 通过 / 2 按平台跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+本仓库的 **298 项**单元测试（`tests/` 下 29 个 `.test.mjs`）当前 `npm test` 全绿：
+**298 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
@@ -59,10 +59,40 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   纯 UI，不进入本插件的任何代码路径。
 
 `peerDependencies` 的区间（`>=0.1.0-rc.6 <0.3.0`，`dsh-subagent` 为
-`>=0.2.1-rc.2 <0.3.0`）本来就覆盖 rc.3，不需要放宽。单元测试不加载任何宿主包（全部是对
+`>=0.2.1-rc.2 <0.3.0`）本来就覆盖 rc.3 与 rc.5，不需要放宽。单元测试不加载任何宿主包（全部是对
 `lib/*.js` 纯函数与 mock `ctx` 的断言），所以测试结论与宿主小版本无关；升级后请用
 `GET /supervisor/health`（看 `ok`、`version`、`supervisorPresets`、`schedule.available`）
 与 `GET /supervisor/presets`（看被启用模式的 `rows` 是否为 3）确认运行时接线。
+
+**0.2.1-rc.5 同样无需改动。** 用 `npm pack` 取 rc.3 与 rc.5 两份、逐文件 `sha256` 比对后，
+本插件 import 到的 **32 个** `@deepseek-ai/*` 包（`dsh-tool-subagent`、`dsh-tool-subagent-control`、
+`dsh-subagent`、`dsh-schedule`、`dsh-tool-schedule`、`dsh-goal`、`dsh-tool-goal`、`dsh-session`、
+`dsh-tools`、`dsh-llm`、`dsh-persona`、`dsh-agent-preset`、`dsh-web-app`、
+`dsh-client-ui-agent-preset`、`dsh-workflow-ptc`、`dsh-tool-workflow`、`dsh-tool-ralph`、
+`dsh-tool-web`、`dsh-tool-todo`、`dsh-tool-skill`、`dsh-tool-pwsh`、`dsh-tool-jobs`、
+`dsh-tool-fs-search`、`dsh-tool-fs`、`dsh-tool-bash`、`dsh-tool-ask-user`、`dsh-skill-filesystem`、
+`dsh-plan-mode`、`dsh-compaction-tool-result-pruner`、`dsh-compaction-basic`、`dsh-command-compact`、
+`dsh-agent-instructions`）**每个包只有 `package.json` 一个文件不同**，且差异仅限 `version`
+与内部 `@deepseek-ai/*` 的钉版同步（依赖键集合无增删）。运行时 JS，以及
+`dsh-web-app/presets/{standard,minimal,ptc,cordis}.patch.yml` 四份
+——「启用监督循环的模式」改写 `plugins` 的对象 —— 一行未改。
+
+rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本插件的接口面内：
+
+- `dsh-client-ui-conversation` 只改了 view tab 的 tooltip 判定（由常显改为「label 估算宽度
+  超过 88px 才显示」），顺带删掉一个 locale key `session.moreViewsCurrent`；`contract/slots.d.ts`
+  与 `contract/views.d.ts` **逐字节相同**。本插件唯一注册的槽位 `conversation.view`
+  （`lib/client.js` 里的 `{ name: 'conversation.view', id: 'supervisor-feed', label: '监督动态' }`）
+  契约未变，`监督动态` 四个全角字估算约 52px，不进入 tooltip 分支。
+- `dsh-client-ui-chat` 调整了 `conversation.chat.reasoning.*` 的类型（rc.4 起 `text` 变为
+  Chat 处理后的显示文本、新增 `rawText` 承载原始模型输出）。本插件**没有**自定义推理渲染器：
+  `lib/` 里出现的 `reasoning` 全是 worker 模型目录的 `reasoning.efforts`
+  （`lib/worker-model-policy.js`、`lib/spawn.js`），与 Chat 的推理槽位无关。
+
+`presets/main-agent.patch.yml` 里那条 `@deepseek-ai/dsh-workflow-worker-thread` 是
+`disabled: true` 的历史行：该包在 0.2.x 不存在（npm 上 `latest` 停在 `0.0.1-rc.3`，
+`next` 已是 `0.1.5-rc.x`），启用会让整个 preset 挂载失败，保持禁用即可。`@deepseek-ai/cordis`
+（peer `^4.0.1`）与 `@deepseek-ai/schemastery`（peer `^3.18.0`）是独立版本线，不随 rc 号变化。
 
 `DESIGN.md`、`IMPLEMENTATION_PLAN.md` 与 `tutorial/` 课程作为原始设计
 记录保留：当它们提到 `installSettingsSection`、`settingsNamespace`、`followup`、
@@ -95,6 +125,8 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 | 0.15.0 | 轮次预算可在有产出时续期（最多两次）、摘要给出每轮耗时与续期次数、兜底唤醒比预期晚太多时留痕、`.agi/LESSONS.md` 让下一个目标继承本工作区的教训 |
 | 0.16.0 | worker 可以留 `checks.json`，`check_outcome` 把它的验收断言一次跑完：失败项直接列出来、人工项单独标注，不留「我核过了」这种无法核对的结论 |
 | 0.17.0 | 修好 0.16.0 引入的致命缺陷：`check_outcome` 的返回值多带了一个未声明的 `render` 字段，被 dsh-tools 的严格输出校验整次拒收，于是它**从来没有成功过**（明细改为已声明字段 `detail`，并补工具壳测试）。同时给 `ralph` 补上使用判据与 objective 模板：只允许「上下文被污染」与「长收敛」两种情形，完成只是 worker 自述必须有 `check_outcome` 兜底，且它前台阻塞、同回合不得叠第二个长任务 |
+| 0.18.0 | persona 注入由「整份替换」改为**拼接**（原人格逐字保留在前、监督层追加在后，标记行带 origin 长度，strip 按长度精确回滚）；缺锚点的 preset 不再可勾选（`GET` 返回 `stackable`/`missing`，卡片灰掉并写明缺哪几行，`POST` 剔除并回 `rejected`）；`dsh-main-agent/spawn` 新增 `deny`，把官方 `tool-subagent` 上的 `toolFilter.deny` 复制过来，使破甲模式的工具限制在改名后仍然生效；`remountPreset` 复检 `record.broken`，热挂载失败时回滚并如实报「需要重启 DSH」 |
+| 0.18.1 | 核对 dsh 0.2.1-rc.5：本插件 import 的 32 个 `@deepseek-ai/*` 包每个只有 `package.json` 不同（仅版本号与内部依赖钉版），运行时 JS 与四份 `presets/*.patch.yml` 一行未改；rc.3→rc.5 的实质改动只在两个客户端包（tooltip 判定与推理块类型），都不在本插件的接口面内。同时把 README 的版本号与测试数字对齐现实（298 项、`tests/` 下 29 个文件） |
 
 ## 在新 PC 上运行本地课程
 
@@ -889,7 +921,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
 | `scripts/sync-preset-patch.mjs` | 从 `agent-presets/main-agent/` 重新生成 `presets/main-agent.patch.yml`（`npm run sync-preset`，`prepack` 也会跑） |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 22 个 `node --test` 文件、223 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、install-spec、repair-profile 等 |
+| `tests/` | 29 个 `node --test` 文件、298 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 评分
