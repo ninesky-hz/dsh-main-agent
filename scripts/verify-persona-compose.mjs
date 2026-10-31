@@ -34,7 +34,11 @@ if (!persona) {
   process.exit(2)
 }
 
-const original = typeof persona.config?.prefix === 'string' ? persona.config.prefix : ''
+const raw = typeof persona.config?.prefix === 'string' ? persona.config.prefix : ''
+// 磁盘上的 preset 可能已经叠过了 —— 甚至是早前那版「无锚点」的旧形态。要验证的是
+// 「干净原文 → compose → strip」这条往返，所以先把原文剥出来；直接拿已叠过的整段
+// 当原文会让「原人格在前」这条断言必然为假，测不出任何东西。
+const original = stripSupervisorPersona(raw)
 const composed = composeSupervisorPersona(original)
 const stripped = stripSupervisorPersona(composed)
 
@@ -43,12 +47,13 @@ const report = {
   complete: persona.config?.complete ?? false,
   originalChars: original.length,
   composedChars: composed.length,
+  磁盘已叠过: hasSupervisorPersona(raw),
+  磁盘需规范化: hasSupervisorPersona(raw) && raw !== composed,
   原人格在前: composed.startsWith(original),
   监督层在后: composed.endsWith(SUPERVISOR_PERSONA),
   带锚点: composed.includes(SUPERVISOR_ANCHOR),
   幂等: composeSupervisorPersona(composed) === composed,
   精确回滚: stripped === original,
-  已叠过: hasSupervisorPersona(original),
 }
 
 console.log(JSON.stringify(report, null, 2))

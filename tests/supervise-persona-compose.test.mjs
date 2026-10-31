@@ -203,3 +203,71 @@ test('persona 行原本没有 prefix 键时，strip 留下等价的 prefix: ""',
     { id: 'persona', name: '@deepseek-ai/dsh-persona', config: { complete: true, prefix: '' } },
   ])
 })
+
+/**
+ * 无锚点旧形态：本层最早的一版实现只做了 `原文 + '\n\n' + 整段人格`，既没有标记行
+ * 也没有过渡段。磁盘上真实的破甲模式 preset 就是这一形态（poja/agent.cordis.yml 的
+ * prefix：line 20-68 原人格、line 69-70 空行、line 71 起整段监督者人格）。
+ *
+ * 只按「有锚点」判已叠过时，它会被判成未叠过而再拼一次 → 两段监督者人格；
+ * strip 又会一个字不动 → 取消勾选等于没取消。这组用例把两条都钉住。
+ */
+test('无锚点旧形态：认得出已叠过，规范化成带锚点的一次性尾巴', () => {
+  const legacy = `${POJA_LIKE}\n\n${SUPERVISOR_PERSONA}`
+  assert.equal(hasSupervisorPersona(legacy), true, '旧形态必须被认成已叠过，否则会再拼一次')
+
+  const normalized = composeSupervisorPersona(legacy)
+  assert.ok(normalized.startsWith(POJA_LIKE), '原人格逐字保留在最前')
+  assert.equal(
+    normalized.split('你是一名常驻监督者').length - 1,
+    1,
+    '规范化后监督者人格只能出现一次（这正是双份的成因）',
+  )
+  assert.ok(normalized.includes(SUPERVISOR_ANCHOR), '规范化后必须带锚点，否则下次还是认不出')
+  assert.equal(composeSupervisorPersona(normalized), normalized, '规范化之后再 compose 幂等')
+  assert.equal(stripSupervisorPersona(normalized), POJA_LIKE, 'strip 精确回到原人格，逐字一致')
+})
+
+test('无锚点旧形态：即使不先 compose，strip 也能干净取消', () => {
+  const legacy = `${POJA_LIKE}\n\n${SUPERVISOR_PERSONA}`
+  assert.equal(stripSupervisorPersona(legacy), POJA_LIKE)
+})
+
+test('无锚点旧形态的换行变体：识别稳定，尾随换行不参与判定', () => {
+  // 无锚点形态没有原文长度可校验，人格前面到底几个换行在字节上无法唯一还原
+  // （真实 preset 是「内容 + 行尾换行 + 两个空行」，即 `\n\n\n`）。所以这里只
+  // 要求：认得出来、剥得干净（尾随换行可能差一两个），并且规范化后会带上精确
+  // 锚点，从此不再有歧义。
+  for (const sep of ['\n', '\n\n', '\n\n\n']) {
+    const legacy = `${POJA_LIKE}${sep}${SUPERVISOR_PERSONA}`
+    assert.equal(hasSupervisorPersona(legacy), true, `${JSON.stringify(sep)} 变体必须认得出`)
+    assert.equal(
+      stripSupervisorPersona(legacy).trimEnd(),
+      POJA_LIKE.trimEnd(),
+      `${JSON.stringify(sep)} 变体的正文必须逐字回来`,
+    )
+    const normalized = composeSupervisorPersona(legacy)
+    assert.equal(
+      stripSupervisorPersona(normalized).trimEnd(),
+      POJA_LIKE.trimEnd(),
+      '规范化后回滚稳定（精确锚点已写入，此后不再有歧义）',
+    )
+    assert.equal(composeSupervisorPersona(normalized), normalized, '规范化后幂等')
+  }
+})
+
+test('applySupervisorLayer 作用在旧形态上：不会长出第二份监督者人格', () => {
+  const plugins = [
+    {
+      id: 'persona',
+      name: '@deepseek-ai/dsh-persona',
+      config: { complete: true, prefix: `${POJA_LIKE}\n\n${SUPERVISOR_PERSONA}`, suffix: '' },
+    },
+  ]
+  const once = applySupervisorLayer(plugins)
+  const twice = applySupervisorLayer(structuredClone(once))
+  const prefix = twice[0].config.prefix
+  assert.equal(prefix.split('你是一名常驻监督者').length - 1, 1, '重复 apply 也只有一份')
+  assert.ok(prefix.startsWith(POJA_LIKE), '原人格仍在最前')
+  assert.equal(stripSupervisorPersona(prefix), POJA_LIKE, '取消勾选能逐字还原')
+})
