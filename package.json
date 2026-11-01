@@ -1,6 +1,6 @@
 {
   "name": "dsh-main-agent",
-  "version": "0.19.0",
+  "version": "0.19.1",
   "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 承载目标循环、worker 编队与跨模式监督层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
@@ -19,15 +19,18 @@
     "cordis.patch.yml",
     "presets",
     "agent-presets",
+    "prompts",
     "agi-template",
     "scripts"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "sync-preset": "node scripts/sync-preset-patch.mjs",
+    "sync-preset": "node scripts/sync-prompts.mjs && node scripts/sync-preset-patch.mjs && node scripts/sync-prompts.mjs --stamp",
+    "sync-profile": "node scripts/sync-profile.mjs",
     "repair-profile": "node scripts/repair-profile.mjs",
+    "accept": "node scripts/accept-worker.mjs",
     "install-spec": "node scripts/install-spec.mjs",
-    "prepack": "node scripts/sync-preset-patch.mjs"
+    "prepack": "npm run sync-preset"
   },
   "license": "MIT",
   "keywords": [

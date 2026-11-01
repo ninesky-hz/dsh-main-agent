@@ -31,7 +31,10 @@ test('presets/main-agent.patch.yml 与预设源文件保持同步', () => {
   const { name, description, composition } = sourceInputs()
   const expected = renderPresetPatch({ name, description, composition })
   const actual = read(join(ROOT, 'presets', 'main-agent.patch.yml'))
-  assert.equal(actual, expected, '生成物过期：请运行 `npm run sync-preset` 后提交')
+  // 文件头第一行 `# prompt-revision: ...` 由 `scripts/sync-prompts.mjs --stamp`
+  // 在生成之后盖上去，不属于 renderPresetPatch 的产出 —— 这里只比对生成正文。
+  const body = actual.replace(/^# prompt-revision: .*\n/, '')
+  assert.equal(body, expected, '生成物过期：请运行 `npm run sync-preset` 后提交')
 })
 
 test('bundle patch 清单只有 host 层与 preset 声明，不再挂 schedule 层', () => {

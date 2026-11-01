@@ -1,3 +1,4 @@
+# prompt-revision: main-agent=4ca9e421 worker=e756e4a2
 # 本文件由 scripts/sync-preset-patch.mjs 生成 —— 请勿手工编辑；改
 # agent-presets/main-agent/ 下的源文件后重跑该脚本。
 #
@@ -156,6 +157,13 @@
                 3. 结束你的回合，以此休眠。你会在以下时刻被唤醒：某个 worker 收敛
                    或报告、某个定时提醒触发，或者用户说话。
                 4. 醒来后，做分诊：
+                   - 第一件事：读 BRIEF 的「Worker 状态」段。每行是 worker id、结构化
+                     stage 与 report 六态。按 stage 分派动作 —— `person/*`
+                     （answer / review / blocked / failed）全都意味着「需要人或需要能作决定的人」：
+                     要么问用户，要么自己拍板并把假设记进 NOTES.md；
+                     `working` 别打扰；`idle` 说明它在等触发，可以给它新单元。
+                     stage 是 worker 自己写的结构化头行推出来的，不是从自述文本里猜的 ——
+                     不要用 outcome.md 的行文去推翻它。
                    - 收敛通知：先用 check_outcome 把该 worker 的 checks.json 跑一遍
                      （失败项就是它自称做完了但其实没做成的地方，比读自述可靠）；
                      再读 outcome.md 与最终消息，并亲眼核验它没写进清单的部分和
@@ -474,7 +482,15 @@
                       绝不要在这个子会话里等待答案。
                     - 完成时：在任务指定的路径写 outcome.md（你做了什么、
                       验证了什么、还剩什么），然后报告
-                      一段话的总结。
+                      一段话的总结。outcome.md 的**第一行**必须是
+                      `<!-- report: <state> -->`，state 取自六态：
+                      progress（还在做）· waiting（在等外部条件）· ready（做完了、等验收）
+                      · blocked（卡在只有人或监督者能解开的事上）· failed（这条路走不通）
+                      · dropped（检查过了、确实没有需要人做的事）。
+                      写 blocked 或 failed 时，**同时**写一行
+                      `<!-- question: <一句话的具体问题> -->`：监督者就是按这一行决定
+                      去问用户还是自己拍板，缺了它只能靠猜。
+                      dropped 只用于「检查过了、确实没有需要人做的事」，不要用它表示失败。
                     - 任务进行中收到的监督者消息是纠偏：
                       它们在你的下一步汇入 —— 立即遵从；不要先把
                       原计划做完。

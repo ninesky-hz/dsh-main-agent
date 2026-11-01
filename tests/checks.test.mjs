@@ -114,3 +114,17 @@ test('runChecks：缺 id 时用位置编号，不丢条目', () => withDir(async
   const results = await runChecks([{ note: 'a' }, { note: 'b' }], { cwd: dir })
   assert.deepEqual(results.map(result => result.id), ['#1', '#2'])
 }))
+
+test('runChecks：命令自带双引号时不被二次转义', () => withDir(async dir => {
+  // Windows 上 Node 默认会给含空格的参数再套一层双引号，而 `node -e "..."` 的源码
+  // 本身就带引号 —— 两层叠起来会被 cmd.exe 解析坏。表现是 `SyntaxError: Invalid or
+  // unexpected token`，更阴的是退出码有时仍是 0，于是验收项通过与否全凭运气。
+  // 验收清单里这种写法极常见（断言文件里有没有某个字符串），所以在这里钉死。
+  const results = await runChecks([
+    { id: 'doubled', cmd: `node -e "console.log('QUOTED-OK')"` },
+    { id: 'cjk', cmd: `node -e "console.log('中文-OK')"` },
+    { id: 'expect-out', cmd: `node -e "console.log('MARK')"`, expectStdout: 'MARK' },
+  ], { cwd: dir, timeoutMs: 30_000 })
+  assert.deepEqual(results.map(result => result.status), ['pass', 'pass', 'pass'])
+  assert.deepEqual(results.map(result => result.id), ['doubled', 'cjk', 'expect-out'])
+}))

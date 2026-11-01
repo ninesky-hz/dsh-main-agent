@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import {
   enrichSettlementMessages,
@@ -7,6 +10,23 @@ import {
   renderTerminalFailure,
   terminalFailureAt,
 } from '../lib/settlement.js'
+
+/**
+ * 造一个临时工作区。
+ *
+ * 不能只信 `os.tmpdir()`：DSH 的沙箱可能把系统临时目录整个挡掉（本机实测
+ * `EPERM ... mkdtemp 'C:\\Users\\…\\Temp\\…'`）。先试系统临时目录，被拒就退回
+ * 工作区内的 `.test-tmp/`（沙箱对工作区是允许的）。
+ */
+function workspace(prefix = 'settlement-') {
+  try {
+    return mkdtempSync(join(tmpdir(), prefix))
+  } catch {
+    const base = join(process.cwd(), '.test-tmp')
+    mkdirSync(base, { recursive: true })
+    return mkdtempSync(join(base, prefix))
+  }
+}
 
 const quota = {
   message: '429: usage limit reached; resets at 21:10:39',
@@ -251,31 +271,41 @@ test('a settlement notice on a declared 0.2 Session never fails the turn', async
 
   // The declared dsh Session surface: the log is reachable only through
   // snapshotEvents(), so `agent.session.events` is undefined.
-  const session = {
-    header: { version: 4, agentPreset: 'main-agent' },
-    inheritedEventCount: 0,
-    snapshotEvents: () => [event('agent/inbox/spliced', 30, { inserted: [message] })],
-  }
-  const decision = await listener(
-    { agent: { session }, messages: [message], signal: new AbortController().signal },
-    async () => ({ kind: 'enter', messages: [message] }),
-  )
-  assert.match(decision.messages[0].content[1].text, /^Terminal failure \[QUOTA\]/)
+  //
+  // `cwd` 是 ④ outbox 生产者要用的会话工作区：pre-step 会在 `next()` 之前把
+  // 「这个 worker 收敛了」写进 `<cwd>/.agi/outbox.jsonl`。缺它时生产者按设计
+  // 静默跳过并 warn，而这条测试断言的是「这条路径零告警」，所以 fixture 必须
+  // 带上一个真工作区 —— 顺带也就覆盖了「写 outbox 不影响这一轮」。
+  const cwd = workspace()
+  try {
+    const session = {
+      header: { version: 4, agentPreset: 'main-agent', cwd },
+      inheritedEventCount: 0,
+      snapshotEvents: () => [event('agent/inbox/spliced', 30, { inserted: [message] })],
+    }
+    const decision = await listener(
+      { agent: { session }, messages: [message], signal: new AbortController().signal },
+      async () => ({ kind: 'enter', messages: [message] }),
+    )
+    assert.match(decision.messages[0].content[1].text, /^Terminal failure \[QUOTA\]/)
 
-  // A Session whose log cannot be read at all keeps the native notice.
-  const unreadable = { session: { header: { version: 4 } } }
-  const blind = await enrichSettlementMessages(
-    { inspect: async () => { throw new Error('must not inspect') } },
-    unreadable,
-    [message],
-    new AbortController().signal,
-    log,
-  )
-  assert.equal(blind[0], message)
-  const passedThrough = await listener(
-    { agent: unreadable, messages: [message], signal: new AbortController().signal },
-    async () => ({ kind: 'enter', messages: [message] }),
-  )
-  assert.deepEqual(passedThrough.messages, [message])
-  assert.deepEqual(log.warnings, [])
+    // A Session whose log cannot be read at all keeps the native notice.
+    const unreadable = { session: { header: { version: 4, cwd } } }
+    const blind = await enrichSettlementMessages(
+      { inspect: async () => { throw new Error('must not inspect') } },
+      unreadable,
+      [message],
+      new AbortController().signal,
+      log,
+    )
+    assert.equal(blind[0], message)
+    const passedThrough = await listener(
+      { agent: unreadable, messages: [message], signal: new AbortController().signal },
+      async () => ({ kind: 'enter', messages: [message] }),
+    )
+    assert.deepEqual(passedThrough.messages, [message])
+    assert.deepEqual(log.warnings, [])
+  } finally {
+    rmSync(cwd, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+  }
 })

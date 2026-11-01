@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.18.1**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.19.1**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -36,8 +36,8 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **298 项**单元测试（`tests/` 下 29 个 `.test.mjs`）当前 `npm test` 全绿：
-**298 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+本仓库的 **367 项**单元测试（`tests/` 下 33 个 `.test.mjs`）当前 `npm test` 全绿：
+**367 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
@@ -127,6 +127,8 @@ rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本
 | 0.17.0 | 修好 0.16.0 引入的致命缺陷：`check_outcome` 的返回值多带了一个未声明的 `render` 字段，被 dsh-tools 的严格输出校验整次拒收，于是它**从来没有成功过**（明细改为已声明字段 `detail`，并补工具壳测试）。同时给 `ralph` 补上使用判据与 objective 模板：只允许「上下文被污染」与「长收敛」两种情形，完成只是 worker 自述必须有 `check_outcome` 兜底，且它前台阻塞、同回合不得叠第二个长任务 |
 | 0.18.0 | persona 注入由「整份替换」改为**拼接**（原人格逐字保留在前、监督层追加在后，标记行带 origin 长度，strip 按长度精确回滚）；缺锚点的 preset 不再可勾选（`GET` 返回 `stackable`/`missing`，卡片灰掉并写明缺哪几行，`POST` 剔除并回 `rejected`）；`dsh-main-agent/spawn` 新增 `deny`，把官方 `tool-subagent` 上的 `toolFilter.deny` 复制过来，使破甲模式的工具限制在改名后仍然生效；`remountPreset` 复检 `record.broken`，热挂载失败时回滚并如实报「需要重启 DSH」 |
 | 0.18.1 | 核对 dsh 0.2.1-rc.5：本插件 import 的 32 个 `@deepseek-ai/*` 包每个只有 `package.json` 不同（仅版本号与内部依赖钉版），运行时 JS 与四份 `presets/*.patch.yml` 一行未改；rc.3→rc.5 的实质改动只在两个客户端包（tooltip 判定与推理块类型），都不在本插件的接口面内。同时把 README 的版本号与测试数字对齐现实（298 项、`tests/` 下 29 个文件） |
+| 0.19.1 | 修掉 0.19.0 真机上暴露的三个缺陷，都属「记录只增不减」。**备份永不清理**：`sync-profile --apply` 每次都在 `$DSH_HOME` 下建一份完整备份却从不删（实测四份、1.96 MB、117 个文件），新增 `scripts/backup-retention.mjs`，`--keep` 默认保留 3 份，且删除**只在 `report.apply` 为真时**发生 —— 诊断模式删用户文件是最坏的副作用。**loop-state 永不清理**：`.agi/loop-state.*.json` 每个会话一份、从不清，新增 `pruneLoopStates(cwd, { keep, keep_key })`，只认 `loop-state.<8位key>.json` 形状，`keep_key`（当前会话那份）无条件保留，watchdog 每进程只扫一次。**历史目录被误判成「有 worker 在排队」**：`renderBrief` 从不告诉 `workerStage`「这个 id 已不在任何子会话里」，于是所有不在跑的条目都流进默认分支 `working/queued`，一个 22 字符的旧手工目录因此常年显示「排队中，等空闲槽」；`collectReports` 增第三可选入参 `known` 返回三态（`undefined` = 调用方没查 / `true` / `false`），只有明确 `false` 才判 `ended`。这里踩了个自己挖的坑：`known === false` 是**推断**，一开始让它占了 first-match 第一位，把 `archived`（Lead 验过）与 `dropped`（worker 说没活了）两个**事实**标签全盖掉了，五个已验收 worker 一起从「已验收归档」退化成光秃秃的「已收尾」；改为事实优先于推断后两者并存。测试从「只断言不说排队中」加强到断言标签本身在场 —— `assert.doesNotMatch(x, /排队中/)` 会让「退化成信息更少」悄悄通过 |
+| 0.19.0 | 从 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 移植六条机制，均取机制、不取架构。**report 六态**：worker 在 `outcome.md` 头行自述 `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`，`lib/report.js` 解析、`lib/stage.js` 用纯函数 first-match-wins 判成 `person/*` / `working` / `idle` / `ended`，渲染进 `.agi/BRIEF.md` 新增的「Worker 状态」段 —— 取代原先靠 `lastActivityAt` 时间差猜「是不是卡了」。**人优先预留槽**：`reservedHumanSlots` 在并发上限之外给人留位置，槽满但本轮有直接人类消息时仍可再派。**proactive 三档**（`off` / `observe` / `auto`）：`observe` 不真派生，只把「本会派什么」记进 `.agi/proposals.jsonl`。**outbox 退避投递**：收敛通知落 `.agi/outbox.jsonl`，2 秒起逐次翻倍到 60 秒、同类严格保序，BRIEF 写盘成功才算 `delivered`，写不进去就 `markFailed` 抬高退避而不是假装送过。**人格外置 + 版本化**：`prompts/main-agent.md` / `prompts/worker.md` 为源，`agent-presets/main-agent/agent.cordis.yml` 是生成物，revision 落在 `presets/main-agent.patch.yml` 头行与 `prompts/CHANGELOG.md`。**验收清单兜底**：worker 写 `checks.json`，`check_outcome` 一次跑完。另修掉两个真缺陷：Windows 上 `check_outcome` 因 Node 自动加双引号叠上 cmd.exe 解析而**一半验收项假失败**（退出码有时仍为 0，补 `windowsVerbatimArguments`）；`package.json` 的 `files` 缺 `prompts` 导致发布包缺人格源。新增 `npm run sync-profile` 把仓库同步到 profile 副本与 `~/.dsh/.agent-presets/` 两份运行时拷贝 —— 只同步其中一份是此前「改完重启也没变化」的根因 |
 
 ## 在新 PC 上运行本地课程
 
@@ -486,9 +488,31 @@ Harness 行为。
 间隔、再以 `code: idle` 结束目标并写明原因 —— 一直叫醒一个不动的循环，只是
 把预算烧在「还在看」上。反过来，人类按下的 pause 会让兜底立刻撤掉（判据与
 宿主的驱动器一致：`phase === 'active' && activation === 'armed'`），否则
-「让它停」这件事永远停不下来。每轮还会把目标、最近进展、未答问题、上次停止
-原因写进 `.agi/BRIEF.md`，模型下一轮先读这份摘要而不是回翻历史；每 5 轮把
-本次提醒换成「先确认目标还成立吗」的复核提示。
+「让它停」这件事永远停不下来。`.agi/BRIEF.md` 每轮重写一次，结构固定五段：**循环状态**（轮次、空转计数、
+上次推进在多久之前）、**Worker 状态**、**待投递**（仅在有积压时出现）、
+**最近进展**、**之前的目标留下的教训**。
+
+**`## Worker 状态` 不是从自述散文里猜的。** 每个 worker 在 `outcome.md` 头行写一行
+`<!-- report: <state> -->`（六态：`progress` / `waiting` / `ready` / `blocked` /
+`failed` / `dropped`），插件读这一行，配上「它是否仍在运行」与「有没有待答问题」，
+用一个纯函数（`lib/stage.js`）判成 `person/*`（需要人做决定）、`working`（别打扰）、
+`idle`（可以给新单元）或 `ended`（已收尾）。摘要里的一行长这样：
+
+```
+- `a1b2c3d4` person/answer → 等用户回答 — blocked：需要确认 A 还是 B
+```
+
+判据是结构化的，所以「卡了八分钟」与「在跑一个八分钟长命令」终于能分开 ——
+旧实现只靠 `lastActivityAt` 的时间差推断，这两件事完全不可区分。`dropped` 表示
+「干完了、确实没活」，它不该被记成失败。Lead 验收后写一份 `archived.json`
+（`npm run accept -- <id> [备注]`），归档的 worker 变成
+`ended/archived — 已验收归档`，不会再以「等用户验收」永远挂在摘要里。
+
+**`## 待投递` 是收敛通知的投递账本**（`lib/outbox.js`）：通知先落进
+`.agi/outbox.jsonl`，从 2 秒起逐次翻倍、上限 60 秒退避重试，同类严格保序
+（更早的同 kind 未到期就压住后面的，不同 kind 互不阻塞）。BRIEF 写盘成功后
+才标记 `delivered` —— 写不进去就带着重试次数与下次时间继续出现，
+还会调 `markFailed` 抬高退避，而不是假装送过了。
 
 兜底的触发点是「有回合开始」，这意味着重启之后最需要它的时刻（会话空闲、
 提醒表空了、又没有新消息）恰恰不会触发它。所以挂载后 3 秒与 20 秒各扫一遍
@@ -600,6 +624,8 @@ ralph 的返回结果里**不含子会话 id**，而 `check_outcome` 只按目�
 | `workerModels` | 必填 `subagent.model` 的完整白名单：`runtime/current` 和/或精确的 `provider/model-id` 路由；全新安装 = `runtime/current`；留空 = 禁用派生 | 下一次工具调用与下一份工具 schema（实时） |
 | `workerEfforts` | 从每条被允许路由到用户所选推理强度的映射；`provider/default` 不发送显式推理强度（全新安装与缺失条目的默认值），而 `high` 之类的固定 id 来自该路由的原生目录 | 下一次派生与下一份工具描述（实时） |
 | `maxParallelWorkers` | 同时打开的 worker 上限，在派生时**强制执行**；0 = 不限 | 下一次工具调用（实时） |
+| `reservedHumanSlots` | 并发上限之外**额外留给人**的槽位数（默认 1）。槽满了但本轮存在**直接人类消息**时，仍可再派一个 —— 新工作挡不住人和监督者说话 | 下一次工具调用（实时） |
+| `proactive` | 自动派生档位：`off`（直接拒绝新的派生）/ `observe`（不真派，只把「本会派出什么」追加到 `.agi/proposals.jsonl` 并返回说明）/ `auto`（默认，正常派生）。`observe` 是给「先看几条它打算派什么」用的 | 下一次工具调用（实时） |
 | `wakeMinutes` | 空闲基线（分钟，≥ 1）：实际唤醒间隔由 `GET /supervisor/loop` 按状态给出（worker 在跑 60–120 秒、等回答 5–15 分钟、无新证据退避到 30 分钟） | 下一回合（实时） |
 | `watchdogEnabled` | 服务端兜底：目标未完成且没有任何 active 提醒时，自己补一条 `watchdog · 监督循环兜底`（默认开） | 下一次巡检（实时） |
 | `workerDeadlineMinutes` | worker 停滞超时（分钟；0 = 不管）；到点由服务端 `interrupt` 并记停滞 | 下一次巡检（实时） |
@@ -911,7 +937,8 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 
 | 路径 | 内容 |
 |---|---|
-| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算、空转收尾、目标复核），`lib/loop-journal.js` 负责把循环状态、事件与每轮摘要落到 `.agi/`（`loop-state.json` / `progress.jsonl` / `BRIEF.md`），`lib/checks.js` 是 worker 验收清单的读取与执行（纯函数，不碰 `ctx`，所以测试不依赖 `node_modules`）、`lib/checks-tool.js` 注册 `check_outcome`，`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
+| `package.json` + `cordis.patch.yml` + `lib/` | dsh bundle：manifest（`dsh.bundle.patch` + `dsh.client`）、插入的行、setup/六个宿主路由、非阻塞原生目标前端、最终收敛诊断，以及浏览器那一半（`lib/client.js`：监督动态 Feed 标签页、Full stop、设置卡片）。`lib/supervise.js` 是跨模式监督层（四行替换 + `isSupervised` / `countSupervisorRows`），`lib/preset-files.js` 改注册式 preset 的 `agent.cordis.yml`，`lib/watchdog.js` 与 `lib/loop-policy.js` 是服务端兜底（补提醒、自适应唤醒、worker 停滞、派生预算、空转收尾、目标复核），`lib/loop-journal.js` 负责把循环状态、事件与每轮摘要落到 `.agi/`（`loop-state.json` / `progress.jsonl` / `BRIEF.md`），`lib/checks.js` 是 worker 验收清单的读取与执行（纯函数，不碰 `ctx`，所以测试不依赖 `node_modules`）、`lib/checks-tool.js` 注册 `check_outcome`，`lib/report.js` 读 worker 的 report 六态头行并产出带 `archived` 标记的列表、`lib/stage.js` 把「report + 是否在跑 + 有无待答 + 是否归档」判成结构化 stage、`lib/outbox.js` 是收敛通知的投递账本（入队 / 退避 / 同类保序 / 已投递标记），`lib/spawn.js` / `lib/control.js` / `lib/goal.js` 是 preset 行指向的三个前端 |
+| `prompts/` | 两段人格的**源文件**：`main-agent.md`（主 Agent）与 `worker.md`（worker），外加 `CHANGELOG.md` 记录每次 revision。`agent-presets/main-agent/agent.cordis.yml` 里的两个块标量是**生成物**，由 `scripts/sync-prompts.mjs` 单向写回 —— 改人格改这里，不要改 YAML |
 | `agent-presets/main-agent/` | 监督者 preset：人格（打底、非阻塞目标设置、循环、提问）、插件自有的目标前端，以及唯一受 settings 保护的 `subagent` worker 行 |
 | `presets/main-agent.patch.yml` | 声明 `main-agent` preset 的 bundle patch；由 `scripts/sync-preset-patch.mjs` 从 `agent-presets/main-agent/` 生成（`npm test` 校验两者同步） |
 | `agi-template/` | 新工作区的 `.agi/config.json` 模板 |
@@ -920,8 +947,11 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
 | `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
 | `scripts/sync-preset-patch.mjs` | 从 `agent-presets/main-agent/` 重新生成 `presets/main-agent.patch.yml`（`npm run sync-preset`，`prepack` 也会跑） |
+| `scripts/sync-prompts.mjs` | 把 `prompts/*.md` 单向写回 `agent-presets/main-agent/agent.cordis.yml` 的两个块标量，并把 revision（两份 md 的 sha256 前 8 位）盖到 patch 头行与 `prompts/CHANGELOG.md`。`--stamp` 只盖章、不碰 YAML —— 因为 patch 由生成器整份重写，revision 只能在生成**之后**才盖得住，所以 `sync-preset` 是三步而不是两步 |
+| `scripts/sync-profile.mjs` | 把仓库同步到运行时**真正加载的两份拷贝**：profile 的 `node_modules/dsh-main-agent/`（宿主 `require` 这份）与 `~/.dsh/.agent-presets/main-agent/`（宿主启动时读这份 preset，`installPreset` 默认 `if-absent`，**已存在就永不覆盖**）。默认只诊断并列差异，`--apply` 才写、且先整目录备份。只同步其中一份，是「改完代码重启也没变化」的典型死法 |
+| `scripts/accept-worker.mjs` | `npm run accept -- <sessionId 或目录名> [备注]`：写 `.agi/subagents/<id>/archived.json`，把已验收的 worker 从 BRIEF 的「等用户验收」里摘掉，改显示 `ended/archived — 已验收归档` |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 29 个 `node --test` 文件、298 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、install-spec、repair-profile 等 |
+| `tests/` | 33 个 `node --test` 文件、367 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 评分
@@ -973,7 +1003,7 @@ TypeScript 基础）；第二部分逐个里程碑构建本仓库中的所有内
    向精选列表提 PR 可以增加人工收录位置。
 3. **发布到 npm**（可选）：`dsh plugin` 会转发给 pnpm，因此已发布的包
    可按名称安装。`package.json` 中的 `files` 列表已限定发布内容
-   （`lib`、`cordis.patch.yml`、`presets`、`agent-presets`、`agi-template`、`scripts`）。
+   （`lib`、`cordis.patch.yml`、`presets`、`agent-presets`、`prompts`、`agi-template`、`scripts`）。
 
 以下是随包发布 preset 的插件的打包经验（0.2.x 实测）：
 
