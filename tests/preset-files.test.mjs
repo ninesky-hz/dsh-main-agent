@@ -194,3 +194,68 @@ test('a malformed composition is reported, not overwritten', async (t) => {
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+// 升级后的原文：同一份骨架，人格换了一版 —— 模拟 `dsh-poja` 用打包模板整份覆盖
+// 它自己的 managed preset。
+const UPDATED_FIXTURE = FIXTURE.replace('你原本的人格。', '更新后的人格。')
+
+test('备份随被替换的原文一起刷新，取消勾选不会回退这次更新', async (t) => {
+  if (!YAML) return t.skip('yaml 不可解析（未安装 node_modules）')
+  const home = makeHome()
+  try {
+    const file = presetFile('demo', home)
+    const backup = file + '.supervisor.bak'
+    await applySupervisorToFile('demo', home)
+    assert.equal(readFileSync(backup, 'utf8'), FIXTURE)
+
+    // 声明它的插件把整份文件换掉：叠加层随之消失，磁盘上已经是新原文。
+    writeFileSync(file, UPDATED_FIXTURE, 'utf8')
+
+    const again = await applySupervisorToFile('demo', home)
+    assert.equal(again.ok, true)
+    assert.equal(again.changed, true)
+    // 备份换成了新原文，而不是停在上一版 —— 否则「取消勾选」会静默回退这次升级。
+    assert.equal(readFileSync(backup, 'utf8'), UPDATED_FIXTURE)
+
+    const stripped = await stripSupervisorFromFile('demo', home)
+    assert.equal(stripped.changed, true)
+    assert.equal(readFileSync(file, 'utf8'), UPDATED_FIXTURE)
+    assert.equal(hasSupervisorBackup('demo', home), false)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('文件被整份替换后取消勾选：不动磁盘，只丢过期备份', async (t) => {
+  if (!YAML) return t.skip('yaml 不可解析（未安装 node_modules）')
+  const home = makeHome()
+  try {
+    const file = presetFile('demo', home)
+    await applySupervisorToFile('demo', home)
+    // 覆盖发生在下一次 apply 之前：用户此刻直接取消勾选。
+    writeFileSync(file, UPDATED_FIXTURE, 'utf8')
+
+    const stripped = await stripSupervisorFromFile('demo', home)
+    assert.equal(stripped.changed, false)
+    assert.equal(readFileSync(file, 'utf8'), UPDATED_FIXTURE)
+    assert.equal(hasSupervisorBackup('demo', home), false)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
+
+test('文件读不动时仍然用备份修复', async (t) => {
+  if (!YAML) return t.skip('yaml 不可解析（未安装 node_modules）')
+  const home = makeHome()
+  try {
+    const file = presetFile('demo', home)
+    await applySupervisorToFile('demo', home)
+    // 不是合法 composition：判断不了它带不带层，只能走还原。
+    writeFileSync(file, '\u0000not: [valid\n', 'utf8')
+    const stripped = await stripSupervisorFromFile('demo', home)
+    assert.equal(stripped.changed, true)
+    assert.equal(readFileSync(file, 'utf8'), FIXTURE)
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+})
