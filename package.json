@@ -1,6 +1,6 @@
 {
   "name": "dsh-main-agent",
-  "version": "0.19.1",
+  "version": "0.19.2",
   "description": "面向 DeepSeek Harness 的常驻监督者 Agent：main-agent preset 承载目标循环、worker 编队与跨模式监督层，可作为一个 dsh bundle 安装",
   "type": "module",
   "main": "./lib/index.js",
@@ -33,6 +33,9 @@
     "prepack": "npm run sync-preset"
   },
   "license": "MIT",
+  "devDependencies": {
+    "yaml": "^2.9.1"
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",

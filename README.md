@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.19.1**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.19.2**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -36,11 +36,23 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **367 项**单元测试（`tests/` 下 33 个 `.test.mjs`）当前 `npm test` 全绿：
-**367 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+本仓库的 **384 项**单元测试（`tests/` 下 34 个 `.test.mjs`）当前 `npm test` 全绿：
+**384 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
+
+**克隆后自测**：`git clone` 之后 `npm install` 再 `npm test` 即可。仓库根的 `.npmrc`
+带 `legacy-peer-deps=true`，跳过 `@deepseek-ai/*` 的 peer 解析 —— 那些包确实发布在
+公共 registry 上，但互相钉死了版本（`dsh-subagent@0.2.1-rc.5` 要求
+`peer dsh-agent@0.2.1-rc.5`，独立解析会拿到 `0.1.0-rc.8`），在一个没有宿主锁文件的
+空目录里 `npm install` 必然 ERESOLVE。那个失败与插件无关，只是 npm 想替你把宿主的
+依赖自己解一遍。`devDependencies` 只装了 `yaml`，供 `tests/worker-deny.test.mjs`
+与 `scripts/verify-persona-compose.mjs` 解析 YAML；**插件运行时不需要它** ——
+`lib/preset-files.js` 是懒加载（`await import('yaml')` 包在 try 里），没有 `yaml`
+的 profile 也能正常加载本插件。若系统临时目录不可写（DSH 沙箱会挡），把
+`TEMP`/`TMP`/`TMPDIR` 指到仓库内的 `.test-tmp/`，否则 `mkdtemp` 会 `EPERM`，
+看起来像七十多个测试失败。
 
 **0.2.1-rc.3 无需改动。** 逐包比对 `npm pack` 下来的 rc.3 与本地 rc.2 原版（比对基准用
 `*.dshpurge.bak`，否则会把 dsh-purge 的宿主补丁误判成版本差异）后，本插件触及的 14 个包
@@ -127,6 +139,7 @@ rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本
 | 0.17.0 | 修好 0.16.0 引入的致命缺陷：`check_outcome` 的返回值多带了一个未声明的 `render` 字段，被 dsh-tools 的严格输出校验整次拒收，于是它**从来没有成功过**（明细改为已声明字段 `detail`，并补工具壳测试）。同时给 `ralph` 补上使用判据与 objective 模板：只允许「上下文被污染」与「长收敛」两种情形，完成只是 worker 自述必须有 `check_outcome` 兜底，且它前台阻塞、同回合不得叠第二个长任务 |
 | 0.18.0 | persona 注入由「整份替换」改为**拼接**（原人格逐字保留在前、监督层追加在后，标记行带 origin 长度，strip 按长度精确回滚）；缺锚点的 preset 不再可勾选（`GET` 返回 `stackable`/`missing`，卡片灰掉并写明缺哪几行，`POST` 剔除并回 `rejected`）；`dsh-main-agent/spawn` 新增 `deny`，把官方 `tool-subagent` 上的 `toolFilter.deny` 复制过来，使破甲模式的工具限制在改名后仍然生效；`remountPreset` 复检 `record.broken`，热挂载失败时回滚并如实报「需要重启 DSH」 |
 | 0.18.1 | 核对 dsh 0.2.1-rc.5：本插件 import 的 32 个 `@deepseek-ai/*` 包每个只有 `package.json` 不同（仅版本号与内部依赖钉版），运行时 JS 与四份 `presets/*.patch.yml` 一行未改；rc.3→rc.5 的实质改动只在两个客户端包（tooltip 判定与推理块类型），都不在本插件的接口面内。同时把 README 的版本号与测试数字对齐现实（298 项、`tests/` 下 29 个文件） |
+| 0.19.2 | 修掉「别人克隆能不能直接用」。**实测三个障碍**：① `npm install` 直接 ERESOLVE 失败 —— `@deepseek-ai/*` 确实发布了，但互相钉死版本（`dsh-subagent@0.2.1-rc.5` 要求 `peer dsh-agent@0.2.1-rc.5`，独立解析拿到 `0.1.0-rc.8`），空目录里必崩；② 即使跳过 install 直接 `node --test`，`tests/worker-deny.test.mjs` 与 `tests/supervise-anchors.test.mjs` 的三个用例也会失败 —— 根因是 `yaml` 包不在 `node_modules` 里，而它此前**没有出现在 `package.json` 的任何依赖字段**（`lib/preset-files.js:45-53` 是懒加载 `await import('yaml')`，缺了它插件能起来、但依赖它的脚本与测试会崩）；③ README 里的测试数字停在 367/33，实际已是 384/34。补 `.npmrc`（`legacy-peer-deps=true`，附注释说明那串 ERESOLVE 与插件无关、是 npm 想替宿主解依赖）、`devDependencies: yaml ^2.9.1`、README 增「克隆后自测」段（含 `TEMP` 指向 `.test-tmp/` 的沙箱坑：系统临时目录不可写时 `mkdtemp` 报 `EPERM`，看起来像七十多个测试失败）。实测结果：干净 clone → `npm install`（exit 0，只装 `yaml` 一个包，2 秒）→ `npm test` **384 通过 / 0 失败** |
 | 0.19.1 | 修掉 0.19.0 真机上暴露的三个缺陷，都属「记录只增不减」。**备份永不清理**：`sync-profile --apply` 每次都在 `$DSH_HOME` 下建一份完整备份却从不删（实测四份、1.96 MB、117 个文件），新增 `scripts/backup-retention.mjs`，`--keep` 默认保留 3 份，且删除**只在 `report.apply` 为真时**发生 —— 诊断模式删用户文件是最坏的副作用。**loop-state 永不清理**：`.agi/loop-state.*.json` 每个会话一份、从不清，新增 `pruneLoopStates(cwd, { keep, keep_key })`，只认 `loop-state.<8位key>.json` 形状，`keep_key`（当前会话那份）无条件保留，watchdog 每进程只扫一次。**历史目录被误判成「有 worker 在排队」**：`renderBrief` 从不告诉 `workerStage`「这个 id 已不在任何子会话里」，于是所有不在跑的条目都流进默认分支 `working/queued`，一个 22 字符的旧手工目录因此常年显示「排队中，等空闲槽」；`collectReports` 增第三可选入参 `known` 返回三态（`undefined` = 调用方没查 / `true` / `false`），只有明确 `false` 才判 `ended`。这里踩了个自己挖的坑：`known === false` 是**推断**，一开始让它占了 first-match 第一位，把 `archived`（Lead 验过）与 `dropped`（worker 说没活了）两个**事实**标签全盖掉了，五个已验收 worker 一起从「已验收归档」退化成光秃秃的「已收尾」；改为事实优先于推断后两者并存。测试从「只断言不说排队中」加强到断言标签本身在场 —— `assert.doesNotMatch(x, /排队中/)` 会让「退化成信息更少」悄悄通过 |
 | 0.19.0 | 从 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 移植六条机制，均取机制、不取架构。**report 六态**：worker 在 `outcome.md` 头行自述 `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`，`lib/report.js` 解析、`lib/stage.js` 用纯函数 first-match-wins 判成 `person/*` / `working` / `idle` / `ended`，渲染进 `.agi/BRIEF.md` 新增的「Worker 状态」段 —— 取代原先靠 `lastActivityAt` 时间差猜「是不是卡了」。**人优先预留槽**：`reservedHumanSlots` 在并发上限之外给人留位置，槽满但本轮有直接人类消息时仍可再派。**proactive 三档**（`off` / `observe` / `auto`）：`observe` 不真派生，只把「本会派什么」记进 `.agi/proposals.jsonl`。**outbox 退避投递**：收敛通知落 `.agi/outbox.jsonl`，2 秒起逐次翻倍到 60 秒、同类严格保序，BRIEF 写盘成功才算 `delivered`，写不进去就 `markFailed` 抬高退避而不是假装送过。**人格外置 + 版本化**：`prompts/main-agent.md` / `prompts/worker.md` 为源，`agent-presets/main-agent/agent.cordis.yml` 是生成物，revision 落在 `presets/main-agent.patch.yml` 头行与 `prompts/CHANGELOG.md`。**验收清单兜底**：worker 写 `checks.json`，`check_outcome` 一次跑完。另修掉两个真缺陷：Windows 上 `check_outcome` 因 Node 自动加双引号叠上 cmd.exe 解析而**一半验收项假失败**（退出码有时仍为 0，补 `windowsVerbatimArguments`）；`package.json` 的 `files` 缺 `prompts` 导致发布包缺人格源。新增 `npm run sync-profile` 把仓库同步到 profile 副本与 `~/.dsh/.agent-presets/` 两份运行时拷贝 —— 只同步其中一份是此前「改完重启也没变化」的根因 |
 
@@ -951,7 +964,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/sync-profile.mjs` | 把仓库同步到运行时**真正加载的两份拷贝**：profile 的 `node_modules/dsh-main-agent/`（宿主 `require` 这份）与 `~/.dsh/.agent-presets/main-agent/`（宿主启动时读这份 preset，`installPreset` 默认 `if-absent`，**已存在就永不覆盖**）。默认只诊断并列差异，`--apply` 才写、且先整目录备份。只同步其中一份，是「改完代码重启也没变化」的典型死法 |
 | `scripts/accept-worker.mjs` | `npm run accept -- <sessionId 或目录名> [备注]`：写 `.agi/subagents/<id>/archived.json`，把已验收的 worker 从 BRIEF 的「等用户验收」里摘掉，改显示 `ended/archived — 已验收归档` |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 33 个 `node --test` 文件、367 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
+| `tests/` | 34 个 `node --test` 文件、384 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 评分
