@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.19.3**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.20.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.1-rc.5）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.1）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -36,10 +36,13 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **388 项**单元测试（`tests/` 下 35 个 `.test.mjs`）当前 `npm test` 全绿：
-**388 通过 / 0 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`）；
+本仓库的 **394 项**单元测试（`tests/` 下 35 个 `.test.mjs`）当前 `npm test` 全绿：
+**392 通过 / 2 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`；两个跳过项是
+`tests/preset-rows.test.mjs` 里按 preset 行解析真实宿主运行时，只在设置了 `DSH_APP_ASAR`
+时才跑）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
-（`/supervisor/models` 返回 `200`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
+（`/supervisor/models` 返回 `200`），0.2.2-rc.1 的模型选择 seam 另有真机 probe
+（`scripts/probe-host-model-selection.mjs`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
 
 **克隆后自测**：`git clone` 之后 `npm install` 再 `npm test` 即可。仓库根的 `.npmrc`
@@ -101,6 +104,30 @@ rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本
   `lib/` 里出现的 `reasoning` 全是 worker 模型目录的 `reasoning.efforts`
   （`lib/worker-model-policy.js`、`lib/spawn.js`），与 Chat 的推理槽位无关。
 
+**0.2.2-rc.1 是第一个必须改代码的宿主版本**（0.20.0 起支持，旧版仍兼容）。
+peer 区间、`ctx.tools.register(defineTool(...))`、`ctx.subagents` 六个方法、Session Projection
+只读用法、`cordis.patch.yml` 的挂载方式都没变；变的是模型选择的**落定时机**：
+
+- 0.2.2 的 `preStep` 先 `const selection = this.model.current()`
+  （`dsh-agent-loop/lib/index.js:666,671`），再发 `agent/pre-step`（`:685`），并在
+  `agent/request` 之后校验提案与固化值一致（`:994-1001`），不一致就抛
+  `… after step preparation fixed "…"; use agent.model.select() before step preparation`。
+  本插件原先正是在 `agent/request` 里改写 `reasoningEffort`，所以**只要 worker 路由配了
+  具体推理强度，worker 第一条请求必抛**；配 `provider/default` 不触发，默认配置下看不见。
+- 0.2.1 没有 `agent.model`（`dsh-agent` 导出面里没有 `AgentModel`，`dsh-agent-loop` 里也没有
+  `this.model =`），所以改法是双路径而不是替换：`hostUsesModelSelection(agent)` 探测
+  `agent?.model?.select`，有就在 `agent/created`（此时 Agent 已构造、`model` 已就位、尚未
+  `preStep`）里 `pinWorkerEffort(agent, effort)` 落一条 `model/selection`，并让
+  `agent/request` 监听直接 `return next()`；没有才走旧桥。
+- 结论由真机验证而非读码推断：`scripts/probe-host-model-selection.mjs` 会在你指定的目录里
+  加载**真实的**宿主 `AgentModel`，逐字复刻 `:994-1001` 的 gate，双向验证
+  「pin 后通过」与「改 request 必抛」。用法见脚本头注释；对 0.2.1 它会打印 `LEGACY: …` 并以
+  退出码 2 表示「旧宿主走旧桥」，这不是失败。
+
+```sh
+node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
+```
+
 `presets/main-agent.patch.yml` 里那条 `@deepseek-ai/dsh-workflow-worker-thread` 是
 `disabled: true` 的历史行：该包在 0.2.x 不存在（npm 上 `latest` 停在 `0.0.1-rc.3`，
 `next` 已是 `0.1.5-rc.x`），启用会让整个 preset 挂载失败，保持禁用即可。`@deepseek-ai/cordis`
@@ -142,6 +169,7 @@ rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本
 | 0.19.3 | 修掉设置卡片的一处**状态误报**：`GET /supervisor/presets` 的 `pendingRestart` 原来只判 `plugins === undefined && hasSupervisorBackup(id)`，而 `hasSupervisorBackup` 的含义仅是「旁边躺着 `.supervisor.bak`」＝**曾经写过盘** —— `remountPreset`（`lib/supervise.js:564`）成功时就地换掉 `record.config.plugins` 再 `activate()`，备份照样留着，于是红队模式 / 破甲模式这两个 file-backed preset **已经生效**却持续返回 `pendingRestart: true`，任何按该字段判断的调用方都会读成「需要重启」。卡片之所以没显示错文案，是因为它先判 `mounted === true` 就走了「✓ 已启用，立即生效」；但 `mounted` 读不到（registry 里没有该 preset 的记录，返回 `undefined`）时会落到 `pendingRestart` 分支，那时「需要重启 DSH 才生效」就是真的误报。改法：先算出 `mountedNow`，`pendingRestart = plugins === undefined && mountedNow !== true && hasSupervisorBackup(id)` —— 只有「写盘了但没能挂进注册表」才要求重启；`mounted` 复用同一个值。顺带把 `hasSupervisorBackup` 的 docstring 从「only a restart will load」改成实情（误报的认知源头就在这句注释），卡片兜底文案改为「已写入磁盘，但没能挂进注册表，需重启 DSH 才生效」。导出 `presetsHandler` 以便直接打这个 handler，新增 `tests/preset-status.test.mjs` 四例：已挂载不再宣称重启、写盘未挂载才要求重启、读不到 registry 不假装生效、从未写盘两字段都 false。测试 384/34 → **388 通过 / 0 失败 / 35 个文件** |
 | 0.19.2 | 修掉「别人克隆能不能直接用」。**实测三个障碍**：① `npm install` 直接 ERESOLVE 失败 —— `@deepseek-ai/*` 确实发布了，但互相钉死版本（`dsh-subagent@0.2.1-rc.5` 要求 `peer dsh-agent@0.2.1-rc.5`，独立解析拿到 `0.1.0-rc.8`），空目录里必崩；② 即使跳过 install 直接 `node --test`，`tests/worker-deny.test.mjs` 与 `tests/supervise-anchors.test.mjs` 的三个用例也会失败 —— 根因是 `yaml` 包不在 `node_modules` 里，而它此前**没有出现在 `package.json` 的任何依赖字段**（`lib/preset-files.js:45-53` 是懒加载 `await import('yaml')`，缺了它插件能起来、但依赖它的脚本与测试会崩）；③ README 里的测试数字停在 367/33，实际已是 384/34。补 `.npmrc`（`legacy-peer-deps=true`，附注释说明那串 ERESOLVE 与插件无关、是 npm 想替宿主解依赖）、`devDependencies: yaml ^2.9.1`、README 增「克隆后自测」段（含 `TEMP` 指向 `.test-tmp/` 的沙箱坑：系统临时目录不可写时 `mkdtemp` 报 `EPERM`，看起来像七十多个测试失败）。实测结果：干净 clone → `npm install`（exit 0，只装 `yaml` 一个包，2 秒）→ `npm test` **384 通过 / 0 失败** |
 | 0.19.1 | 修掉 0.19.0 真机上暴露的三个缺陷，都属「记录只增不减」。**备份永不清理**：`sync-profile --apply` 每次都在 `$DSH_HOME` 下建一份完整备份却从不删（实测四份、1.96 MB、117 个文件），新增 `scripts/backup-retention.mjs`，`--keep` 默认保留 3 份，且删除**只在 `report.apply` 为真时**发生 —— 诊断模式删用户文件是最坏的副作用。**loop-state 永不清理**：`.agi/loop-state.*.json` 每个会话一份、从不清，新增 `pruneLoopStates(cwd, { keep, keep_key })`，只认 `loop-state.<8位key>.json` 形状，`keep_key`（当前会话那份）无条件保留，watchdog 每进程只扫一次。**历史目录被误判成「有 worker 在排队」**：`renderBrief` 从不告诉 `workerStage`「这个 id 已不在任何子会话里」，于是所有不在跑的条目都流进默认分支 `working/queued`，一个 22 字符的旧手工目录因此常年显示「排队中，等空闲槽」；`collectReports` 增第三可选入参 `known` 返回三态（`undefined` = 调用方没查 / `true` / `false`），只有明确 `false` 才判 `ended`。这里踩了个自己挖的坑：`known === false` 是**推断**，一开始让它占了 first-match 第一位，把 `archived`（Lead 验过）与 `dropped`（worker 说没活了）两个**事实**标签全盖掉了，五个已验收 worker 一起从「已验收归档」退化成光秃秃的「已收尾」；改为事实优先于推断后两者并存。测试从「只断言不说排队中」加强到断言标签本身在场 —— `assert.doesNotMatch(x, /排队中/)` 会让「退化成信息更少」悄悄通过 |
+| 0.20.0 | 核对并适配 dsh **0.2.2-rc.1**。**唯一硬伤**：0.2.2 把模型选择在 step preparation 阶段就固化（`dsh-agent-loop/lib/index.js:666` `preStep` 先取 `this.model.current()`，`:685` 才发 `agent/pre-step`），随后 `agent/request` 的返回值若与固化值不符就直接抛错（`:994-1001`：`proposed reasoning effort "…" after step preparation fixed "…"; use agent.model.select() before step preparation`）。本插件原先在 `agent/request` 里改写 `reasoningEffort`（`lib/spawn.js` 旧监听），于是**只要 worker 路由配了具体推理强度，worker 的第一条请求必抛**；配 `provider/default`（不改 effort）不触发，所以这个问题在默认配置下看不见。修法是双路径，因为 0.2.1 没有 `agent.model`（`dsh-agent` 导出面只有 `AgentRegistry`/`agentCarrier`/`agentEvents`/`assembleContextFor`/`emitAgentEvent`/`foldConsumedWork`/`installModelSelection`，`dsh-agent-loop` 里也没有 `this.model =`）：`lib/worker-model-policy.js` 新增 `hostUsesModelSelection(agent)`（探测 `typeof agent?.model?.select === 'function'`）与 `pinWorkerEffort(agent, effort)`（用 `current()` 的 provider/model 原样回填、只换 `reasoningEffort` 调 `select()`，`provider/default` 不落盘、无 route 时不半 pin）；`lib/spawn.js` 在 `agent/created`（0.2.2 时序：Agent 已构造、`model` 已就位、尚未 `preStep`，见 `dsh-agent-loop/lib/index.js:1571-1579` 与 `dsh-agent/lib/index.js:703-719`）里优先 pin 并 `pendingEfforts.delete()`，`agent/request` 监听开头 `if (hostUsesModelSelection(agent)) return next()` 直接 stand down，旧桥只留给 ≤0.2.1；两条缝各记一行宿主日志（同值只记一次）。**证据不是读代码推的**：`scripts/probe-host-model-selection.mjs` 装真实 0.2.2-rc.1 包、import 宿主真正的 `AgentModel`、逐字复刻 `:994-1001` 的 gate —— 对 0.2.2 输出 `OK: real host AgentModel accepts the pin and the request gate passes`（并反证「不 pin 而改 request」必抛），对 0.2.1-rc.5 输出 `LEGACY: host has no AgentModel (dsh <= 0.2.1)` 且 exit 2。其余接口面核对均未变：peer 范围本就覆盖（`>=0.1.0-rc.6 <0.3.0`）、`ctx.tools.register(defineTool(...))` 仍是 0.2.2 的注册面、`ctx.subagents` 六个方法签名逐一相同、Session Projection 插件只读不注册、不 import app-boot；`cordis.patch.yml` 与两份 preset patch 无需改动（0.2.2 的 Agent 作用域工具执行与 `agent.model.select()` 变更不触及本插件的挂载方式）。测试 388/35 → **392 通过 / 2 跳过 / 0 失败 / 394 项 / 35 个文件** |
 | 0.19.0 | 从 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 移植六条机制，均取机制、不取架构。**report 六态**：worker 在 `outcome.md` 头行自述 `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`，`lib/report.js` 解析、`lib/stage.js` 用纯函数 first-match-wins 判成 `person/*` / `working` / `idle` / `ended`，渲染进 `.agi/BRIEF.md` 新增的「Worker 状态」段 —— 取代原先靠 `lastActivityAt` 时间差猜「是不是卡了」。**人优先预留槽**：`reservedHumanSlots` 在并发上限之外给人留位置，槽满但本轮有直接人类消息时仍可再派。**proactive 三档**（`off` / `observe` / `auto`）：`observe` 不真派生，只把「本会派什么」记进 `.agi/proposals.jsonl`。**outbox 退避投递**：收敛通知落 `.agi/outbox.jsonl`，2 秒起逐次翻倍到 60 秒、同类严格保序，BRIEF 写盘成功才算 `delivered`，写不进去就 `markFailed` 抬高退避而不是假装送过。**人格外置 + 版本化**：`prompts/main-agent.md` / `prompts/worker.md` 为源，`agent-presets/main-agent/agent.cordis.yml` 是生成物，revision 落在 `presets/main-agent.patch.yml` 头行与 `prompts/CHANGELOG.md`。**验收清单兜底**：worker 写 `checks.json`，`check_outcome` 一次跑完。另修掉两个真缺陷：Windows 上 `check_outcome` 因 Node 自动加双引号叠上 cmd.exe 解析而**一半验收项假失败**（退出码有时仍为 0，补 `windowsVerbatimArguments`）；`package.json` 的 `files` 缺 `prompts` 导致发布包缺人格源。新增 `npm run sync-profile` 把仓库同步到 profile 副本与 `~/.dsh/.agent-presets/` 两份运行时拷贝 —— 只同步其中一份是此前「改完重启也没变化」的根因 |
 
 ## 在新 PC 上运行本地课程

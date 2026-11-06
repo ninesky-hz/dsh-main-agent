@@ -451,7 +451,7 @@
                 name: dsh-main-agent/control
 
               - id: tool-subagent-list-agents
-                name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+                name: dsh-main-agent/list-agents
 
               # Dev Agent（DESIGN.md N1，由 N10 推广）：本插件拥有
               # 唯一面向模型的 `subagent` 行。它保留原生可续跑的 `spawn`

@@ -4,6 +4,8 @@ import test from 'node:test'
 
 import {
   currentRuntimeModel,
+  hostUsesModelSelection,
+  pinWorkerEffort,
   resolveWorkerEffort,
   RUNTIME_MODEL_KEY,
   selectWorkerModel,
@@ -201,6 +203,120 @@ test('workers cannot open a child-local user question that the supervisor cannot
   assert.doesNotMatch(parameterBlock, /\beffort\s*:/)
   assert.match(spawnSource, /本工具不暴露任何推理强度参数/)
   assert.doesNotMatch(spawnSource, /reasoningEffort === 'string'/)
+})
+
+/** A stand-in for the dsh 0.2.2+ Agent: selections are recorded durably. */
+function agentWithSelection(initial = { provider: 'antigravity', model: 'gemini-3.7-flash' }) {
+  let selection = { ...initial }
+  return {
+    id: 'child-1',
+    model: {
+      current: () => ({ ...selection }),
+      select(next) {
+        selection = {
+          provider: next.provider,
+          model: next.model,
+          ...next.reasoningEffort === undefined ? {} : { reasoningEffort: next.reasoningEffort },
+        }
+      },
+    },
+    selection: () => ({ ...selection }),
+  }
+}
+
+test('a dsh 0.2.2+ host records the worker effort through agent.model.select', () => {
+  const agent = agentWithSelection()
+  assert.equal(hostUsesModelSelection(agent), true)
+  assert.equal(pinWorkerEffort(agent, 'high'), true)
+  assert.deepEqual(agent.selection(), {
+    provider: 'antigravity',
+    model: 'gemini-3.7-flash',
+    reasoningEffort: 'high',
+  })
+
+  // Only the effort is ours: the route the request already resolved survives.
+  const other = agentWithSelection({ provider: 'zai', model: 'glm-5.3' })
+  assert.equal(pinWorkerEffort(other, 'medium'), true)
+  assert.deepEqual(other.selection(), {
+    provider: 'zai',
+    model: 'glm-5.3',
+    reasoningEffort: 'medium',
+  })
+})
+
+test('provider/default records nothing so the adapter keeps deciding', () => {
+  const agent = agentWithSelection()
+  assert.equal(pinWorkerEffort(agent, undefined), false)
+  assert.equal(pinWorkerEffort(agent, ''), false)
+  assert.equal(agent.selection().reasoningEffort, undefined)
+})
+
+test('a dsh 0.2.1 host keeps the legacy agent/request bridge', () => {
+  // 0.2.1 exposed no `agent.model` at all, so the pin declines and the request
+  // listener remains the only seam (rewriting is legal there).
+  const legacy = { id: 'child-1', options: { provider: 'zai', model: 'glm-5.3' } }
+  assert.equal(hostUsesModelSelection(legacy), false)
+  assert.equal(pinWorkerEffort(legacy, 'high'), false)
+})
+
+test('an agent without a resolvable route is left alone instead of half-pinned', () => {
+  const refuse = () => { throw new Error('select must not be called') }
+  assert.equal(pinWorkerEffort(
+    { id: 'child-1', model: { current: () => undefined, select: refuse } },
+    'high',
+  ), false)
+  assert.equal(pinWorkerEffort(
+    { id: 'child-1', model: { current: () => ({ provider: 'zai' }), select: refuse } },
+    'high',
+  ), false)
+})
+
+test('the legacy bridge is exactly what 0.2.2 rejects, and pinning is the fix', () => {
+  // Mirrors dsh-agent-loop 0.2.2 `preStep` + the `agent/request` waterfall: the
+  // selection is read first, so a listener that returns a different effort is a
+  // hard error, not a preference.
+  const reject = (selection, proposed) => {
+    if (proposed.reasoningEffort !== selection.reasoningEffort) {
+      throw new Error('agent/request proposed reasoning effort after step preparation; use agent.model.select() before step preparation')
+    }
+  }
+
+  const unpinned = agentWithSelection()
+  const selection = unpinned.model.current()
+  assert.throws(
+    () => reject(selection, { ...selection, reasoningEffort: 'high' }),
+    /use agent\.model\.select\(\) before step preparation/,
+  )
+
+  // Pinning on agent/created moves the value into the selection itself, so the
+  // very same request shape passes.
+  const pinned = agentWithSelection()
+  assert.equal(pinWorkerEffort(pinned, 'high'), true)
+  const after = pinned.model.current()
+  assert.equal(after.reasoningEffort, 'high')
+  reject(after, { ...after })
+})
+
+test('spawn pins effort before the first step and never rewrites a 0.2.2 request', async () => {
+  const source = await readFile(new URL('../lib/spawn.js', import.meta.url), 'utf8')
+
+  // 0.2.2+: the durable selection edge fires on agent/created, before the first
+  // preStep reads it, and the value is no longer carried to any request.
+  assert.match(source, /if \(pinWorkerEffort\(agent, effort\)\) \{\s+pendingEfforts\.delete\(agent\.id\)/)
+
+  // ≤0.2.1: the request listener stays the seam, but only for hosts without
+  // `agent.model` — from 0.2.2 on a differing reasoningEffort throws after step
+  // preparation.
+  assert.match(source, /ctx\.root\.on\('agent\/request'/)
+  const listener = source.slice(
+    source.indexOf("ctx.root.on('agent/request'"),
+    source.indexOf("ctx.root.on('session/event'"),
+  )
+  assert.match(listener, /if \(hostUsesModelSelection\(agent\)\) return next\(\)/)
+  assert.ok(
+    listener.indexOf('hostUsesModelSelection(agent)') < listener.indexOf('const request = await next()'),
+    'the host guard has to run before any request is produced',
+  )
 })
 
 test('the bundled preset has one guarded spawn frontend and no native fallback row', async () => {
