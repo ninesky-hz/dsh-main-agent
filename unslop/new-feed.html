@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>new · 监督动态 Feed</title>
+<link rel="stylesheet" href="new.css">
+</head><body>
+<div class="feed">
+
+  <header class="head">
+    <h1>监督动态</h1>
+    <span class="path">D:\Ai-Project\dsh-main-agent</span>
+    <div class="right">
+      <span class="stamp">4 秒前 · 无变化</span>
+      <button class="btn">暂停</button>
+      <button class="btn">刷新</button>
+      <button class="btn danger">完全停止</button>
+    </div>
+  </header>
+
+  <section class="strip">
+    <div class="cell">
+      <div class="cap">目标 <span class="slack">executing</span></div>
+      <div class="objective">重新设计面板与 Feed 页，去除 AI 味</div>
+      <div class="rail" style="margin-top:auto">
+        <i class="on"></i><i class="on"></i><i class="on now"></i>
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+      <div class="rail-meta"><span>3 / 12 轮</span><span>2 分钟前更新</span></div>
+    </div>
+
+    <div class="cell">
+      <div class="cap">下一次巡检 <span class="slack">运行中</span></div>
+      <div class="count">1:48<small>后</small></div>
+      <div class="sub">1 个活动 worker · 提醒 2 条</div>
+      <div style="margin-top:8px">
+        <div class="wrow"><span class="lamp ok"></span><span class="name">worker 巡检</span>
+          <span class="state">2 分钟后</span></div>
+        <div class="wrow"><span class="lamp"></span><span class="name">提问等待</span>
+          <span class="state">11 分钟后</span></div>
+      </div>
+    </div>
+
+    <div class="cell">
+      <div class="cap">Worker <span class="slack">1 / 3</span></div>
+      <div class="rack">
+        <div class="slot on"><span class="lamp ok"></span></div>
+        <div class="slot"></div>
+        <div class="slot"></div>
+      </div>
+      <div class="rack-meta"><span style="color:var(--label-2);font-family:var(--sans)">UI 重写</span> · 3f9a2c1e · 42 秒</div>
+      <div class="sub">runtime/current · 单轮上限 90 秒</div>
+    </div>
+  </section>
+
+  <div class="body">
+    <div style="display:grid; gap:16px; align-content:start">
+      <section class="panel">
+        <h2>进展 <span class="slack">12 条</span></h2>
+        <ol class="tl">
+          <li><span class="ts">17:24</span><span class="what">开始审计：列出 panel 与 feed 的 slop 清单</span></li>
+          <li><span class="ts">17:21</span><span class="what">确认 profile 副本与仓库副本一致，改动需双份同步</span></li>
+          <li><span class="ts">17:12</span><span class="what">读取 client.js 结构，登记 9 个卡片与设置页字段</span></li>
+          <li><span class="ts">17:05</span><span class="what">接管工作区，读取 .agi/BRIEF.md 与 GOAL.md</span></li>
+          <li><span class="ts">17:02</span><span class="what">用户提出重新设计需求</span></li>
+          <li><span class="ts">16:58</span><span class="what">校验 384 项测试基线全绿</span></li>
+        </ol>
+      </section>
+
+      <section class="panel">
+        <h2>变更记录 <span class="slack">8 条</span></h2>
+        <ul class="log">
+          <li><span class="act">spawn</span><span>派生 UI 重写 worker，路由 runtime/current</span></li>
+          <li><span class="act">steer</span><span>要求先跑 unpixel 审计再动手</span></li>
+          <li><span class="act">kill</span><span>终止游离 worker 5c21a8</span></li>
+          <li><span class="act">assume</span><span>假设 feed 宽度跟随容器</span></li>
+        </ul>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="panel">
+        <h2>待回答 <span class="slack">1</span></h2>
+        <div class="q">
+          <div class="txt">面板宽度按 880 还是保持 780？</div>
+          <div class="meta">等待 12 分钟 · 超时后按最保守假设继续</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>文档</h2>
+        <div class="doc">
+          <div class="title">任务报告 <span class="file">outcome.md</span></div>
+          <p>worker 收敛后写入结论与证据摘要，含验收命令与真实输出。</p>
+        </div>
+        <div class="doc">
+          <div class="title">笔记 <span class="file">NOTES.md</span></div>
+          <p>打底记录、假设与检查点，重启后按文件恢复现场。</p>
+        </div>
+        <div class="fold"><details><summary>GOAL.md（持久声明）</summary>
+          <pre class="num" style="font-size:11px;color:var(--label-3);white-space:pre-wrap;margin:8px 0 0">objective: 重新设计面板与 Feed 页
+phase: executing
+rounds: 3 / 12</pre></details></div>
+      </section>
+    </div>
+  </div>
+</div>
+</body></html>

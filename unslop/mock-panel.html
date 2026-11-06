@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>mock · 监督者面板 (current)</title>
+<link rel="stylesheet" href="mock.css">
+</head><body>
+<div class="panel" style="padding: calc(28px) 24px 40px;">
+  <section class="panel-card">
+    <header>
+      <h3>监督者运行时 <code class="pill code">dsh-main-agent</code></h3>
+      <p class="hint">子代理只能选用下面列出的路由，并在每次调用时重新校验；改动立即生效，无需重启。</p>
+    </header>
+
+    <div class="sec">
+      <h4>Worker 模型白名单</h4>
+      <p class="hint">每行的强度只作用于该路由。选 Provider default 时不发送显式强度；选了具体值，宿主会在写入 provider 前按该模型校验。</p>
+      <ul class="rows">
+        <li><code>runtime/current</code><span class="cap">[current turn — resolved at call time]</span>
+          <select class="field tight spacer"><option>Provider default</option></select>
+          <button class="icon-btn">✕</button></li>
+        <li><code>deepseek/deepseek-v4</code><span class="cap">[text,image; effort low/medium/high]</span>
+          <span class="warn">⚠</span>
+          <select class="field tight spacer"><option>max（该模型未声明支持 —— 派生时会被拒绝）</option></select>
+          <button class="icon-btn">✕</button></li>
+      </ul>
+      <div class="addrow">
+        <select class="field" style="flex:1"><option>从模型目录添加一个模型…</option></select>
+        <button class="btn">添加</button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <h4>启用监督循环的模式</h4>
+      <p class="hint">勾选后，该模式的<b>下一个新会话</b>会拿到监督者人格和监督工具（start_goal / 派生 worker / 运行中纠偏 / 定时器唤醒），在自己的会话里主动跑循环、往 .agi/ 写状态。有 loader 行的模式立即生效；由插件直接注册的模式写盘后即时重挂载，重挂载不成功时等下次重启。已经在跑的会话保持原样。Main Agent 入口本身就是监督者，无法关闭。</p>
+      <ul class="rows">
+        <li style="display:block">
+          <div class="preset-row" style="background:none;padding:0">
+            <input type="checkbox" checked>
+            <div class="body">
+              <div class="title">Main Agent <code>main-agent</code></div>
+              <div class="desc">监督者本身：派生 worker、维护 .agi/ 状态、按定时器唤醒。</div>
+              <div class="status" style="color:var(--info)">内置入口 · 始终启用</div>
+            </div>
+          </div>
+        </li>
+        <li style="display:block">
+          <div class="preset-row" style="background:none;padding:0">
+            <input type="checkbox" checked>
+            <div class="body">
+              <div class="title">General agent <code>general</code></div>
+              <div class="desc">通用编码会话，可被委派也可自己派生。</div>
+              <div class="status" style="color:var(--ok)">已启用 · 下一个新会话生效</div>
+            </div>
+          </div>
+        </li>
+        <li style="display:block">
+          <div class="preset-row" style="background:none;padding:0">
+            <input type="checkbox">
+            <div class="body">
+              <div class="title">Minimal <code>minimal</code></div>
+              <div class="desc">只有读写与 shell，没有监督层。</div>
+              <div class="status" style="color:var(--dim)">未启用</div>
+            </div>
+          </div>
+        </li>
+        <li style="display:block">
+          <div class="preset-row" style="background:none;padding:0">
+            <input type="checkbox" checked disabled>
+            <div class="body">
+              <div class="title">Reviewer <code>reviewer</code></div>
+              <div class="desc">只读审查模式。</div>
+              <div class="status" style="color:var(--warn)">缺少监督层所需的行，未勾选</div>
+            </div>
+          </div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="sec">
+      <h4>循环节律</h4>
+      <p class="hint">这些数值决定监督者多久醒一次、什么时候把问题交回给人。</p>
+      <div class="grid2">
+        <div class="numrow"><label>并行 worker 上限</label><input class="field" value="3"></div>
+        <div class="numrow"><label>派生总上限（0 = 不限）</label><input class="field" value="0"></div>
+        <div class="numrow"><label>worker 单轮上限（分钟，0 = 不限）</label><input class="field" value="0"></div>
+        <div class="numrow"><label>巡检间隔（分钟）</label><input class="field" value="5"></div>
+        <div class="numrow"><label>提问等待（分钟）</label><input class="field" value="2"></div>
+      </div>
+      <div class="numrow" style="margin-top:4px">
+        <label>自动派生档位</label>
+        <select class="field" style="width:120px"><option>auto</option></select>
+        <span class="hint">observe 只记录建议，off 关闭自动扇出。</span>
+      </div>
+      <div class="checkcard">
+        <input type="checkbox" checked>
+        <div>
+          <div style="font-size:12.5px">watchdog 补排定时器</div>
+          <p class="hint">漏排提醒时服务端补一条带 [watchdog] 前缀的提醒，保证循环不断。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <button class="btn">保存</button>
+      <button class="btn">放弃</button>
+      <span class="note">有未保存的改动</span>
+    </div>
+  </section>
+</div>
+</body></html>

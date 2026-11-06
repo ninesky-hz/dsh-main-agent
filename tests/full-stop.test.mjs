@@ -312,7 +312,7 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   }
 
   const first = render()
-  const button = findElement(first, node => node.type === 'button' && node.children.includes('■ Full stop'))
+  const button = findElement(first, node => node.type === 'button' && node.children.includes('完全停止'))
   assert.ok(button)
   button.props.onClick()
   await new Promise(resolvePromise => setImmediate(resolvePromise))
@@ -323,7 +323,7 @@ test('Feed stops the root supervisor from a worker view and removes the button',
   assert.deepEqual(calls, ['/supervisor/stop?session=root'])
   const second = render()
   assert.equal(
-    findElement(second, node => node.type === 'button' && node.children.includes('■ Full stop')),
+    findElement(second, node => node.type === 'button' && node.children.includes('完全停止')),
     undefined,
   )
   assert.ok(findElement(second, node => node.type === 'span'

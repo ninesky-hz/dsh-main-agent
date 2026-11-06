@@ -55,7 +55,8 @@ function textOf(node) {
 
 function cardTitled(tree, title) {
   return findElement(tree, node => node.type === 'section'
-    && findElement(node, child => child.type === 'h3' && child.children.includes(title)))
+    && findElement(node, child => (child.type === 'h2' || child.type === 'h3'
+      || child.type === 'div') && Array.isArray(child.children) && child.children.includes(title)))
 }
 
 const FEED = {
@@ -258,7 +259,7 @@ const ROOT_SESSION = {
 test('0.2.x session preset projection keeps Full stop and the worker list', async () => {
   const tree = await renderFeed({ sessions: ROOT_SESSION })
   assert.ok(findElement(tree, node => node.type === 'button'
-    && node.children.includes('■ Full stop')), 'Full stop must render')
+    && node.children.includes('完全停止')), 'Full stop must render')
   assert.ok(findElement(tree, node => node.type === 'li'
     && textOf(node).includes('sleep worker')), 'worker row must render')
   assert.ok(findElement(tree, node => node.type === 'span'
@@ -275,7 +276,7 @@ test('worker session resolves its root supervisor through parentId', async () =>
   }
   const tree = await renderFeed({ sessions })
   assert.ok(findElement(tree, node => node.type === 'button'
-    && node.children.includes('■ Full stop')))
+    && node.children.includes('完全停止')))
 })
 
 test('missing main-agent preset degrades honestly instead of hanging', async () => {
@@ -284,7 +285,7 @@ test('missing main-agent preset degrades honestly instead of hanging', async () 
   }
   const tree = await renderFeed({ sessions })
   assert.equal(findElement(tree, node => node.type === 'button'
-    && node.children.includes('■ Full stop')), undefined)
+    && node.children.includes('完全停止')), undefined)
   assert.match(textOf(tree), /未识别到监督者会话/)
   assert.match(textOf(tree), /preset=standard/)
 })
@@ -299,7 +300,7 @@ test('0.2.x goal projection { goal, roundsStarted } fills the goal card', async 
   const card = cardTitled(tree, '目标')
   assert.ok(card, 'goal card must render')
   assert.match(textOf(card), /验证 Full stop/)
-  assert.match(textOf(card), /rev 2 · 回合 4\/30/)
+  assert.match(textOf(card), /4 \/ 30 轮 · rev 2/)
   assert.match(textOf(card), /ACTIVE/i)
 })
 
@@ -317,7 +318,7 @@ test('question rows read the durable `q` field, never fall back to the id', asyn
     ],
   }
   const tree = await renderFeed({ sessions: ROOT_SESSION, feed })
-  const card = cardTitled(tree, '提问')
+  const card = cardTitled(tree, '待回答')
   const text = textOf(card)
   assert.match(text, /Full stop 要不要关掉 GUI 会话？/)
   assert.doesNotMatch(text, /q-fullstop-gui-session/, 'the id is not the question')
@@ -327,7 +328,7 @@ test('question rows read the durable `q` field, never fall back to the id', asyn
   assert.match(text, /假设：假设不重启 Electron/)
   // A row without `q` still degrades to its alias rather than throwing.
   const alias = { ...FEED, questions: [{ id: 'q-6', status: 'pending', question: '旧格式 question 字段' }] }
-  assert.match(textOf(cardTitled(await renderFeed({ sessions: ROOT_SESSION, feed: alias }), '提问')),
+  assert.match(textOf(cardTitled(await renderFeed({ sessions: ROOT_SESSION, feed: alias }), '待回答')),
     /旧格式 question 字段/)
 })
 
@@ -341,7 +342,7 @@ test('each worker row carries its own outcome, matched by session id', async () 
     ],
   }
   const tree = await renderFeed({ sessions: ROOT_SESSION, feed })
-  const card = cardTitled(tree, 'Workers')
+  const card = cardTitled(tree, 'Worker')
   const row = findElement(card, node => node.type === 'li' && textOf(node).includes('sleep worker'))
   assert.ok(row, 'the worker row must render')
   assert.match(textOf(row), /sleep worker result/, 'the outcome belongs under its own worker')
@@ -386,7 +387,7 @@ test('a label-named artifact reaches its row through the declared worker id', as
     ],
   }
   const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: TWO_WORKERS })
-  const card = cardTitled(tree, 'Workers')
+  const card = cardTitled(tree, 'Worker')
   const row = workerRow(card, 'first worker')
   assert.ok(row, 'the worker row must render')
   assert.match(textOf(row), /declared result/, 'the header wins over the directory name')
@@ -414,7 +415,7 @@ test('one artifact is claimed by one row only, even when its dir name fits anoth
     ],
   }
   const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: rows })
-  const card = cardTitled(tree, 'Workers')
+  const card = cardTitled(tree, 'Worker')
   assert.match(textOf(workerRow(card, 'second worker')), /claimed once/,
     'the declared workerId wins over the directory name')
   assert.doesNotMatch(textOf(workerRow(card, 'first worker')), /claimed once/,
@@ -433,7 +434,7 @@ test('a label-named artifact without a header stays in 历史结果', async () =
     ],
   }
   const tree = await renderFeed({ sessions: ROOT_SESSION, feed, workers: TWO_WORKERS })
-  const card = cardTitled(tree, 'Workers')
+  const card = cardTitled(tree, 'Worker')
   assert.doesNotMatch(textOf(workerRow(card, 'first worker')), /headerless result/)
   assert.doesNotMatch(textOf(workerRow(card, 'second worker')), /headerless result/)
   const fallback = findElement(card, node => node.type === 'div' && textOf(node).includes('历史结果'))
@@ -456,21 +457,31 @@ test('the loop card shows whether the loop is armed and when it wakes next', asy
       ],
     },
   })
-  const card = cardTitled(tree, '监督循环')
+  const card = cardTitled(tree, '下一次巡检')
   assert.ok(card, 'the loop card renders for a supervisor session')
   const text = textOf(card)
   assert.match(text, /运行中/)
-  assert.match(text, /worker-1/)
+  assert.match(text, /1 个活动 worker/)
   assert.match(text, /每 5 分钟巡检/)
   assert.match(text, /一次性等待/)
   assert.match(text, /监督者巡检/)
-  assert.match(text, /约 2 分钟后/)
-  assert.match(text, /约 90 分钟后/)
-  // The nearest reminder is the highlighted one.
-  const nearest = findElement(card, node => node.type === 'span' && textOf(node).includes('约 2 分钟后'))
-  assert.equal(nearest.props.style.fontWeight, 600)
-  const far = findElement(card, node => node.type === 'span' && textOf(node).includes('约 90 分钟后'))
-  assert.equal(far.props.style.fontWeight, 400)
+  assert.match(text, /2 分钟后/)
+  // 最近的一条用实心指示灯标出来；远的留在空闲色上。
+  const nearest = findElement(card, node => node.props?.className === 'dsma-lamp'
+    && node.props.style.background.includes('success'))
+  assert.ok(nearest, '最近的一条提醒必须点灯')
+  const rows = []
+  const collect = node => {
+    if (node == null || typeof node !== 'object') return
+    if (Array.isArray(node)) { node.forEach(collect); return }
+    if (node.type === 'li') { rows.push(node); return }
+    ;(node.children ?? []).forEach(collect)
+  }
+  collect(card)
+  assert.equal(rows.length, 2, '两条提醒各占一行')
+  const lamps = rows.map(row => findElement(row, node => node.props?.className === 'dsma-lamp'))
+  assert.notEqual(lamps[0].props.style.background, lamps[1].props.style.background,
+    '只有最近的一条亮，远的一条留在空闲色')
 })
 
 test('the loop card says 已停止 when nothing is armed or running', async () => {
@@ -478,14 +489,14 @@ test('the loop card says 已停止 when nothing is armed or running', async () =
     sessions: ROOT_SESSION,
     stop: { stopped: true, running: false, reminders: [], runningWorkers: [] },
   })
-  const card = cardTitled(tree, '监督循环')
+  const card = cardTitled(tree, '下一次巡检')
   assert.match(textOf(card), /已停止/)
   assert.match(textOf(card), /没有已启用的提醒/)
 })
 
 test('a failed stop-status read is reported inside the loop card', async () => {
   const tree = await renderFeed({ sessions: ROOT_SESSION, stop: { failed: true, status: 503 } })
-  const card = cardTitled(tree, '监督循环')
+  const card = cardTitled(tree, '下一次巡检')
   assert.ok(card, 'the card must not vanish on failure')
   assert.match(textOf(card), /无法读取监督循环状态/)
   assert.match(textOf(card), /HTTP 503/)
@@ -499,7 +510,7 @@ test('the loop card is absent without a supervisor session', async () => {
     },
   }
   const tree = await renderFeed({ sessions })
-  assert.equal(cardTitled(tree, '监督循环'), undefined)
+  assert.equal(cardTitled(tree, '下一次巡检'), undefined)
 })
 
 // ------------------------------------------------- 0.10.8 interactive Feed
@@ -533,7 +544,7 @@ test('a worker row opens that worker’s native session', async () => {
   assert.equal(label.props.style.padding, 0)
   assert.equal(label.props.style.cursor, 'pointer')
   assert.equal(label.props.style.textAlign, 'left')
-  assert.match(label.props.style.borderBottom, /^1px dashed /)
+  assert.match(label.props.style.borderBottom, /^1px dotted /)
 
   let stopped = 0
   label.props.onClick({ stopPropagation() { stopped += 1 } })
@@ -578,10 +589,10 @@ test('a host without uiWorkspace degrades to labels instead of blocking the tab'
   const tree = await renderFeed({ sessions: { ...ROOT_SESSION, 'worker-1': WORKER_SESSION } })
   const row = findElement(tree, node => node.type === 'li' && textOf(node).includes('sleep worker'))
   assert.equal(findElement(row, node => node.type === 'button'), undefined)
-  assert.match(textOf(tree), /监督动态 Feed/, 'the tab still renders')
+  assert.match(textOf(tree), /监督动态/, 'the tab still renders')
 })
 
-test('暂停 stops the poll loop; ↻ 刷新 fetches exactly once more', async () => {
+test('暂停 stops the poll loop; 刷新 fetches exactly once more', async () => {
   const harness = await mountFeed({ sessions: ROOT_SESSION })
   let tree = await harness.render()
   const initial = harness.feedCalls()
@@ -593,13 +604,13 @@ test('暂停 stops the poll loop; ↻ 刷新 fetches exactly once more', async (
   assert.equal(harness.feedCalls(), initial + 1)
   assert.ok(harness.liveTimers() > 0, 'the poll timer is live while not paused')
 
-  harness.click(tree, '⏸ 暂停')
+  harness.click(tree, '暂停')
   tree = await harness.render()
   assert.match(textOf(tree), /已暂停自动刷新/)
   assert.equal(harness.liveTimers(), 0, 'pausing removes the timer instead of hiding it')
-  assert.equal(harness.button(tree, '⏸ 暂停'), undefined)
-  assert.ok(harness.button(tree, '▶ 继续'), 'the toggle now offers 继续')
-  assert.equal(harness.button(tree, '▶ 继续').props['aria-pressed'], true)
+  assert.equal(harness.button(tree, '暂停'), undefined)
+  assert.ok(harness.button(tree, '继续'), 'the toggle now offers 继续')
+  assert.equal(harness.button(tree, '继续').props['aria-pressed'], true)
 
   // No timer remains, so a tick cannot fetch even if one were replayed.
   harness.fireTick()
@@ -607,14 +618,14 @@ test('暂停 stops the poll loop; ↻ 刷新 fetches exactly once more', async (
   assert.equal(harness.feedCalls(), initial + 1, 'paused means no polling at all')
 
   // Manual refresh is a fetch — exactly one — and it does not resume polling.
-  harness.click(tree, '↻ 刷新')
+  harness.click(tree, '刷新')
   tree = await harness.render()
   assert.equal(harness.feedCalls(), initial + 2)
   assert.match(textOf(tree), /已暂停自动刷新/, '刷新 must not flip the pause switch')
   assert.equal(harness.liveTimers(), 0)
 
   // 继续 re-arms the timer.
-  harness.click(tree, '▶ 继续')
+  harness.click(tree, '继续')
   tree = await harness.render()
   assert.doesNotMatch(textOf(tree), /已暂停自动刷新/)
   assert.equal(harness.liveTimers(), 1)
@@ -628,18 +639,18 @@ test('the header reports when the last poll settled, and says 内容无变化 on
   // can no longer answer "how fresh is this?" — `checkedAt` must.
   const harness = await mountFeed({ sessions: ROOT_SESSION })
   let tree = await harness.render()
-  assert.match(textOf(tree), /秒前 检查/)
-  assert.doesNotMatch(textOf(tree), /内容无变化/)
+  assert.match(textOf(tree), /秒前 · 已更新/)
+  assert.doesNotMatch(textOf(tree), /无变化/)
   assert.equal(harness.feedEtags[0], null, 'the first poll has nothing to revalidate')
 
   harness.fireTick()
   await harness.render()
   tree = await harness.render()
   assert.equal(harness.feedEtags[1], '"feed-v1"', 'the second poll revalidates with If-None-Match')
-  assert.match(textOf(tree), /内容无变化/)
+  assert.match(textOf(tree), /无变化/)
   // A 304 must never blank the document.
-  assert.match(textOf(cardTitled(tree, '进度')), /还没有任何内容/)
-  assert.match(textOf(tree), /秒前 检查/)
+  assert.match(textOf(cardTitled(tree, '进展')), /还没有内容/)
+  assert.match(textOf(tree), /秒前 · 无变化/)
 })
 
 test('a failed poll drops the ETag, so a stale one cannot wedge the Feed on 304', async () => {
@@ -658,7 +669,7 @@ test('a failed poll drops the ETag, so a stale one cannot wedge the Feed on 304'
   let tree = await harness.render()
   assert.equal(harness.feedCalls(), 1)
   assert.equal(harness.feedEtags[0], null, 'the first poll has nothing to revalidate')
-  assert.match(textOf(cardTitled(tree, '进度')), /还没有任何内容/, 'the document is on screen')
+  assert.match(textOf(cardTitled(tree, '进展')), /还没有内容/, 'the document is on screen')
 
   // The 5-second tick revalidates with the ETag we now hold; the host hiccups.
   // Two renders per tick, exactly like the staleness test above: the first one
@@ -679,8 +690,8 @@ test('a failed poll drops the ETag, so a stale one cannot wedge the Feed on 304'
 
   // Because the request was unconditional, the honest 200 recovers the card.
   assert.doesNotMatch(textOf(tree), /无法读取监督动态/, 'a later 200 clears the error state')
-  assert.doesNotMatch(textOf(tree), /内容无变化/, 'unchanged must not be left true')
-  assert.match(textOf(cardTitled(tree, '进度')), /还没有任何内容/, 'the document renders again')
+  assert.doesNotMatch(textOf(tree), /无变化/, 'unchanged must not be left true')
+  assert.match(textOf(cardTitled(tree, '进展')), /还没有内容/, 'the document renders again')
 })
 
 test('long records are clamped and scroll inside their card, not down the page', async () => {
@@ -702,7 +713,7 @@ test('long records are clamped and scroll inside their card, not down the page',
   const harness = await mountFeed({ sessions: ROOT_SESSION, feed })
   const tree = await harness.render()
 
-  for (const title of ['进度', '变更日志']) {
+  for (const title of ['进展', '变更记录']) {
     const card = cardTitled(tree, title)
     assert.ok(card, `${title} must render`)
     assert.equal(card.props.style.gridColumn, undefined,
@@ -713,7 +724,7 @@ test('long records are clamped and scroll inside their card, not down the page',
   }
 
   // 长列表卡片用的是同一个高度令牌，一行里的卡片下沿才对得齐。
-  const heights = ['进度', '提问', '变更日志'].map(title => {
+  const heights = ['进展', '待回答', '变更记录'].map(title => {
     const card = cardTitled(tree, title)
     const scroller = findElement(card,
       node => typeof node.props?.style?.maxHeight === 'number' && node.props.style.overflow === 'auto')
@@ -732,23 +743,27 @@ test('long records are clamped and scroll inside their card, not down the page',
   assert.ok(expand, '折叠的长记录必须给「展开」按钮')
 
   // 提问卡片里的长问题同样折叠（3 行），否则一条提问就能撑满整列。
-  const question = cardTitled(tree, '提问')
+  const question = cardTitled(tree, '待回答')
   assert.ok(findElement(question, node => node.props?.style?.WebkitLineClamp === 3))
 })
 
-test('every feed card shares one width/type scale, so the grid reads as one block', async () => {
-  // 卡片各自为政（gap 12/10、字号 11-14、圆角各不相同、标题 uppercase）是
-  // 「界面不协调」的另一半。这里锁住三条：网格用同一 gap、卡片不宽铺、
-  // 卡片标题不再靠 uppercase/字距 撑样式（对中文没有大小写，只会显得松散）。
+test('the Feed keeps one surface and one type scale, and the strip reads as one dial', async () => {
+  // 旧版把 8 张卡平铺成 auto-fit 网格，每张同样的重量 —— 于是没有主次，页脚
+  // 还空一大块。新版是三段式仪表带 + 左主列/右栏，宽窄不一样是设计，不是失控：
+  // 锁住的是「同一套表面与字号」，不是「所有卡片一样宽」。
   const harness = await mountFeed({ sessions: ROOT_SESSION, feed: FEED })
   const tree = await harness.render()
 
-  const grid = findElement(tree,
-    node => typeof node.props?.style?.gridTemplateColumns === 'string'
-      && node.props.style.gridTemplateColumns.startsWith('repeat(auto-fit'))
-  assert.ok(grid, '卡片容器必须是 auto-fit 网格')
-  assert.equal(grid.props.style.gap, 8, '卡片间距统一走 8px 栅格')
-  assert.equal(grid.props.style.alignItems, 'stretch', '同一行卡片必须等高，下沿不能锯齿')
+  const strip = findElement(tree, node => node.props?.className === 'dsma-strip')
+  assert.ok(strip, '顶部必须是一块三段式仪表带')
+  assert.equal(strip.children.length, 3, '目标 / 下一次巡检 / Worker 三格')
+
+  const body = findElement(tree, node => node.props?.className === 'dsma-body')
+  assert.ok(body, '主体是主列 + 右栏')
+  // 栏宽在注入的样式表里（媒体查询要在 900px 折成一列），所以这里读源码里的规则。
+  const source = await readFile(new URL('../lib/client.js', import.meta.url), 'utf8')
+  assert.match(source, /\.dsma-body \{[^}]*grid-template-columns: minmax\(0, 1fr\) 320px/)
+  assert.match(source, /\.dsma-body \{[^}]*gap: 16px/)
 
   const cards = []
   const walk = node => {
@@ -760,15 +775,14 @@ test('every feed card shares one width/type scale, so the grid reads as one bloc
     ;(node.children ?? []).forEach(walk)
   }
   walk(tree)
-  assert.ok(cards.length >= 4, `应渲染出多张卡片，实际 ${cards.length}`)
+  assert.ok(cards.length >= 3, `右栏与主列都要有纸面卡片，实际 ${cards.length}`)
   for (const card of cards) {
     assert.equal(card.props.style.gridColumn, undefined, '没有卡片可以跨列')
-    assert.equal(card.props.style.padding, '11px 12px', '卡片内边距必须一致')
-    assert.equal(card.props.style.borderRadius, 10, '卡片圆角必须一致')
+    assert.equal(card.props.style.padding, '12px 16px 16px', '卡片内边距必须一致，且落在 4px 网格上')
+    assert.equal(card.props.style.borderRadius, 12, '卡片圆角必须一致')
   }
 
-  const title = findElement(cards[0], node => node.type === 'h3')
+  const title = findElement(cards[0], node => node.type === 'h2')
   assert.equal(title.props.style.textTransform, undefined, '中文标题不需要 uppercase')
   assert.equal(title.props.style.letterSpacing, 0, '标题不再用字距凑样式')
 })
-

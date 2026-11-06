@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>mock · 监督动态 Feed (current)</title>
+<link rel="stylesheet" href="mock.css">
+</head><body>
+<div class="page">
+
+  <header class="feed-header">
+    <strong>监督动态 Feed</strong>
+    <code title="D:\Ai-Project\dsh-main-agent">D:\Ai-Project\dsh-main-agent</code>
+    <span class="right">4 秒前 检查 · 内容无变化</span>
+    <button class="btn-bar">⏸ 暂停</button>
+    <button class="btn-bar">↻ 刷新</button>
+    <button class="btn-bar danger">■ Full stop</button>
+  </header>
+
+  <div class="grid row1">
+    <div class="grid r1">
+      <!-- Goal -->
+      <section class="card">
+        <h3>目标 <span class="badge"><span class="pill ok">executing</span></span></h3>
+        <dl class="kv">
+          <dt>目标</dt><dd>重新设计面板与 Feed 页，去除 AI 味</dd>
+          <dt>轮数</dt><dd>3 / 12</dd>
+          <dt>更新</dt><dd>2 分钟前</dd>
+          <dt>完成</dt><dd>—</dd>
+        </dl>
+      </section>
+      <!-- Loop -->
+      <section class="card">
+        <h3>监督循环 <span class="badge"><span class="pill ok">运行中</span></span></h3>
+        <div class="rowline" style="margin-bottom:6px"><span class="dot live"></span>1 个活动 worker · 最长 90 秒</div>
+        <div class="legend" style="margin-bottom:4px">提醒</div>
+        <div class="rowline"><span class="dot"></span>worker 巡检<span class="spacer" style="margin-left:auto"></span><code style="font-size:10.5px;color:var(--dim)">2 分钟后</code></div>
+        <div class="rowline"><span class="dot"></span>提问等待<span style="margin-left:auto"></span><code style="font-size:10.5px;color:var(--dim)">11 分钟后</code></div>
+      </section>
+      <!-- Workers -->
+      <section class="card">
+        <h3>Worker <span class="badge"><span class="pill ok">1 运行中</span></span></h3>
+        <div class="rowline" style="margin-bottom:4px">
+          <span class="dot live"></span>
+          <span style="color:var(--text)">UI 重写</span>
+          <code style="font-size:10.5px;color:var(--dim)">3f9a2c1e</code>
+          <span style="margin-left:auto;font-size:11px;color:var(--dim)">运行中</span>
+        </div>
+        <div class="legend">route runtime/current · 已跑 42 秒</div>
+        <details><summary>结果</summary><p class="empty">尚未收敛。</p></details>
+      </section>
+    </div>
+  </div>
+
+  <div class="grid row1">
+    <div class="grid r2">
+      <!-- Progress -->
+      <section class="card">
+        <h3>进展 <span class="badge legend">12 条</span></h3>
+        <ol class="progress">
+          <li><span class="ts">17:24</span><span>开始审计：列出 panel 与 feed 的 slop 清单</span></li>
+          <li><span class="ts">17:21</span><span>确认 profile 副本与仓库副本一致，改动需双份同步</span></li>
+          <li><span class="ts">17:12</span><span>读取 client.js 结构，登记 9 个卡片与设置页字段</span></li>
+          <li><span class="ts">17:05</span><span>接管工作区，读取 .agi/BRIEF.md 与 GOAL.md</span></li>
+          <li><span class="ts">17:02</span><span>用户提出重新设计需求</span></li>
+          <li><span class="ts">16:58</span><span>校验 384 项测试基线全绿</span></li>
+        </ol>
+      </section>
+      <!-- Questions -->
+      <section class="card">
+        <h3>待回答 <span class="badge"><span class="pill warn">1</span></span></h3>
+        <div class="rowline" style="margin-bottom:4px">
+          <span class="pill warn">pending</span>
+          <span style="font-size:11.5px">面板宽度按 880 还是保持 780？</span>
+        </div>
+        <p class="empty">等待 12 分钟 · 超时后按最保守假设继续</p>
+      </section>
+      <!-- Changelog -->
+      <section class="card">
+        <h3>变更记录</h3>
+        <div class="rowline" style="margin-bottom:6px"><span class="pill info">spawn</span><span style="font-size:11.5px">派生 UI 重写 worker</span></div>
+        <div class="rowline" style="margin-bottom:6px"><span class="pill info">steer</span><span style="font-size:11.5px">要求先跑 unpixel 审计</span></div>
+        <div class="rowline" style="margin-bottom:6px"><span class="pill bad">kill</span><span style="font-size:11.5px">终止游离 worker</span></div>
+        <div class="rowline"><span class="pill info">assume</span><span style="font-size:11.5px">假设 feed 宽度跟随容器</span></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="grid r3">
+    <section class="card">
+      <h3>任务报告</h3>
+      <p class="empty">worker 收敛后写入 outcome.md；此处展示结论与证据摘要…</p>
+    </section>
+    <section class="card">
+      <h3>笔记</h3>
+      <p class="empty">NOTES.md —— 打底记录、假设与检查点…</p>
+    </section>
+  </div>
+
+  <details><summary>GOAL.md（持久声明）</summary>
+    <pre class="mono">objective: 重新设计面板与 Feed 页
+phase: executing
+rounds: 3 / 12</pre>
+  </details>
+</div>
+</body></html>

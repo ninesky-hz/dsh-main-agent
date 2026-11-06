@@ -189,8 +189,11 @@ test('a ready catalog still flags an effort the model really does not declare', 
     && node.props.value === 'max' && node.props.disabled === true)
   assert.ok(placeholder)
   assert.match(placeholder.children.join(' '), /该模型未声明支持/)
-  assert.ok(findElement(tree, node => node.type === 'span'
-    && node.props.role === 'status' && node.children.join(' ').includes('⚠')))
+  const flag = findElement(tree, node => node.type === 'span' && node.props.role === 'status')
+  assert.ok(flag, '未声明的强度必须在行内标出来')
+  assert.ok(findElement(flag, node => node.props?.className === 'dsma-lamp'),
+    '标记是一颗指示灯，不是一个字形')
+  assert.match(flag.children.join(' '), /未声明/)
 })
 
 function collect(node, predicate, out = []) {
@@ -238,9 +241,12 @@ test('the page reads as three divided sections, and a mode row is a whole clicka
   const deep = renderDeep(tree)
 
   // 选中的模式整块换底色：只靠 14px 勾选框，8 行里认不出哪几个开着。
-  const checkedRow = findElement(deep, node => node.type === 'label'
-    && node.props.style?.background === 'rgba(64,112,173,.08)')
+  const rows = collect(deep, node => node.type === 'label')
+  const checkedRow = rows.find(node => node.props.style?.background
+    && node.props.style.background !== 'transparent')
   assert.ok(checkedRow, 'the enabled preset row carries its own surface')
+  const plainRow = rows.find(node => node.props.style?.background === 'transparent')
+  assert.ok(plainRow, '未选中的行回到纸面上，不再每行一个盒子')
   assert.equal(checkedRow.props.style.cursor, 'pointer')
   const box = findElement(checkedRow, node => node.type === 'input')
   assert.equal(box.props.type, 'checkbox')
@@ -253,14 +259,14 @@ test('the page reads as three divided sections, and a mode row is a whole clicka
   assert.equal(builtinBox.props.checked, true)
   assert.equal(builtinBox.props.disabled, true)
   const brokenRow = findElement(deep, node => node.type === 'label'
-    && node.props.style?.opacity === 0.62)
+    && node.props.style?.opacity === 0.55)
   assert.ok(brokenRow, 'a broken preset stays visible but muted')
   assert.equal(brokenRow.props.className, undefined)
 
   // 数字字段：标签在左、输入框靠右对齐成一列（原来固定 220px 标签宽）。
   const numberBox = findElement(deep, node => node.type === 'input'
     && node.props.type === 'number')
-  assert.equal(numberBox.props.style.width, 76)
+  assert.equal(numberBox.props.style.width, 84)
   assert.equal(numberBox.props.style.textAlign, 'right')
   assert.equal(numberBox.props.className, 'dsma-field')
 

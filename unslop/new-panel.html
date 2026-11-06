@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>new · 监督者面板</title>
+<link rel="stylesheet" href="new.css">
+<link rel="stylesheet" href="new-panel.css">
+</head><body>
+<div class="pg">
+
+  <header class="pg-head">
+    <h1>监督者</h1>
+    <span class="tag">dsh-main-agent</span>
+    <span class="dirty">有未保存的改动</span>
+  </header>
+
+  <div class="form">
+
+    <section class="sec">
+      <h2>Worker 模型白名单</h2>
+      <p class="hint">子代理只能从下面这些路由里选，每次派生都会重新校验。</p>
+
+      <div class="tbl">
+        <div class="trow">
+          <div class="route">runtime/current<span class="cap">当前回合的模型与能力，调用时才解析</span></div>
+          <select class="sel"><option>provider default</option></select>
+          <button class="del" title="移除">✕</button>
+        </div>
+        <div class="trow">
+          <div class="route">deepseek/deepseek-v4<span class="cap">text, image · low / medium / high<span class="warn-dot" title="已存的强度该模型未声明，派生时会被拒绝"></span></span></div>
+          <select class="sel"><option>max（未声明）</option></select>
+          <button class="del" title="移除">✕</button>
+        </div>
+      </div>
+
+      <div class="addrow">
+        <select class="sel"><option>从模型目录添加…</option></select>
+        <select class="sel" disabled><option>provider default</option></select>
+        <button class="btn line">添加</button>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>启用监督循环的模式</h2>
+      <p class="hint">勾选后，该模式的下一个新会话会拿到监督者人格与监督工具。已经在跑的会话不受影响。</p>
+
+      <div class="plist">
+        <div class="prow">
+          <input type="checkbox" checked>
+          <div>
+            <div class="nm">Main Agent <span class="id">main-agent</span></div>
+            <div class="ds">监督者本身：派生 worker、维护 .agi/、按定时器唤醒。</div>
+          </div>
+          <div class="st info">内置入口</div>
+        </div>
+        <div class="prow">
+          <input type="checkbox" checked>
+          <div>
+            <div class="nm">General agent <span class="id">general</span></div>
+            <div class="ds">通用编码会话，可被委派也可自己派生。</div>
+          </div>
+          <div class="st ok">已启用</div>
+        </div>
+        <div class="prow">
+          <input type="checkbox">
+          <div>
+            <div class="nm">Minimal <span class="id">minimal</span></div>
+            <div class="ds">只有读写与 shell，没有监督层。</div>
+          </div>
+          <div class="st">未启用</div>
+        </div>
+        <div class="prow">
+          <input type="checkbox" disabled>
+          <div>
+            <div class="nm">Reviewer <span class="id">reviewer</span></div>
+            <div class="ds">只读审查模式。</div>
+          </div>
+          <div class="st warn">缺少所需行为，未勾选</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec">
+      <h2>循环节律</h2>
+      <p class="hint">决定监督者多久醒一次，以及什么时候把问题交回给人。</p>
+
+      <div class="nums">
+        <div class="numrow"><label>并行 worker 上限</label><input class="field" value="3"></div>
+        <div class="numrow"><label>派生总上限</label>
+          <span class="unit"><input class="field" value="0"><span>0 为不限</span></span></div>
+        <div class="numrow"><label>worker 单轮上限</label>
+          <span class="unit"><input class="field" value="0"><span>分钟</span></span></div>
+        <div class="numrow"><label>巡检间隔</label>
+          <span class="unit"><input class="field" value="5"><span>分钟</span></span></div>
+        <div class="numrow"><label>提问等待</label>
+          <span class="unit"><input class="field" value="2"><span>分钟</span></span></div>
+      </div>
+
+      <div class="pickrow">
+        <label style="font-size:12px;color:var(--label-2)">自动派生档位</label>
+        <select class="sel"><option>auto</option></select>
+        <span class="note">observe 只记录建议，off 关闭自动扇出。</span>
+      </div>
+
+      <div class="checkline">
+        <input type="checkbox" checked>
+        <div>
+          <div class="t">watchdog 补排定时器</div>
+          <div class="d">漏排提醒时由服务端补一条 [watchdog] 前缀的提醒，循环不会因此断掉。</div>
+        </div>
+      </div>
+    </section>
+
+    <div class="bar">
+      <span class="msg">有未保存的改动</span>
+      <span class="sp"></span>
+      <button class="btn">放弃</button>
+      <button class="btn primary">保存</button>
+    </div>
+  </div>
+</div>
+</body></html>

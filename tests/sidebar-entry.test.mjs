@@ -135,11 +135,13 @@ test('the sidebar page hosts the very card the Plugins tab shows', async () => {
   // for the window controls, so the page has to add it back.
   assert.match(tree.props.style.padding, /--dsh-frame-top-clearance/)
   const inner = tree.children[0]
-  assert.equal(inner.props.style.maxWidth, 780)
+  // 880 是设计确认下来的读稿宽度：数字行、说明与状态列要在一条视线上。
+  assert.equal(inner.props.style.maxWidth, 880)
   const cardType = inner.children[0].type
   assert.equal(typeof cardType, 'function', 'page does not mount a card')
   // ...and that card is the supervisor settings form, not a placeholder.
   const card = render(cardType)
-  assert.ok(findElement(card, node => node.type === 'h3'
-    && node.children.includes('监督者运行时')))
+  // 页头标题现在是页面级的 h2（原来是卡片里的 h3「监督者运行时」）。
+  assert.ok(findElement(card, node => node.type === 'h2'
+    && node.children.includes('监督者')))
 })
