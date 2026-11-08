@@ -150,7 +150,7 @@ test('renderBrief: 汇总目标、状态、进展与停止原因', () => {
 test('writeBrief: 落到 .agi/BRIEF.md 且返回同样的文本', () => {
   const { dir, cleanup } = workspace()
   try {
-    const text = writeBrief({ cwd: dir, objective: 'x', state: { idleTicks: 0 } })
+    const { text } = writeBrief({ cwd: dir, objective: 'x', state: { idleTicks: 0 } })
     const onDisk = readFileSync(join(dir, '.agi', LOOP_BRIEF_FILE), 'utf8')
     assert.equal(onDisk, text)
     assert.equal(briefPathFor(dir), join(dir, '.agi', LOOP_BRIEF_FILE))
@@ -523,3 +523,62 @@ test('renderWorkerLines: known=false 也不能遮蔽 archived / dropped 的 acti
     cleanup()
   }
 })
+
+// ── 行尾的验收契约标记 ────────────────────────────────────────────────────────
+//
+// 派发时写了 `done_when`，worker 目录里就有 `expect.json`；没写就没有。监督者读
+// BRIEF 时该一眼看出「这一条交付的验收是我写的，还是只剩 worker 自述」。没人写
+// done_when 的那一行必须有标记 —— 否则「全绿」看起来都一样绿。
+
+/** 在 worker 目录里放一份 expect.json（只要文件在，标记就不出现）。 */
+function plantExpect(dir, sessionId) {
+  const target = join(dir, '.agi', 'subagents', sessionId)
+  mkdirSync(target, { recursive: true })
+  writeFileSync(
+    join(target, 'expect.json'),
+    JSON.stringify({ worker: sessionId, declaredAt: '2026-11-01T00:00:00.000Z', items: [{ id: 'e1', text: '跑通' }] }),
+    'utf8',
+  )
+}
+
+test('renderWorkerLines: 没有 expect.json 的 worker 行尾标「无验收契约」', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    const line = workerLine(dir, [{ id: 'aaaa1111', running: true, known: true, report: { state: 'progress' } }])
+    assert.match(line, /（无验收契约）$/, '没有派发时验收的 worker，行尾必须说出来')
+  } finally {
+    cleanup()
+  }
+})
+
+test('renderWorkerLines: 有 expect.json 的 worker 行不加噪音', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    plantExpect(dir, 'aaaa1111')
+    const line = workerLine(dir, [{ id: 'aaaa1111', running: true, known: true, report: { state: 'progress' } }])
+    assert.doesNotMatch(line, /无验收契约/)
+    assert.match(line, /aaaa1111/)
+  } finally {
+    cleanup()
+  }
+})
+
+test('renderWorkerLines: 调用方显式给的 expect 判定优先于目录扫', () => {
+  const { dir, cleanup } = workspace()
+  try {
+    // 目录里没有 expect.json，但调用方（真机上从 ledger 拿到的事实）说这次有契约。
+    const trusted = workerLine(dir, [
+      { id: 'aaaa1111', running: true, known: true, expect: true, report: { state: 'progress' } },
+    ])
+    assert.doesNotMatch(trusted, /无验收契约/)
+
+    plantExpect(dir, 'bbbb2222')
+    const denied = workerLine(dir, [
+      { id: 'bbbb2222', running: true, known: true, expect: false, report: { state: 'progress' } },
+    ])
+    assert.match(denied, /（无验收契约）$/, '显式 false 必须压过目录里的文件')
+  } finally {
+    cleanup()
+  }
+})
+

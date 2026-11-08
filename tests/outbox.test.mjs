@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -84,14 +84,14 @@ test('backoffMs: 2 秒起、翻倍、封顶 1 分钟', () => {
   assert.equal(backoffMs(Number.NaN), 0)
 })
 
-test('enqueue: 同 kind + 同 dedupeKey 幂等，磁盘上只有一行', () => withWorkspace(cwd => {
+test('enqueue: 同 kind + 同 dedupeKey 是 upsert，磁盘上只有一行', () => withWorkspace(cwd => {
   const first = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345', detail: { state: 'ready' } })
   assert.equal(first.ok, true)
-  assert.equal(first.skipped, undefined)
+  assert.equal(first.replaced, undefined)
 
   const second = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345', detail: { state: 'ready' } })
   assert.equal(second.ok, true)
-  assert.equal(second.skipped, true)
+  assert.equal(second.replaced, true)
   assert.equal(second.id, first.id)
 
   const raw = readFileSync(queueFile(cwd), 'utf8').trim().split('\n')
@@ -99,8 +99,53 @@ test('enqueue: 同 kind + 同 dedupeKey 幂等，磁盘上只有一行', () => w
 
   // 不同 kind 用同一个 key 不算重复：那是两件不同的事。
   const other = enqueue(cwd, { kind: 'worker-report', dedupeKey: 'abc12345' })
-  assert.equal(other.skipped, undefined)
+  assert.equal(other.replaced, undefined)
   assert.equal(readOutbox(cwd).entries.length, 2)
+}))
+
+test('enqueue: upsert 保留 id/createdAt/attempts，detail 整体替换（不是合并）', () => withWorkspace(cwd => {
+  enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345', detail: { state: 'working' } })
+  const before = readOutbox(cwd).entries[0]
+  const second = enqueue(cwd, {
+    kind: 'settlement',
+    dedupeKey: 'abc12345',
+    detail: { state: 'blocked', question: '需要确认 A 还是 B' },
+  })
+  assert.equal(second.replaced, true)
+  const entries = readOutbox(cwd).entries
+  assert.equal(entries.length, 1)
+  assert.equal(entries[0].id, before.id)
+  assert.equal(entries[0].createdAt, before.createdAt)
+  assert.equal(entries[0].attempts, before.attempts)
+  // 整体替换：旧 detail 里的多余键不能留下来。
+  assert.deepEqual(entries[0].detail, { state: 'blocked', question: '需要确认 A 还是 B' })
+
+  // 这次没给 detail：保留原值，而不是把 detail 抹掉。
+  enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
+  assert.deepEqual(readOutbox(cwd).entries[0].detail, { state: 'blocked', question: '需要确认 A 还是 B' })
+}))
+
+test('enqueue: upsert 之后立刻到期（nextAt 置为现在，attempts 不重置）', () => withWorkspace(cwd => {
+  const first = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
+  // 制造一条正在退避的同 key entry：它此刻不该到期。
+  seed(cwd, [{ ...entry({ id: first.id }), attempts: 2, nextAt: Date.now() + 60_000 }])
+  assert.equal(dueEntries(cwd).length, 0)
+
+  const again = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345', detail: { state: 'blocked' } })
+  assert.equal(again.replaced, true)
+  const due = dueEntries(cwd)
+  assert.equal(due.length, 1)
+  assert.equal(due[0].id, first.id)
+  assert.ok(due[0].nextAt <= Date.now())
+  // 重置 attempts 会把「反复失败」洗白，下一次失败又从 2 秒退避起。
+  assert.equal(due[0].attempts, 2)
+}))
+
+test('enqueue: upsert 不改队列序（位置留在原地）', () => withWorkspace(cwd => {
+  enqueue(cwd, { kind: 'settlement', dedupeKey: 'key1' })
+  enqueue(cwd, { kind: 'worker-report', dedupeKey: 'key2' })
+  enqueue(cwd, { kind: 'settlement', dedupeKey: 'key1', detail: { state: 'ready' } })
+  assert.deepEqual(dueEntries(cwd).map(item => item.dedupeKey), ['key1', 'key2'])
 }))
 
 test('enqueue: 已投递的同一件事可以再次入队', () => withWorkspace(cwd => {
@@ -108,8 +153,9 @@ test('enqueue: 已投递的同一件事可以再次入队', () => withWorkspace(
   markDelivered(cwd, first.id)
   const again = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
   assert.equal(again.ok, true)
-  assert.equal(again.skipped, undefined)
+  assert.equal(again.replaced, undefined)
   assert.notEqual(again.id, first.id)
+  assert.equal(readOutbox(cwd).entries.length, 2)
 }))
 
 test('enqueue: 没有工作区时返回 failed 而不抛', () => {
@@ -237,6 +283,90 @@ test('renderOutboxNotice: 空数组返回空串，有内容时不出现 undefine
   assert.match(bare, /deadbeef/)
 })
 
+test('renderOutboxNotice: 空队列不出现「积压」', () => {
+  assert.equal(renderOutboxNotice([]), '')
+  assert.equal(renderOutboxNotice(undefined), '')
+  // 只有已投递的历史时也没有「待投递」，积压行不该冒出来。
+  assert.equal(renderOutboxNotice([entry({ status: 'delivered' })]).includes('积压'), false)
+})
+
+test('renderOutboxNotice: 积压的最老年龄按 humanDelay 两档格式化', () => {
+  const now = 1_000_000
+  const minutes = renderOutboxNotice([entry({ createdAt: now - 12 * 60_000, nextAt: now - 1 })], { now })
+  assert.match(minutes, /- 积压：1 条待投递，最老 12 分钟/)
+  const seconds = renderOutboxNotice([entry({ createdAt: now - 12_000, nextAt: now - 1 })], { now })
+  assert.match(seconds, /- 积压：1 条待投递，最老 12 秒/)
+})
+
+test('renderOutboxNotice: 失败数按 KIND_LABEL 列出，零项的 kind 不出现', () => {
+  const now = 2_000_000
+  const text = renderOutboxNotice([
+    entry({ id: 'a', kind: 'worker-report', dedupeKey: 'k1', createdAt: now - 1_000, nextAt: now - 1, attempts: 3 }),
+    entry({ id: 'b', kind: 'worker-report', dedupeKey: 'k2', createdAt: now - 2_000, nextAt: now - 1, attempts: 4 }),
+    entry({ id: 'c', kind: 'settlement', dedupeKey: 'k3', createdAt: now - 3_000, nextAt: now - 1 }),
+    entry({ id: 'd', kind: 'worker-report', dedupeKey: 'k4', createdAt: now - 4_000, nextAt: now - 1, status: 'delivered' }),
+  ], { now })
+  const backlog = text.split('\n').find(line => line.startsWith('- 积压：'))
+  assert.ok(backlog, '必须有积压行')
+  assert.match(backlog, /3 条待投递/)
+  assert.match(backlog, /最老 3 秒/)
+  // 两条 worker-report 到 3 次以上；settlement 一次都没失败，不能出现在括号里。
+  assert.match(backlog, /worker 报告 2 条失败/)
+  assert.doesNotMatch(backlog, /收敛通知/)
+  // 给模型看的文本里不能漏出裸 kind 码。
+  assert.doesNotMatch(backlog, /worker-report/)
+})
+
+test('outbox 锁: mtime 超过 10 秒的陈旧锁会被接管并清掉', () => withWorkspace(cwd => {
+  const lock = join(cwd, '.agi', 'outbox.lock')
+  mkdirSync(dirname(lock), { recursive: true })
+  writeFileSync(lock, '999999:崩溃掉的持锁进程', 'utf8')
+  const old = new Date(Date.now() - 60_000)
+  utimesSync(lock, old, old)
+
+  const result = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
+  assert.equal(result.ok, true)
+  assert.equal(readOutbox(cwd).entries.length, 1)
+  // 接管之后必须把它删掉：否则下一次进来又得当陈旧锁处理。
+  assert.equal(existsSync(lock), false)
+}))
+
+test('outbox 锁: 刚写入的锁让 enqueue 有界失败，不永久挂死', () => withWorkspace(cwd => {
+  const lock = join(cwd, '.agi', 'outbox.lock')
+  mkdirSync(dirname(lock), { recursive: true })
+  writeFileSync(lock, '424242:另一个还活着的进程', 'utf8')
+
+  const started = Date.now()
+  const result = enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
+  const elapsed = Date.now() - started
+
+  assert.ok(elapsed < 2_500, `等锁用了 ${elapsed}ms，超过 2.5 秒上限`)
+  assert.equal(result.ok, false)
+  assert.match(result.error, /锁等待超过/)
+  // 别人的锁不能被删，也不能偷偷把队列写进去。
+  assert.equal(existsSync(lock), true)
+  assert.equal(readOutbox(cwd).entries.length, 0)
+}))
+
+test('outbox 锁: 正常入队之后锁文件不残留', () => withWorkspace(cwd => {
+  const lock = join(cwd, '.agi', 'outbox.lock')
+  enqueue(cwd, { kind: 'settlement', dedupeKey: 'abc12345' })
+  assert.equal(existsSync(lock), false)
+}))
+
+test('renderOutboxNotice: recovery note 的正文与中文标签都要露出来', () => {
+  const text = renderOutboxNotice([entry({
+    id: 'r-1',
+    kind: 'recovery',
+    dedupeKey: 'recovery:0000aaaa',
+    detail: { worker: '0000aaaa', note: '先查工作区产物与 git 历史确认做到哪，再重做外部动作' },
+  })], { now: 1000 })
+  assert.match(text, /重启恢复/)
+  // 只渲染成「重启恢复」等于没说：note 里那句「接下来怎么查」必须出现在 BRIEF 里。
+  assert.match(text, /先查工作区产物与 git 历史确认做到哪/)
+  assert.doesNotMatch(text, /undefined/)
+})
+
 test('renderBrief: 传 outbox 时多出「## 待投递」，不传时没有这一段', () => withWorkspace(cwd => {
   const base = { cwd, objective: '把 outbox 接上', state: { idleTicks: 0 } }
 
@@ -259,7 +389,7 @@ test('writeBrief: 写盘成功后把这次渲染的 entry 标记已投递', () =
   const due = dueEntries(cwd)
   assert.equal(due.length, 1)
 
-  const text = writeBrief({ cwd, objective: '把 outbox 接上', state: {}, outbox: due })
+  const { text } = writeBrief({ cwd, objective: '把 outbox 接上', state: {}, outbox: due })
   assert.match(text, /## 待投递/)
   assert.match(readFileSync(briefPathFor(cwd), 'utf8'), /## 待投递/)
 
@@ -278,7 +408,7 @@ test('writeBrief: 写盘失败时记一次投递失败，而不是标记已投�
   // 这样既不依赖文件权限（root/管理员下测不出来），也不影响 outbox 本身读写。
   mkdirSync(briefPathFor(cwd), { recursive: true })
 
-  const text = writeBrief({ cwd, objective: '写不进去的摘要', state: {}, outbox: dueEntries(cwd) })
+  const { text } = writeBrief({ cwd, objective: '写不进去的摘要', state: {}, outbox: dueEntries(cwd) })
 
   // 调用方照样拿到文本 —— 摘要写不进去不该连累这一轮的返回值。
   assert.match(text, /## 待投递/)

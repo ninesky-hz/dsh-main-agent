@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.21.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -36,8 +36,9 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的 **394 项**单元测试（`tests/` 下 35 个 `.test.mjs`）当前 `npm test` 全绿：
-**392 通过 / 2 跳过 / 0 失败**（`npm test` = `node --test tests/*.test.mjs`；两个跳过项是
+本仓库的单元测试（`tests/` 下 46 个 `.test.mjs`）当前 `npm test` 全绿：断言数、通过数、
+跳过数一律以 `npm test` 打印的汇总行为准，不在这里抄 —— 抄一次就多一个会过期的数字
+（`npm test` = `node --test tests/*.test.mjs`；两个跳过项是
 `tests/preset-rows.test.mjs` 里按 preset 行解析真实宿主运行时，只在设置了 `DSH_APP_ASAR`
 时才跑）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
@@ -171,6 +172,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.19.1 | 修掉 0.19.0 真机上暴露的三个缺陷，都属「记录只增不减」。**备份永不清理**：`sync-profile --apply` 每次都在 `$DSH_HOME` 下建一份完整备份却从不删（实测四份、1.96 MB、117 个文件），新增 `scripts/backup-retention.mjs`，`--keep` 默认保留 3 份，且删除**只在 `report.apply` 为真时**发生 —— 诊断模式删用户文件是最坏的副作用。**loop-state 永不清理**：`.agi/loop-state.*.json` 每个会话一份、从不清，新增 `pruneLoopStates(cwd, { keep, keep_key })`，只认 `loop-state.<8位key>.json` 形状，`keep_key`（当前会话那份）无条件保留，watchdog 每进程只扫一次。**历史目录被误判成「有 worker 在排队」**：`renderBrief` 从不告诉 `workerStage`「这个 id 已不在任何子会话里」，于是所有不在跑的条目都流进默认分支 `working/queued`，一个 22 字符的旧手工目录因此常年显示「排队中，等空闲槽」；`collectReports` 增第三可选入参 `known` 返回三态（`undefined` = 调用方没查 / `true` / `false`），只有明确 `false` 才判 `ended`。这里踩了个自己挖的坑：`known === false` 是**推断**，一开始让它占了 first-match 第一位，把 `archived`（Lead 验过）与 `dropped`（worker 说没活了）两个**事实**标签全盖掉了，五个已验收 worker 一起从「已验收归档」退化成光秃秃的「已收尾」；改为事实优先于推断后两者并存。测试从「只断言不说排队中」加强到断言标签本身在场 —— `assert.doesNotMatch(x, /排队中/)` 会让「退化成信息更少」悄悄通过 |
 | 0.20.0 | 核对并适配 dsh **0.2.2-rc.1**。**唯一硬伤**：0.2.2 把模型选择在 step preparation 阶段就固化（`dsh-agent-loop/lib/index.js:666` `preStep` 先取 `this.model.current()`，`:685` 才发 `agent/pre-step`），随后 `agent/request` 的返回值若与固化值不符就直接抛错（`:994-1001`：`proposed reasoning effort "…" after step preparation fixed "…"; use agent.model.select() before step preparation`）。本插件原先在 `agent/request` 里改写 `reasoningEffort`（`lib/spawn.js` 旧监听），于是**只要 worker 路由配了具体推理强度，worker 的第一条请求必抛**；配 `provider/default`（不改 effort）不触发，所以这个问题在默认配置下看不见。修法是双路径，因为 0.2.1 没有 `agent.model`（`dsh-agent` 导出面只有 `AgentRegistry`/`agentCarrier`/`agentEvents`/`assembleContextFor`/`emitAgentEvent`/`foldConsumedWork`/`installModelSelection`，`dsh-agent-loop` 里也没有 `this.model =`）：`lib/worker-model-policy.js` 新增 `hostUsesModelSelection(agent)`（探测 `typeof agent?.model?.select === 'function'`）与 `pinWorkerEffort(agent, effort)`（用 `current()` 的 provider/model 原样回填、只换 `reasoningEffort` 调 `select()`，`provider/default` 不落盘、无 route 时不半 pin）；`lib/spawn.js` 在 `agent/created`（0.2.2 时序：Agent 已构造、`model` 已就位、尚未 `preStep`，见 `dsh-agent-loop/lib/index.js:1571-1579` 与 `dsh-agent/lib/index.js:703-719`）里优先 pin 并 `pendingEfforts.delete()`，`agent/request` 监听开头 `if (hostUsesModelSelection(agent)) return next()` 直接 stand down，旧桥只留给 ≤0.2.1；两条缝各记一行宿主日志（同值只记一次）。**证据不是读代码推的**：`scripts/probe-host-model-selection.mjs` 装真实 0.2.2-rc.1 包、import 宿主真正的 `AgentModel`、逐字复刻 `:994-1001` 的 gate —— 对 0.2.2 输出 `OK: real host AgentModel accepts the pin and the request gate passes`（并反证「不 pin 而改 request」必抛），对 0.2.1-rc.5 输出 `LEGACY: host has no AgentModel (dsh <= 0.2.1)` 且 exit 2。其余接口面核对均未变：peer 范围本就覆盖（`>=0.1.0-rc.6 <0.3.0`）、`ctx.tools.register(defineTool(...))` 仍是 0.2.2 的注册面、`ctx.subagents` 六个方法签名逐一相同、Session Projection 插件只读不注册、不 import app-boot；`cordis.patch.yml` 与两份 preset patch 无需改动（0.2.2 的 Agent 作用域工具执行与 `agent.model.select()` 变更不触及本插件的挂载方式）。测试 388/35 → **392 通过 / 2 跳过 / 0 失败 / 394 项 / 35 个文件** |
 | 0.21.0 | 重做面板页与「监督动态」Feed 的界面，按 `unslop` 的方法过一遍九道：间距、颜色、图标、文案、字体、布局、细节、视觉、动效。**颜色不再硬编码**：改用宿主 alias 令牌（`--dsw-alias-settings-card-fill/-stroke`、`label-primary/secondary/tertiary`、`border-l1/l2`、`interactive-bg-hover`、`brand-primary`），语义色只留 `state-success-primary` / `state-warn-label` / `state-error-primary` 三种，全部 4.5:1 以上 —— 原先的五个彩色状态胶囊、蓝色选中底、`#4070ad` 硬编码因此在浅色主题下也站得住。**信息结构重排**：Feed 从「八个等重的卡片网格」改成一条三段式仪表带（目标轮次刻度尺 / 22px 等宽倒计时 / worker 读数）+ 左主列（进展时间轴、变更记录）+ 320px 右栏（待回答、任务报告、笔记、GOAL.md），900px 以下合单栏、720px 以下仪表带也叠成一列；面板从 780 加宽到 880，模型白名单/模式/Rhythm 三段与底部粘住的保存条保持一屏可见。**去掉装饰性噪音**：`@keyframes dsma-pulse` 的无限脉冲、`transition-all`、hover 放大、⏸▶↻■✕⚠ 六个符号化图标全部删除，只留一种 5px 指示灯（实心在跑 / 空心空闲）；数字统一 `tabular-nums`、时间只到分钟（精确值进 `title`）、所有间距回到 4px 网格。设计过程留在 `unslop/`：旧状态截图、设计参照、以及 `render.mjs` —— 它在 vm 里加载真实的 `lib/client.js` 并把组件树渲成 HTML，再用无头 Chrome 截图，所以那几张 PNG 是插件的真实输出而不是手绘稿。测试数字不变（**392 通过 / 2 跳过 / 0 失败**），只把断言里的旧文案与旧间距换成新契约 |
+| 0.22.0 | 把 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 的 16 项机制落进本插件（A1–A8 借鉴 / B1–B8 自检），测试 394 → **520 项 / 518 通过 / 2 跳过 / 0 失败**。**投递真相**：`outbox` 的读-改-写加文件锁（`wx` + `pid:uuid` token + 陈旧锁接管），同 `kind+dedupeKey` 未投递时原地 upsert（保留 id/createdAt/attempts，`detail` 整体替换）——原先整份覆盖会吞掉并发写入；`stage` 在 ended 三态之后补一档 `delivery/failed`（「消息没送到」是 worker 自述的前提，压不过 ended 但优先于 person/*）；`BRIEF` 增积压视角（待投递条数、最老一条、按 kind 的失败数，为 0 时整段省略）；重启时按 `startedAt` 升序给「上次在跑、这次不在跑、未归档」的 worker 补一条 recovery note（先查产物与 git 再重做外部动作），走 outbox 而非直发。**授权可追溯**：新 `lib/authority.js` 把每个自动动作标成 `human-direct` / `rule:<id>` / `assumed`，`assumed` 一律不许自动派生，且只写提案不派生；循环状态记策略指纹（5 个键的 sha256 前 12 位），变了就在 BRIEF 顶栏写「已变更 + 已有 N 个在跑不回收」；`GOAL.md` 加 front-matter `revision`/`updated`/`objective_sha256`，人改正文会被下一轮检出并在 BRIEF 报出。**验收不再自己判自己**：`subagent` 增可选 `done_when`（1–5 条），派生时写 `.agi/subagents/<id>/expect.json`，`check_outcome` 逐条判「有对应通过的检查」，只在缺契约时才显示「（无验收契约）」。**文档受测试约束**：`docs/ARCHITECTURE.md`（25 模块 / 45 测试 / 29 条未受测导出棘轮）、`STATE.md`（每个状态文件的唯一写者）、`NAMING.md`（四类动词 + 86 行例外，只许减）、`TOOLS.md`（角色→工具面正面表，worker 零工具是结论）、`REJECTED.md`（9 条否决 + 可判定重开条件），全部由 `docs-coverage`/`state-ownership`/`naming`/`tools-doc` 双向核对；`sync-prompts` 增占位符契约（md 里的 `{{name}}` 必须在生成物里原样存在，漂移即拒绝写盘并非 0 退出）；`BRIEF` 增读回执（写盘成功 ≠ 被读过：连续两轮没有任何回合/消息才在摘要里报一行，读不到事件一律 fail-open） |
 | 0.19.0 | 从 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 移植六条机制，均取机制、不取架构。**report 六态**：worker 在 `outcome.md` 头行自述 `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`，`lib/report.js` 解析、`lib/stage.js` 用纯函数 first-match-wins 判成 `person/*` / `working` / `idle` / `ended`，渲染进 `.agi/BRIEF.md` 新增的「Worker 状态」段 —— 取代原先靠 `lastActivityAt` 时间差猜「是不是卡了」。**人优先预留槽**：`reservedHumanSlots` 在并发上限之外给人留位置，槽满但本轮有直接人类消息时仍可再派。**proactive 三档**（`off` / `observe` / `auto`）：`observe` 不真派生，只把「本会派什么」记进 `.agi/proposals.jsonl`。**outbox 退避投递**：收敛通知落 `.agi/outbox.jsonl`，2 秒起逐次翻倍到 60 秒、同类严格保序，BRIEF 写盘成功才算 `delivered`，写不进去就 `markFailed` 抬高退避而不是假装送过。**人格外置 + 版本化**：`prompts/main-agent.md` / `prompts/worker.md` 为源，`agent-presets/main-agent/agent.cordis.yml` 是生成物，revision 落在 `presets/main-agent.patch.yml` 头行与 `prompts/CHANGELOG.md`。**验收清单兜底**：worker 写 `checks.json`，`check_outcome` 一次跑完。另修掉两个真缺陷：Windows 上 `check_outcome` 因 Node 自动加双引号叠上 cmd.exe 解析而**一半验收项假失败**（退出码有时仍为 0，补 `windowsVerbatimArguments`）；`package.json` 的 `files` 缺 `prompts` 导致发布包缺人格源。新增 `npm run sync-profile` 把仓库同步到 profile 副本与 `~/.dsh/.agent-presets/` 两份运行时拷贝 —— 只同步其中一份是此前「改完重启也没变化」的根因 |
 
 ## 在新 PC 上运行本地课程
@@ -994,8 +996,24 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/sync-profile.mjs` | 把仓库同步到运行时**真正加载的两份拷贝**：profile 的 `node_modules/dsh-main-agent/`（宿主 `require` 这份）与 `~/.dsh/.agent-presets/main-agent/`（宿主启动时读这份 preset，`installPreset` 默认 `if-absent`，**已存在就永不覆盖**）。默认只诊断并列差异，`--apply` 才写、且先整目录备份。只同步其中一份，是「改完代码重启也没变化」的典型死法 |
 | `scripts/accept-worker.mjs` | `npm run accept -- <sessionId 或目录名> [备注]`：写 `.agi/subagents/<id>/archived.json`，把已验收的 worker 从 BRIEF 的「等用户验收」里摘掉，改显示 `ended/archived — 已验收归档` |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 35 个 `node --test` 文件、388 项断言：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
+| `tests/` | 46 个 `node --test` 文件（全量 `npm test` 会打印实际的断言数）：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
+
+## 文档索引
+
+代码之外真正值得读的东西都在 `docs/`，每个文件解决一个具体问题；这一节只回答
+「我想知道 X，该读哪个」。全量测试的数字只写在
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 里，别处一律不抄 —— 抄一次就多一个
+会过期的数字。
+
+| 文档 | 一句话 |
+|---|---|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 三层结构 + 把三层钉在一起的三张表（模块 / 测试 / 未受测导出），想知道「这个文件归谁、动它会连带改什么」先读它 |
+| [docs/STATE.md](docs/STATE.md) | `.agi/` 每个状态文件的唯一写者与读者；新增状态文件却不登记，`tests/state-ownership.test.mjs` 会红 |
+| [docs/NAMING.md](docs/NAMING.md) | 命名纪律：函数名不读实现就要能回答「会不会改状态、会不会失败」，例外要登记 |
+| [docs/TOOLS.md](docs/TOOLS.md) | 角色 → 工具面的正面表，与 `lib/tool-inventory.js`、preset 声明三向核对；改工具必须同改表 |
+| [docs/REJECTED.md](docs/REJECTED.md) | 否决清单：认真考虑过又没做的方案，附「重开条件」—— 想再提一遍之前先看它 |
+| [docs/superagent-prototype-analysis.md](docs/superagent-prototype-analysis.md) | 与 `dsh-superagent-prototype` 的逐项对照分析：哪些抄了、哪些刻意没抄、为什么 |
 
 ## 评分
 

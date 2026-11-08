@@ -74,7 +74,13 @@ test('GOAL.md renders every setup field in a stable canonical form', () => {
     outOfScope: [],
     maxGoalRounds: 12,
   })
-  assert.match(markdown, /^# 目标/)
+  // front-matter 在最前面（B7）：revision / updated / objective_sha256 三件套。
+  assert.match(
+    markdown,
+    /^---\nrevision: 1\nupdated: \d{4}-\d{2}-\d{2}T[\d:.]+Z\nobjective_sha256: [0-9a-f]{12}\n---\n\n/,
+  )
+  // 正文仍以 `# 目标` 开头：front-matter 是加在最前面的，正文格式一字未动。
+  assert.match(markdown.slice(markdown.indexOf('---\n\n') + '---\n\n'.length), /^# 目标/)
   assert.match(markdown, /## 目标陈述\n\nShip a verified report\./)
   assert.match(markdown, /## 约束\n\n- No Harness edits\./)
   assert.match(markdown, /## 里程碑\n\n- Inspect\.\n- Verify\./)

@@ -46,6 +46,9 @@ const exec = cwd => ({ agent: { session: { header: { cwd } } }, signal: undefine
 /**
  * dsh-tools 的实际契约：返回值里出现未声明字段，整个结果被拒收；
  * 声明了 `required: true` 的字段必须出现。
+ *
+ * 嵌套一层也要查：`expects` 这种对象字段自己也是 `additionalProperties: false`，
+ * 往里塞一个未声明的键，同样会让整次调用被拒收 —— 历史坑的同一个形状。
  */
 function assertSchemaConformant(definition, value) {
   const { schema } = definition.output
@@ -55,7 +58,23 @@ function assertSchemaConformant(definition, value) {
   assert.deepEqual(extra, [], `返回值出现了 schema 未声明的字段：${extra.join(', ')}`)
   for (const [key, property] of Object.entries(schema.properties)) {
     if (property.required === true) assert.ok(key in value, `缺少必填字段 ${key}`)
+    const nested = property.properties
+    if (!nested || !(key in value) || typeof value[key] !== 'object' || value[key] === null) continue
+    assert.equal(property.additionalProperties, false, `${key} 的嵌套 schema 也必须是严格模式`)
+    const known = Object.keys(nested)
+    const loose = Object.keys(value[key]).filter(name => !known.includes(name))
+    assert.deepEqual(loose, [], `${key} 里出现了未声明的子字段：${loose.join(', ')}`)
+    for (const [name, child] of Object.entries(nested)) {
+      if (child.required === true) assert.ok(name in value[key], `${key} 缺少必填子字段 ${name}`)
+    }
   }
+}
+
+/** 把 render 产出的文本片段拼成一整串。 */
+function renderText(definition, value) {
+  const rendered = definition.output.render({}, value)
+  assert.ok(Array.isArray(rendered) && rendered.length > 0, 'render 必须产出内容')
+  return rendered.filter(part => part.type === 'text').map(part => part.text).join('\n')
 }
 
 test('缺清单的分支：返回值只带 schema 声明的字段', () => withWorkspace(async dir => {
@@ -105,4 +124,58 @@ test('固定目录名不要求真实 session id', () => withWorkspace(async dir 
   const value = await tool().execute({ session_id: 'ralph' }, exec(dir))
   assert.equal(value.passed, 1)
   assert.deepEqual(value.failedIds, [])
+}))
+
+test('验收契约：没有 expect.json 就明说只剩 worker 自述', () => withWorkspace(async dir => {
+  const target = join(dir, '.agi', 'subagents', 'ralph')
+  mkdirSync(target, { recursive: true })
+  writeFileSync(join(target, 'checks.json'), JSON.stringify([{ id: 'pass', cmd: 'exit 0' }]), 'utf8')
+
+  const definition = tool()
+  const value = await definition.execute({ session_id: 'ralph' }, exec(dir))
+  assertSchemaConformant(definition, value)
+  assert.deepEqual(value.expects, { declared: false, total: 0, covered: 0, uncovered: [] })
+  assert.match(renderText(definition, value), /没有验收契约/, '没契约时必须说出来，而不是安静地全绿')
+}))
+
+test('验收契约：未覆盖的 eN 必须被点名', () => withWorkspace(async dir => {
+  const target = join(dir, '.agi', 'subagents', 'ralph')
+  mkdirSync(target, { recursive: true })
+  writeFileSync(join(target, 'checks.json'), JSON.stringify([
+    { id: 'build', cmd: 'exit 0', expect: ['e1'] },
+  ]), 'utf8')
+  writeFileSync(join(target, 'expect.json'), JSON.stringify({
+    worker: 'ralph',
+    declaredAt: '2026-11-01T00:00:00.000Z',
+    items: [
+      { id: 'e1', text: '跑通构建' },
+      { id: 'e2', text: '文档存在' },
+    ],
+  }), 'utf8')
+
+  const definition = tool()
+  const value = await definition.execute({ session_id: 'ralph' }, exec(dir))
+  assertSchemaConformant(definition, value)
+  assert.equal(value.expects.declared, true)
+  assert.equal(value.expects.total, 2)
+  assert.equal(value.expects.covered, 1)
+  assert.deepEqual(value.expects.uncovered, [{ id: 'e2', text: '文档存在' }])
+
+  const text = renderText(definition, value)
+  assert.match(text, /1\/2 条被通过的检查覆盖/)
+  assert.match(text, /e2: 文档存在（无对应检查）/, '未覆盖的验收必须显式列为「无对应检查」')
+}))
+
+test('验收契约：expect.json 坏了要如实报错，不能当成「没声明」', () => withWorkspace(async dir => {
+  const target = join(dir, '.agi', 'subagents', 'ralph')
+  mkdirSync(target, { recursive: true })
+  writeFileSync(join(target, 'checks.json'), JSON.stringify([{ id: 'pass', cmd: 'exit 0' }]), 'utf8')
+  writeFileSync(join(target, 'expect.json'), '{ oops', 'utf8')
+
+  const definition = tool()
+  const value = await definition.execute({ session_id: 'ralph' }, exec(dir))
+  assertSchemaConformant(definition, value)
+  assert.equal(value.expects.declared, false)
+  assert.match(value.expects.error, /不是合法 JSON/)
+  assert.match(renderText(definition, value), /验收契约读不出来/)
 }))

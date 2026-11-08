@@ -17,6 +17,8 @@
  *   3. 版本可查：revision 写进 `presets/main-agent.patch.yml` 的文件头注释
  *      （`# prompt-revision: ...`），并追加一行到 `prompts/CHANGELOG.md`
  *      （同一 revision 不重复追加）。
+ *   4. 占位符契约：md 里的 `{{name}}`（当前只有 `{{model}}`）必须原样出现在
+ *      写回的块标量正文里；少一个多一个都**不写盘**、非 0 退出。
  *
  * 为什么 `npm run sync-preset` 里它出现两次：
  *   `presets/main-agent.patch.yml` 由 `scripts/sync-preset-patch.mjs` 整份重写，
@@ -69,6 +71,52 @@ export function normalizeMarkdown(text) {
   const withoutBom = text.replace(/^\uFEFF/, '')
   const lf = withoutBom.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
   return lf.replace(/\n+$/, '') + '\n'
+}
+
+/**
+ * 占位符：`{{name}}`，由宿主的 prompt 装配替换（当前只有 `{{model}}`）。
+ *
+ * 为什么要把这件事做成契约：md 是源，块标量是生成物，而替换发生在两者**之后**。
+ * 生成链一旦把占位符吃掉（少一个 `}`、被当成模板渲染、被转义成 `\{\{`），
+ * 跑起来不会有任何报错 —— 要么显示成一个字面量 `{{model}}`，要么整段变空。
+ * 这类故障只能靠「源里有几个、生成物里也必须有同样几个」来抓。
+ *
+ * 名字限定 `[A-Za-z0-9_.-]`：`{{ cwd }}` 这种带空格的写法宿主到底认不认没有
+ * 契约，这里**不**把它当占位符。宁可漏抓一个畸形写法，也不要把「像占位符
+ * 但不是」的东西放进白名单，让核对变成猜谜。
+ */
+const PLACEHOLDER_RE = /\{\{([A-Za-z0-9_.-]+)\}\}/g
+
+/**
+ * 抓一段文本里的所有占位符名（不含花括号），去重后按字典序稳定排序。
+ *
+ * @param {string} text 任意文本（md 正文或块标量正文）
+ * @returns {string[]} 例如 `['model']`
+ */
+export function placeholdersOf(text) {
+  const found = new Set()
+  for (const match of String(text ?? '').matchAll(PLACEHOLDER_RE)) found.add(match[1])
+  return [...found].sort()
+}
+
+/**
+ * 比一份源文本与它的生成物之间占位符的差集。
+ *
+ * `missing` = 源里有、生成物里没有（生成时被吃掉了，能力静默消失）；
+ * `extra` = 生成物里凭空多出来的（源头没有，说明生成链自己造了东西）。
+ * 两边都是稳定排序的数组，相等时都是空数组。
+ *
+ * @param {string} source md 正文
+ * @param {string} generated 块标量正文
+ * @returns {{ missing: string[], extra: string[] }}
+ */
+export function placeholderDrift(source, generated) {
+  const from = new Set(placeholdersOf(source))
+  const to = new Set(placeholdersOf(generated))
+  return {
+    missing: [...from].filter(name => !to.has(name)).sort(),
+    extra: [...to].filter(name => !from.has(name)).sort(),
+  }
 }
 
 /** 找到块标量头那一行（0-based），要求恰好一处。 */
@@ -176,9 +224,12 @@ export function stampPatch(root, revisions) {
 
 const CHANGELOG_HEADER = `# Prompt 版本记录
 
-由 \`npm run sync-preset\` 自动追加。每行是一次 prompt 版本 —— 两份 md 的
-sha256 前 8 位；同一版本不会重复追加。运行中的是哪一版，用这里的值去
-\`presets/main-agent.patch.yml\` 的文件头 \`# prompt-revision:\` 一行 grep。
+**只保留当前版本一行。** 每行是两份 md 的 sha256 前 8 位；同一版本不会重复追加，
+旧版本会被新版本顶掉（\`tests/prompts.test.mjs\` 钉住「恒为一行」）。要查历史版本
+和当时改了什么，用 \`git log -p prompts/\` —— 正文改动本身就在提交里。
+
+运行中的是哪一版，用这里的值去 \`presets/main-agent.patch.yml\` 的文件头
+\`# prompt-revision:\` 一行 grep。
 
 `
 
@@ -240,6 +291,30 @@ export function syncPrompts({ root = DEFAULT_ROOT, stampOnly = false, log = () =
     for (const { spec } of sources) {
       const markdown = readFileSync(join(root, spec.file), 'utf8')
       next = applyBlock(next, spec, markdown)
+    }
+    // 写入**之前**核对占位符契约：块标量正文就是「即将落盘的那份生成物」。
+    //
+    // 核对对象刻意是**块标量正文**，不是整份 YAML：`agent.cordis.yml` 第 24 行
+    // 的注释里就写着 `{{cwd}}`（用来说明「别把装配变量当 model 用」），拿整份
+    // 文件比对会把它读成一个凭空多出来的占位符 —— 那是误报，不是漂移。
+    // 仓库里唯一会命中的真实误报源就是这一行注释。
+    const drifts = []
+    for (const { spec } of sources) {
+      const markdown = readFileSync(join(root, spec.file), 'utf8')
+      const generated = extractBlock(next, spec).content
+      const { missing, extra } = placeholderDrift(markdown, generated)
+      if (missing.length === 0 && extra.length === 0) continue
+      const parts = []
+      if (missing.length > 0) parts.push(`少了 ${missing.map(name => `{{${name}}}`).join('、')}`)
+      if (extra.length > 0) parts.push(`多了 ${extra.map(name => `{{${name}}}`).join('、')}`)
+      drifts.push(`  - ${spec.file} → ${spec.label}：${parts.join('；')}`)
+    }
+    if (drifts.length > 0) {
+      throw new Error(
+        `占位符在 md → ${YAML_REL} 的往返里漂移了，拒绝写入（磁盘上一个字节都没动）：\n${drifts.join('\n')}\n` +
+          'md 是宿主管线替换占位符之前的原文，生成物里少一个/多一个都会静默削掉一段能力；' +
+          '先把 md 里的写法改对，再重跑本脚本。',
+      )
     }
     if (next !== original) writeFileSync(yamlPath, next, 'utf8')
     // 写完立刻回调校验：抽取 → 与 md 逐字节相等，否则整段人格已经不再是

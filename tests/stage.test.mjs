@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { canRetry, renderStageLabel, workerStage } from '../lib/stage.js'
+import { renderBrief } from '../lib/loop-journal.js'
 
 test('1. ended 压过一切', () => {
   assert.deepEqual(
@@ -116,11 +117,69 @@ test('first-match-wins：同一次调用里前面的规则赢', () => {
   )
 })
 
+test('8. deliveryFailed 压过 person/answer（消息没送到，问题等于没问出来）', () => {
+  assert.deepEqual(
+    workerStage({
+      report: { state: 'blocked', question: '要不要回滚？' },
+      running: true,
+      pendingQuestion: true,
+      deliveryFailed: true,
+    }),
+    { stage: 'delivery', action: 'failed' },
+  )
+})
+
+test('9. deliveryFailed 压过 person/review', () => {
+  assert.deepEqual(
+    workerStage({ report: { state: 'ready' }, running: true, deliveryFailed: true }),
+    { stage: 'delivery', action: 'failed' },
+  )
+})
+
+test('10. deliveryFailed 压不过 ended（收尾了就不需要恢复投递）', () => {
+  assert.deepEqual(
+    workerStage({ ended: { at: 1 }, running: false, deliveryFailed: true }),
+    { stage: 'ended' },
+  )
+  // 未 ended 但没在跑：delivery 仍赢过 queued。
+  assert.deepEqual(
+    workerStage({ running: false, deliveryFailed: true }),
+    { stage: 'delivery', action: 'failed' },
+  )
+})
+
+test('11. archived 优先于 deliveryFailed', () => {
+  assert.deepEqual(
+    workerStage({ report: { state: 'ready' }, archived: true, deliveryFailed: true }),
+    { stage: 'ended', action: 'archived' },
+  )
+})
+
+test('12. deliveryFailed 不是重派理由：canRetry 语义不变', () => {
+  assert.equal(canRetry({ deliveryFailed: true }), false)
+  // 受阻仍然值得重试，delivery 失败既不额外触发、也不阻止它。
+  assert.equal(canRetry({ report: { state: 'blocked' }, deliveryFailed: true }), true)
+})
+
+test('13. BRIEF 的 worker 行会透传 deliveryFailed（消息没送到时不许显示 working）', () => {
+  // 这条钉的是 `lib/loop-journal.js` 的 `renderWorkerLines`：分类算对了、但那里
+  // 不把 `deliveryFailed` 传下来，BRIEF 里就还是一句「working → 正在跑」。
+  const text = renderBrief({
+    cwd: process.cwd(),
+    state: {},
+    workers: [{ id: '0000aaaa', running: true, report: { state: 'progress' }, deliveryFailed: true }],
+  })
+  assert.match(text, /0000aaaa/)
+  assert.match(text, /delivery\/failed/)
+  assert.match(text, /消息未送达/)
+})
+
 test('renderStageLabel：每条都说清在等谁/等什么，不输出裸状态码', () => {
   const cases = [
     { stage: 'ended' },
     { stage: 'ended', action: 'archived' },
     { stage: 'ended', action: 'dropped' },
+    { stage: 'delivery', action: 'failed' },
     { stage: 'person', action: 'answer' },
     { stage: 'person', action: 'review' },
     { stage: 'person', action: 'blocked' },
@@ -144,6 +203,11 @@ test('renderStageLabel：每条都说清在等谁/等什么，不输出裸状态
   assert.match(renderStageLabel({ stage: 'working', action: 'queued' }), /排队中/)
   // 归档档的措辞必须让人一眼看出「不用再处理」，而不是又一个待办。
   assert.match(renderStageLabel({ stage: 'ended', action: 'archived' }), /已验收归档/)
+  // 投递失败必须说清「你没收到它的话」，而不是又一句「在跑」。
+  assert.equal(
+    renderStageLabel({ stage: 'delivery', action: 'failed' }),
+    'delivery/failed → 消息未送达（重启投递）',
+  )
 })
 
 test('canRetry：只有「受阻/失败 + 没有更新的问题」才值得重试', () => {

@@ -13,10 +13,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { register } from 'node:module'
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { renderGoalMarkdown } from '../lib/goal-policy.js'
 import {
   MAX_IDLE_SECONDS,
   MIN_WAKE_SECONDS,
@@ -369,4 +370,105 @@ test('full stop also reaches reminders that never appended a log event', async (
   assert.deepEqual(outcome.ids, ['service-only'])
   assert.ok(order.includes('delete:service-only'))
   assert.equal(outcome.durableDeleted, 1)
+})
+
+// ------------------------------------- 每轮重校验：策略与 GOAL.md 的变更可见
+//
+// 真机症状：用户在设置面板把并行上限从 6 调到 1，监督者直到重启都还按 6 派活；
+// GOAL.md 被人改过之后，也没有任何一处告诉读者「你在按旧版执行」。这两条用例走
+// 完整的 `reconcileLoop`：第一轮只记指纹，第二轮改设置/改文件才报警。
+
+/** 读 `.agi/BRIEF.md`（reconcileLoop 每轮都会重写）。 */
+function briefText(agent) {
+  return readFileSync(join(agent.session.header.cwd, '.agi', 'BRIEF.md'), 'utf8')
+}
+
+/** 读 progress.jsonl 里的事件名序列（还没有任何事件时是空数组）。 */
+function eventNames(agent) {
+  const path = join(agent.session.header.cwd, '.agi', 'progress.jsonl')
+  if (!existsSync(path)) return []
+  return readFileSync(path, 'utf8')
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map(line => JSON.parse(line))
+    .map(record => record.event)
+}
+
+test('a settings change between rounds lands in the timeline and the brief', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const settings = { maxParallelWorkers: 6, proactive: 'auto' }
+  const { ctx, agent, log } = loopCtx({ goal: { phase: 'active' }, reminders: [], settings })
+
+  await reconcileLoop(ctx, agent, log)
+  // 首轮只是记下指纹，不能凭空报「策略已变更」。
+  assert.equal(briefText(agent).includes('策略已变更'), false)
+
+  settings.maxParallelWorkers = 1
+  await reconcileLoop(ctx, agent, log)
+
+  assert.ok(eventNames(agent).includes('policy-changed'))
+  const brief = briefText(agent)
+  assert.match(brief, /- 策略已变更：maxParallelWorkers 6→1，本轮起生效/)
+  // 渲染在正文之前：先规则、再状态。
+  assert.ok(brief.indexOf('策略已变更') < brief.indexOf('## 循环状态'))
+
+  // 第三轮设置没再动 —— 不该重复报警。
+  const before = eventNames(agent).filter(name => name === 'policy-changed').length
+  await reconcileLoop(ctx, agent, log)
+  assert.equal(eventNames(agent).filter(name => name === 'policy-changed').length, before)
+  assert.equal(briefText(agent).includes('策略已变更'), false)
+})
+
+test('an edited GOAL.md is reported with its revision and body change', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { ctx, agent, log } = loopCtx({ goal: { phase: 'active' }, reminders: [] })
+  const goalPath = join(agent.session.header.cwd, '.agi', 'GOAL.md')
+  mkdirSync(join(agent.session.header.cwd, '.agi'), { recursive: true })
+
+  writeFileSync(goalPath, renderGoalMarkdown({
+    objective: 'Keep the loop honest.',
+    constraints: [],
+    milestones: ['Read.'],
+    outOfScope: [],
+    maxGoalRounds: 12,
+    revision: 1,
+    updated: '2026-11-08T00:00:00.000Z',
+  }), 'utf8')
+  await reconcileLoop(ctx, agent, log)
+  assert.equal(briefText(agent).includes('GOAL.md 已被修改'), false)
+
+  // 只改正文、不改 revision：也要报，但说清「版本号没动」。
+  writeFileSync(goalPath, renderGoalMarkdown({
+    objective: 'Keep the loop honest.',
+    constraints: [],
+    milestones: ['Read.', 'Verify.'],
+    outOfScope: [],
+    maxGoalRounds: 12,
+    revision: 1,
+    updated: '2026-11-08T00:00:00.000Z',
+  }), 'utf8')
+  await reconcileLoop(ctx, agent, log)
+  assert.match(briefText(agent), /- GOAL\.md 已被修改：revision 1 未变但正文有改动/)
+
+  // 再改 revision 且改正文：两个事实都要出现。
+  writeFileSync(goalPath, renderGoalMarkdown({
+    objective: 'Keep the loop honest, even after edits.',
+    constraints: [],
+    milestones: ['Read.', 'Verify.'],
+    outOfScope: [],
+    maxGoalRounds: 12,
+    revision: 2,
+    updated: '2026-11-08T01:00:00.000Z',
+  }), 'utf8')
+  await reconcileLoop(ctx, agent, log)
+  const brief = briefText(agent)
+  assert.match(brief, /- GOAL\.md 已被修改：revision 1→2，本轮起按新版本执行（正文亦有改动）/)
+  assert.ok(eventNames(agent).filter(name => name === 'goal-revised').length >= 2)
+
+  // 没有 GOAL.md 的工作区沉默，不报错。
+  const bare = loopCtx({ goal: { phase: 'active' }, reminders: [] })
+  await reconcileLoop(bare.ctx, bare.agent, bare.log)
+  assert.equal(readdirSync(join(bare.agent.session.header.cwd, '.agi')).includes('GOAL.md'), false)
+  assert.equal(eventNames(bare.agent).includes('goal-revised'), false)
 })
