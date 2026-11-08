@@ -457,6 +457,13 @@ UI 实在卸不掉时（比如被运行中的 preset 行锁住，而 pnpm 侧又
 `${DSH_HOME:-~/.dsh}/profiles/<profile>/node_modules/dsh-main-agent/` 的对应
 位置，重启即可。版本号会显示成新版本，但 `pnpm-lock.yaml` 仍指向旧 commit，
 下次重装前建议先用 `repair-profile` 清干净。
+
+还有一处更隐蔽的回退：如果 profile 的 `package.json` 把本插件 pin 成了
+`git+…dsh-main-agent#v0.21.0` 这类带 tag 的地址，覆盖文件**只撑到下一次启动** ——
+dsh 启动时会按 pin 重装，副本当场回到那个 tag 的版本（`/supervisor/health` 的
+`version` 会立刻变回去，但运行中进程里已加载的模块仍是旧的，于是同一份
+插件里「包版本」与「行为」对不上）。要升版就同时做三件事：改 pin、推对应
+tag、重启；只改文件不改 pin 等于白改。
 </details>
 
 
