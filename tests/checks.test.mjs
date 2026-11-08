@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { readChecks, runChecks } from '../lib/checks.js'
+import { readChecks, readExpect, runChecks } from '../lib/checks.js'
 
 const WORKER = 'sub-abc123'
 
@@ -47,6 +47,26 @@ test('readChecks：数组与 { checks } 两种形状都接受，非对象条目�
 
   writeChecks(dir, WORKER, { other: [] })
   assert.match(readChecks(dir, WORKER).error, /必须是数组/)
+}))
+
+test('readChecks：PowerShell 写出的带 BOM 文件仍能解析', () => withDir(dir => {
+  writeChecks(dir, WORKER, `\uFEFF${JSON.stringify([{ id: 'bom', note: 'x' }])}`)
+  const read = readChecks(dir, WORKER)
+  assert.equal(read.error, undefined)
+  assert.deepEqual(read.entries.map(entry => entry.id), ['bom'])
+}))
+
+test('readExpect：带 BOM 的 expect.json 仍算「有契约」', () => withDir(dir => {
+  const target = join(dir, '.agi', 'subagents', WORKER)
+  mkdirSync(target, { recursive: true })
+  writeFileSync(
+    join(target, 'expect.json'),
+    `\uFEFF${JSON.stringify({ worker: WORKER, declaredAt: 'now', items: [{ id: 'e1', text: '一件事' }] })}`,
+    'utf8',
+  )
+  const read = readExpect(dir, WORKER)
+  assert.equal(read.declared, true)
+  assert.deepEqual(read.items.map(item => item.id), ['e1'])
 }))
 
 test('runChecks：cmd 按退出码判定，失败时带 stderr', () => withDir(async dir => {
