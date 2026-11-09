@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.7**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.8**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -181,6 +181,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.5 | 0.22.4 的 `timing` 少一个判别键，arm 仍然静默失败：宿主 `validateTiming` 要求恰好 `{ kind, 对应选择器 }` 两个键（`if (!(value.kind in selectors) || !hasExactKeys(value, ['kind', selectors[value.kind]])) throw new ScheduleInputError('invalid_rule', ...)`），而适配层发的是裸 `{ after_seconds }` —— 又一次被 `try/catch` 吞成 warn，于是「签名修好了却还是不 arm」。改成 `{ kind: 'after', after_seconds: N }`；`tests/schedule-compat.test.mjs` 新增一条**复刻宿主 `validateTiming`** 的回归（`requireHostTiming` 逐键比对），把这个形状钉死，改坏本地就红。同时给这类失败加了可观测出口：arm 失败时除了 warn，还往 `.agi/progress.jsonl` 记一条 `wake-arm-failed`（含 `session`、`seconds`、`error`），否则「旁路失败」只能靠人肉怀疑才查得到。测试 **539 通过 / 2 跳过 / 0 失败 / 541 项 / 47 个文件** |
 | 0.22.6 | 端到端验证查出**真正的断点不在投递，而在判停**：提醒确实落库（`kind:"after"`、`scheduledAt` 正确、`status:"active"`），但它到点之前，下一轮 `pre-step` 因为「连续 5 轮没有产出」把 goal 判成 `blocked`，紧接着 `watchdogPlan` 给出 `clear`，把刚排好的兜底提醒删掉 —— `arm` 之后 3 分钟内必定静默，会话日志里一条 `[watchdog]` 消息都没有。而「没有产出」的判定只看 `.agi/progress.jsonl` 最后一行，于是「改代码、跑测试、写报告」全算空转。三处修：① 判停不再撤岗 —— `goal.phase==='blocked'` 或 `pausedBy==='idle'` 时改排 `MAX_IDLE_SECONDS`（1800s）待机巡检，降频不撤岗；② 活跃信号扩到 `.agi/NOTES.md`、`LESSONS.md`、`changelog.md`、`subagents/*/outcome.md` 的 mtime（`BRIEF.md` 不算，那是插件自己每轮重写的）；③ 新增进程内心跳 `ensureLeaseHeartbeat`（60s，`unref`）：运行中若提醒真被漏投，`leaseExpiresAt` 过期就补一条 1 秒后到期的提醒，同一次过期只补一次。测试 **544 通过 / 2 跳过 / 0 失败 / 546 项 / 47 个文件** |
 | 0.22.7 | 0.22.6 的待机巡检有个自己踩的坑：它的到期时刻（1800s）在 `ownHorizon`（`max(decided.seconds*1.5, 90)`，活跃时 450s）之外，于是**每一轮 `pre-step` 都判定「没有排着的提醒」而重排一次** —— 每轮写一行、删一行，还把 30 分钟的闹钟一轮一轮往后推：用户越活跃，越不会被叫醒。修法是让待机分支幂等：`own` 里已有一条 `scheduledAt > now + MAX_IDLE_SECONDS * 400ms` 的提醒就直接沿用它（并把 `leaseExpiresAt` 对齐到那一条），返回 `action:'none'`。重启实测确认 0.22.6 的主修生效：`goal.phase==='blocked'`、`pausedBy:'idle'` 时 `/supervisor/loop` 仍 `armed:true`，`loop-state` 里 `lastArmAt` 与 `leaseExpiresAt` 相差正好 1800s，`schedule.json` 里那条 `kind:"after"` 保持 `status:"active"` —— 判停不再撤岗。测试 **545 通过 / 2 跳过 / 0 失败 / 547 项 / 47 个文件** |
+| 0.22.8 | 0.22.6/0.22.7 的待机判据用 `goal.phase==='blocked' \|\| loopState.pausedBy==='idle'`，于是**目标做完之后还在每 30 分钟敲一次**：`complete` 是终点，再叫醒也没有活可干，`pausedBy` 又只是上一轮的残留。改成只在 `goal.phase==='blocked'`（停在那里等人）时待机；`complete` 时撤岗并清掉 `pausedBy/pausedAt/pausedReason`，否则下一次启动还会被「空转停过」误判成「停在等人」。测试 **546 通过 / 2 跳过 / 0 失败 / 548 项 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 

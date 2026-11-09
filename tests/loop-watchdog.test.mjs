@@ -843,3 +843,23 @@ test('待机巡检幂等：已有活着的那条就沿用，不每轮重排把�
   const state = readLoopState(cwd, agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8))
   assert.ok(state.leaseExpiresAt > Date.now() + MAX_IDLE_SECONDS * 500, 'lease 要跟着那条提醒走')
 })
+
+test('目标完成后不再待机：complete 是终点，不是等人', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState, writeLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-complete-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const { ctx, calls, agent, log } = loopCtx({
+    goal: { id: 'g1', phase: 'complete', revision: 1 },
+    reminders: [{ id: 'standby-live', title: WATCHDOG_TITLE, scheduledAt: Date.now() + MAX_IDLE_SECONDS * 900 }],
+  })
+  agent.session.header.cwd = cwd
+  const key = agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8)
+  await writeLoopState(cwd, { pausedBy: 'idle' }, key)
+  const outcome = await reconcileLoop(ctx, agent, log)
+  assert.notEqual(outcome.wake?.reason, 'idle-standby')
+  assert.ok(calls.includes('delete:standby-live'), `完成后该撤岗，实际：${calls.join(',')}`)
+  const state = readLoopState(cwd, key)
+  assert.equal(state.pausedBy, undefined, '完成的目标不该留着「空转停过」的痕迹')
+})
