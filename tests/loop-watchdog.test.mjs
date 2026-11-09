@@ -658,10 +658,10 @@ test('recovering a crashed loop is idempotent across a burst of startup sweeps',
   assert.equal(first.action, 'recover')
 
   // 同一次启动里扫描会排好几轮（3s/20s/60s…）：刚补齐过的那条不能再补，
-  // 否则一次崩溃换来的是一串重复唤醒。
+  // 否则一次崩溃换来的是一串重复唤醒。10 秒内的第二遍现在直接被会话级窗口挡掉。
   const mark = calls.length
   const second = await ensureLoopRecovered(ctx, agent, quietLog)
-  assert.notEqual(second.action, 'recover')
+  assert.notEqual(second?.action, 'recover')
   assert.ok(!calls.slice(mark).includes('create:session-twice:1'), '第二轮不该再立刻唤醒')
 })
 
