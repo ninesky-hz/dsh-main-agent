@@ -825,3 +825,21 @@ test('写了 NOTES 就算有产出：不该被当成空转判停', async () => {
   assert.ok(!calls.includes('block'), `有产出时不该判停，实际：${calls.join(',')}`)
   assert.notEqual(outcome.action, 'block')
 })
+
+test('待机巡检幂等：已有活着的那条就沿用，不每轮重排把闹钟往后推', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState, writeLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-standby-live-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const { ctx, calls, agent, log } = loopCtx({ goal: { id: 'g1', phase: 'blocked', revision: 1 }, reminders: [
+    { id: 'standby-live', title: WATCHDOG_TITLE, scheduledAt: Date.now() + MAX_IDLE_SECONDS * 900 },
+  ] })
+  agent.session.header.cwd = cwd
+  const outcome = await reconcileLoop(ctx, agent, log)
+  assert.equal(outcome.action, 'none')
+  assert.equal(calls.filter(call => call.startsWith('create:')).length, 0, '不该重排')
+  assert.equal(calls.filter(call => call.startsWith('delete:')).length, 0, '更不该删')
+  const state = readLoopState(cwd, agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8))
+  assert.ok(state.leaseExpiresAt > Date.now() + MAX_IDLE_SECONDS * 500, 'lease 要跟着那条提醒走')
+})
