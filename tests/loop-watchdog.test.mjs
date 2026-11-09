@@ -664,3 +664,58 @@ test('recovering a crashed loop is idempotent across a burst of startup sweeps',
   assert.notEqual(second.action, 'recover')
   assert.ok(!calls.slice(mark).includes('create:session-twice:1'), '第二轮不该再立刻唤醒')
 })
+
+test('监督者 preset 由设置决定：打开的那个也进扫描范围', async () => {
+  const { deriveSupervisorPresets, filterSupervisorSessionIds } = await import('../lib/watchdog.js')
+  const headers = [
+    { id: 'session-cordis', agentPreset: 'cordis' },
+    { id: 'session-main', agentPreset: 'main-agent' },
+  ]
+  // 默认（没打开任何额外 preset）只认内置那档。
+  assert.deepEqual(filterSupervisorSessionIds(headers), ['session-main'])
+  // 设置里勾了 cordis：扫描与 pre-step 守卫都按同一份集合走，否则「设置说开了、
+  // watchdog 不干活」—— 线上就是这个形态：会话跑 cordis，一块状态都不写。
+  const presets = deriveSupervisorPresets({ supervisedPresets: ['cordis'] })
+  assert.ok(presets.has('main-agent'), '内置那档永远在集合里')
+  assert.deepEqual(filterSupervisorSessionIds(headers, { presets }), ['session-cordis', 'session-main'])
+})
+
+test('pre-step 不再硬编码 main-agent：设置里打开的那档照样开始对账', async () => {
+  const { installLoopWatchdog, WATCHDOG_TITLE } = await import('../lib/watchdog.js')
+  const { readLoopState, sessionKeyOf } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-preset-'))
+  const calls = []
+  const schedule = {
+    list: async () => [],
+    create: async (sessionId, request) => {
+      calls.push(`create:${sessionId}:${request.after_seconds}`)
+      return { id: 'created', ...request }
+    },
+    delete: async ({ id }) => ({ id, deleted: true }),
+  }
+  let listener
+  const ctx = {
+    effect: fn => { fn() },
+    on: (name, fn) => { if (name === 'agent/pre-step') listener = fn; return () => {} },
+    get: name => {
+      if (name === 'supervisorSettings') {
+        return { current: () => ({ wakeMinutes: 5, questionWaitMinutes: 2, supervisedPresets: ['cordis'] }) }
+      }
+      if (name === 'goals') return { get: () => ({ phase: 'active' }) }
+      if (name === 'schedule') return schedule
+      if (name === 'subagents') return { listChildren: async () => [] }
+      return undefined
+    },
+  }
+  installLoopWatchdog(ctx, { warn() {}, info() {} })
+  assert.ok(typeof listener === 'function', 'pre-step 监听必须装上')
+
+  const agent = { id: 'session-cordis', session: { id: 'session-cordis', header: { version: 4, cwd, agentPreset: 'cordis' } } }
+  const decision = await listener({ agent }, async () => ({ kind: 'continue' }))
+  assert.equal(decision.kind, 'continue')
+
+  // 对账是不 await 的：给它一拍再读盘上的事实。
+  await new Promise(resolve => setTimeout(resolve, 200))
+  const state = readLoopState(cwd, sessionKeyOf(agent.session))
+  assert.ok(state.leaseExpiresAt > 0, 'cordis 会话也必须留下 lease')
+})
