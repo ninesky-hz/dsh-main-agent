@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.3**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.4**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -36,7 +36,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的单元测试（`tests/` 下 46 个 `.test.mjs`）当前 `npm test` 全绿：断言数、通过数、
+本仓库的单元测试（`tests/` 下 47 个 `.test.mjs`）当前 `npm test` 全绿：断言数、通过数、
 跳过数一律以 `npm test` 打印的汇总行为准，不在这里抄 —— 抄一次就多一个会过期的数字
 （`npm test` = `node --test tests/*.test.mjs`；两个跳过项是
 `tests/preset-rows.test.mjs` 里按 preset 行解析真实宿主运行时，只在设置了 `DSH_APP_ASAR`
@@ -177,6 +177,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.19.0 | 从 [`dsh-superagent-prototype`](https://github.com/deepseek-ai/dsh-superagent-prototype) 移植六条机制，均取机制、不取架构。**report 六态**：worker 在 `outcome.md` 头行自述 `progress` / `waiting` / `ready` / `blocked` / `failed` / `dropped`，`lib/report.js` 解析、`lib/stage.js` 用纯函数 first-match-wins 判成 `person/*` / `working` / `idle` / `ended`，渲染进 `.agi/BRIEF.md` 新增的「Worker 状态」段 —— 取代原先靠 `lastActivityAt` 时间差猜「是不是卡了」。**人优先预留槽**：`reservedHumanSlots` 在并发上限之外给人留位置，槽满但本轮有直接人类消息时仍可再派。**proactive 三档**（`off` / `observe` / `auto`）：`observe` 不真派生，只把「本会派什么」记进 `.agi/proposals.jsonl`。**outbox 退避投递**：收敛通知落 `.agi/outbox.jsonl`，2 秒起逐次翻倍到 60 秒、同类严格保序，BRIEF 写盘成功才算 `delivered`，写不进去就 `markFailed` 抬高退避而不是假装送过。**人格外置 + 版本化**：`prompts/main-agent.md` / `prompts/worker.md` 为源，`agent-presets/main-agent/agent.cordis.yml` 是生成物，revision 落在 `presets/main-agent.patch.yml` 头行与 `prompts/CHANGELOG.md`。**验收清单兜底**：worker 写 `checks.json`，`check_outcome` 一次跑完。另修掉两个真缺陷：Windows 上 `check_outcome` 因 Node 自动加双引号叠上 cmd.exe 解析而**一半验收项假失败**（退出码有时仍为 0，补 `windowsVerbatimArguments`）；`package.json` 的 `files` 缺 `prompts` 导致发布包缺人格源。新增 `npm run sync-profile` 把仓库同步到 profile 副本与 `~/.dsh/.agent-presets/` 两份运行时拷贝 —— 只同步其中一份是此前「改完重启也没变化」的根因 |
 | 0.22.2 | 修掉**崩溃重启后循环静默停住**（用户实测：DSH 进程意外退出，重开后会话永远停在「任务已停止」）。两个成因各补一刀：**零提醒窗口**—— `arm` 原来是 delete-then-create，两次写之间进程死掉就一条提醒都不剩；改为 lease-first（先 `create`，成功了才删旧行，建失败就放弃并保留旧行—— 最坏两条而不是零条），并把「承诺过的下一次唤醒时刻」落成 `leaseExpiresAt`（`lib/watchdog.js:862`，判据 `deriveLeaseOverdue`，宽限 `max(间隔, 5 分钟)`；旧状态只有 `lastArmAt` 时按它加间隔推算，升级不需要迁移）。**冷启动扫了个寂寞** —— 旧扫描读 `agents.roots()`（内存里的 live agent），重启后会话未被惰性激活，这个列表就是空的，而且 20 秒后永久放弃；改为枚举磁盘（`sessions.list()` + `sessionPersistence.list()`，`filterSupervisorSessionIds` 过滤 subagent / 非 main-agent preset /已归档 / 重复），逐会话 `ctx.waterfall('schedule/resolve-agent', id)` 挂载，挂不上就记 `unresolved` 并 warn（不再静默丢），租约过期直接补一条 `after_seconds:1` 唤醒并往`progress.jsonl` 记 `wake-recovered`，同一批启动的后续扫描按 `recoveredAt` 去重；重试节奏 3s/20s/60s/180s/600s 全部 `unref()`（不 unref 会让加载了插件的短命进程跑完不退—— `spawn-tool.test.mjs` 就是这么被挂住的）。顺带修掉自己挖的坑：`readLoopState` 是逐键白名单投影，新字段只写不读会让「写盘成功但判断永不成立」，已在 `EMPTY_STATE` 与解析分支同时补上。测试 520 → **528 通过 / 2 跳过 / 0 失败 / 530 项 / 46 个文件** |
 | 0.22.3 | 修掉 0.22.2 留给自己的一处漏判：**watchdog 把「监督者」硬编码成 `main-agent`**。路由层（`lib/index.js` 的 `countsAsSupervisor`）早就按「内置那档 + 设置里打开的 preset」判断，watchdog 这边却还写着 `sessionAgentPreset(session) !== 'main-agent'` —— 于是会话跑在 `cordis` 这类已打开监督循环的 preset 上时，`pre-step` 每次都被这道守卫挡回去，`.agi/loop-state.*` 与 `BRIEF.md` 一块都不写，`/supervisor/loop` 回报 `watchdog.armed=false`、`reminders=[]`：重启看就是「循环静默停住」，而设置面板说它是开着的。现在两处守卫（`pre-step`、冷启动 `filterSupervisorSessionIds`）都从活的设置里取集合（新导出 `deriveSupervisorPresets`，`main-agent` 永远在内），`ensureBootSweep` 与守卫共用同一份口径；设置面板勾选立即生效，不用重启。测试 530 → **530 通过 / 2 跳过 / 0 失败 / 532 项 / 46 个文件** |
+| 0.22.4 | 修掉**兜底提醒从没真正排上过**——三个 `schedule` 调用点全按旧签名写，而宿主早已换接口：`create(sessionId, request)` → `create(request, actorSessionId, signal)`（目标写进 `request.target`）、`delete({sessionId,id})` 整个方法被 `edit({id, action:'delete'})` 取代、`list({sessionId})` 变成只认分页不认会话。三处都在 `try/catch` 里，于是失败只剩一行 warn，循环停下来时没有任何东西会报告——这正是「重启后永远停在任务已停止」的最后一环。新增 `lib/schedule-compat.js` 按**能力探测**选签名（`edit`/`catalog` 存在即新版），不信版本号也不猜 `fn.length`（被装饰器包过的参数个数不可信）；`listSessionReminders` 用 `catalog()` 拉全表后按 `target.kind==='session' && target.sessionId` 归并（`new_once` 等开新会话的任务不算自己的），撤提醒走 `edit`/`delete` 双形态，秒数夹到 ≥1 防「零间隔自唤醒」。新增 `tests/schedule-compat.test.mjs` 8 条专测两代签名各自被选中、且不碰别的会话。测试 532 → **538 通过 / 2 跳过 / 0 失败 / 540 项 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 
@@ -1006,7 +1007,7 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/sync-profile.mjs` | 把仓库同步到运行时**真正加载的两份拷贝**：profile 的 `node_modules/dsh-main-agent/`（宿主 `require` 这份）与 `~/.dsh/.agent-presets/main-agent/`（宿主启动时读这份 preset，`installPreset` 默认 `if-absent`，**已存在就永不覆盖**）。默认只诊断并列差异，`--apply` 才写、且先整目录备份。只同步其中一份，是「改完代码重启也没变化」的典型死法 |
 | `scripts/accept-worker.mjs` | `npm run accept -- <sessionId 或目录名> [备注]`：写 `.agi/subagents/<id>/archived.json`，把已验收的 worker 从 BRIEF 的「等用户验收」里摘掉，改显示 `ended/archived — 已验收归档` |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 46 个 `node --test` 文件（全量 `npm test` 会打印实际的断言数）：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
+| `tests/` | 47 个 `node --test` 文件（全量 `npm test` 会打印实际的断言数）：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 文档索引

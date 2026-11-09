@@ -2,11 +2,11 @@
 
 这个仓库只有三种东西，各自的规矩完全不同：
 
-- **`lib/`（25 个文件）** —— 纯逻辑 + 宿主接线。能被纯函数写完的就不碰宿主（唤醒策略、
+- **`lib/`（26 个文件）** —— 纯逻辑 + 宿主接线。能被纯函数写完的就不碰宿主（唤醒策略、
   目标续行判据、命名规则、模型策略都在这一侧），剩下的薄薄一层只做 `ctx` 接线：
   装 preset、挂 `/supervisor/*` 路由、把工具注册进 0.2.x 的 `ctx.subagents` 接缝。
   这条分界线是刻意的：宿主 API 会随版本变，而纯函数不会。
-- **`tests/`（46 个文件）** —— 只用 Node 内置模块和相对路径 `import`，**没有
+- **`tests/`（47 个文件）** —— 只用 Node 内置模块和相对路径 `import`，**没有
   `node_modules` 也能跑**。所以 `npm test` 在一台刚克隆的空机器上就是全部真话，
   不存在「装完依赖才知道坏没坏」。唯一一个非 `.test.mjs` 的 `harness-stub-loader.js`
   是给 `--import` 用的宿主 stub。
@@ -29,7 +29,7 @@
 
 ## 模块表
 
-`lib/` 有 25 个文件、200 处 `export` 声明（去重后 184 个不同名字）。「被谁用」只算
+`lib/` 有 26 个文件、203 处 `export` 声明（去重后 187 个不同名字）。「被谁用」只算
 真实的 `import` 方与 preset 挂载行 —— 一个都没有的那几个是宿主入口，宿主不是通过
 `import` 进来的。
 
@@ -51,6 +51,7 @@
 | `preset-files.js` | 没有 loader 行的 preset 走文件改写，并留 `.supervisor.bak` 以便回滚 | `applySupervisorToFile` `stripSupervisorFromFile` `presetFile` `hasSupervisorBackup` | `lib/index.js` |
 | `report.js` | worker report 六态（progress / waiting / ready / blocked / failed / dropped）的读取与归档 | `readReport` `describeReport` `collectReports` `archiveWorker` | `lib/loop-journal.js` `lib/settlement.js` `lib/watchdog.js`；`scripts/accept-worker.mjs` |
 | `schedule-fold.js` | schedule / change 事件的本地折叠：把一串变更读成当前排程 | `foldScheduleEvents` `ScheduleLogError` | `lib/index.js` `lib/watchdog.js` |
+| `schedule-compat.js` | 宿主 `schedule` 服务两代接口的适配：建提醒、按会话列提醒、撤提醒 | `ensureReminder` `ensureReminderRemoved` `listSessionReminders` | `lib/watchdog.js` |
 | `session-events.js` | 跨宿主版本读 Session 事件；读不到就 fail-open | `sessionEvents` `sessionInheritedEventCount` | `lib/full-stop.js` `lib/goal.js` `lib/index.js` `lib/settlement.js` `lib/watchdog.js` |
 | `settlement.js` | 收敛消息富化：worker 停下来的那一句该说什么 | `enrichSettlementMessages` `installSettlementDiagnostics` `terminalFailureAt` | `lib/spawn.js` |
 | `spawn.js` | settings 守卫下的 `subagent` 工具：模型白名单、并发上限、后台 job | `apply` `name` `inject` `Config` | preset 行 `dsh-main-agent/spawn` |
@@ -63,7 +64,7 @@
 
 ## 测试表
 
-46 个 `*.test.mjs`，同目录还有一个 `harness-stub-loader.js` —— 那是给 `--import` 用的
+47 个 `*.test.mjs`，同目录还有一个 `harness-stub-loader.js` —— 那是给 `--import` 用的
 宿主 stub，不是测试。一行一个文件，写清它到底守什么 —— 一个测试文件如果说不出一句
 「它守的是什么」，那它就不是测试。
 
@@ -98,6 +99,7 @@
 | `repair-profile.test.mjs` | `scripts/repair-profile.mjs`：坏 profile 的修复路径 |
 | `report.test.mjs` | report 六态的容错：缺字段、写坏、并发归档 |
 | `schedule-wiring.test.mjs` | schedule service 与工具的接法 |
+| `schedule-compat.test.mjs` | 宿主 `schedule` 两代签名（`create(request, actor)` vs `create(sessionId, request)`、`delete` vs `edit`、`list` 不认会话）各自被选中，且不碰别的会话的任务 |
 | `session-events.test.mjs` | 跨版本 Session 事件的读取与 fail-open |
 | `settings-card.test.mjs` | 设置卡渲染：字段与开关状态 |
 | `settlement.test.mjs` | 收敛消息富化：六态各说一句话 |
