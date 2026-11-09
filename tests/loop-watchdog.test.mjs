@@ -792,6 +792,39 @@ test('心跳尊重 paused：空转停下的循环不该被它偷偷拉起来', a
   assert.equal(calls.filter(call => call.startsWith('create:')).length, 0)
 })
 
+test('目标完成后心跳不再补唤醒：收工的 lease 是残留，不是漏投', async () => {
+  const { ensureLeaseHeartbeat } = await import('../lib/watchdog.js')
+  const { readLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-heartbeat-complete-'))
+  const header = { id: 'session-done', version: 4, cwd, agentPreset: 'main-agent' }
+  const { ctx, calls } = bootCtx({ headers: [header], cwd, goal: { id: 'g1', phase: 'complete', revision: 3 } })
+  const key = await seededLease(cwd, 'session-done')
+
+  const stop = ensureLeaseHeartbeat(ctx, quietLog, { intervalMs: 10 })
+  await new Promise(resolve => setTimeout(resolve, 80))
+  stop()
+
+  assert.equal(calls.filter(call => call.startsWith('create:')).length, 0, 'complete 之后不该再叫醒')
+  const state = readLoopState(cwd, key)
+  assert.equal(state.leaseExpiresAt, undefined, '残留的 lease 必须清掉，否则下个进程还会被它叫醒')
+  assert.equal(state.lastArmAt, undefined)
+  assert.equal(state.recoveredAt, undefined)
+})
+
+test('待机中的目标由 30 分钟巡检负责：心跳不插 1 秒提醒把降频顶回去', async () => {
+  const { ensureLeaseHeartbeat } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-heartbeat-blocked-'))
+  const header = { id: 'session-blocked', version: 4, cwd, agentPreset: 'main-agent' }
+  const { ctx, calls } = bootCtx({ headers: [header], cwd, goal: { id: 'g1', phase: 'blocked', revision: 2 } })
+  await seededLease(cwd, 'session-blocked')
+
+  const stop = ensureLeaseHeartbeat(ctx, quietLog, { intervalMs: 10 })
+  await new Promise(resolve => setTimeout(resolve, 80))
+  stop()
+
+  assert.equal(calls.filter(call => call.startsWith('create:')).length, 0, 'blocked 不该被心跳按秒叫醒')
+})
+
 test('目标被空转判停后退到待机巡检：降频但不撤岗', async () => {
   const { reconcileLoop } = await import('../lib/watchdog.js')
   const { readLoopState } = await import('../lib/loop-journal.js')
