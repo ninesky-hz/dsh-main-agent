@@ -896,3 +896,47 @@ test('目标完成后不再待机：complete 是终点，不是等人', async ()
   const state = readLoopState(cwd, key)
   assert.equal(state.pausedBy, undefined, '完成的目标不该留着「空转停过」的痕迹')
 })
+
+test('叠装两份监听只巡检一次：窗口是模块级的，不跟着安装走', async () => {
+  const { installLoopWatchdog } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-dedupe-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const listeners = []
+  const calls = []
+  const agent = { id: 'session-dedupe', session: { id: 'session-dedupe', header: { version: 4, cwd, agentPreset: 'main-agent' } } }
+  const ctx = {
+    effect: fn => { fn() },
+    on: (name, fn) => { if (name === 'agent/pre-step') listeners.push(fn); return () => {} },
+    get: name => {
+      if (name === 'supervisorSettings') return { current: () => ({ wakeMinutes: 5, questionWaitMinutes: 2, watchdogEnabled: true }) }
+      if (name === 'goals') return { get: () => ({ id: 'g1', phase: 'active', revision: 1 }) }
+      if (name === 'schedule') {
+        return {
+          list: async () => [],
+          create: async (sessionId, request) => { calls.push(`create:${sessionId}:${request.after_seconds}`); return { id: 'created', ...request } },
+          delete: async ({ id }) => { calls.push(`delete:${id}`); return { id, deleted: true } },
+        }
+      }
+      if (name === 'agents') return { get: () => undefined }
+      if (name === 'sessions' || name === 'sessionPersistence') return { list: async () => [] }
+      if (name === 'workspaceRegistry') return { archivedSessionIds: [] }
+      if (name === 'subagents') return { listChildren: async () => [] }
+      return undefined
+    },
+    waterfall: async () => undefined,
+  }
+  const quiet = { warn() {}, info() {} }
+  installLoopWatchdog(ctx, quiet)
+  installLoopWatchdog(ctx, quiet)
+  assert.equal(listeners.length, 2, '两次安装就是两份监听，这正是要防的叠装')
+  for (const listener of listeners) {
+    await listener({ agent }, async () => ({ kind: 'continue' }))
+  }
+  await new Promise(resolve => setTimeout(resolve, 150))
+  assert.equal(
+    calls.filter(call => call.startsWith('create:')).length,
+    1,
+    `同一会话同一拍只该巡检一次，实际：${calls.join(',')}`,
+  )
+})

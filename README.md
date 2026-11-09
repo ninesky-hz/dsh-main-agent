@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.9**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.10**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -183,6 +183,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.7 | 0.22.6 的待机巡检有个自己踩的坑：它的到期时刻（1800s）在 `ownHorizon`（`max(decided.seconds*1.5, 90)`，活跃时 450s）之外，于是**每一轮 `pre-step` 都判定「没有排着的提醒」而重排一次** —— 每轮写一行、删一行，还把 30 分钟的闹钟一轮一轮往后推：用户越活跃，越不会被叫醒。修法是让待机分支幂等：`own` 里已有一条 `scheduledAt > now + MAX_IDLE_SECONDS * 400ms` 的提醒就直接沿用它（并把 `leaseExpiresAt` 对齐到那一条），返回 `action:'none'`。重启实测确认 0.22.6 的主修生效：`goal.phase==='blocked'`、`pausedBy:'idle'` 时 `/supervisor/loop` 仍 `armed:true`，`loop-state` 里 `lastArmAt` 与 `leaseExpiresAt` 相差正好 1800s，`schedule.json` 里那条 `kind:"after"` 保持 `status:"active"` —— 判停不再撤岗。测试 **545 通过 / 2 跳过 / 0 失败 / 547 项 / 47 个文件** |
 | 0.22.8 | 0.22.6/0.22.7 的待机判据用 `goal.phase==='blocked' \|\| loopState.pausedBy==='idle'`，于是**目标做完之后还在每 30 分钟敲一次**：`complete` 是终点，再叫醒也没有活可干，`pausedBy` 又只是上一轮的残留。改成只在 `goal.phase==='blocked'`（停在那里等人）时待机；`complete` 时撤岗并清掉 `pausedBy/pausedAt/pausedReason`，否则下一次启动还会被「空转停过」误判成「停在等人」。测试 **546 通过 / 2 跳过 / 0 失败 / 548 项 / 47 个文件** |
 | 0.22.9 | 0.22.8 之后还剩最后一个洞：**心跳不看目标状态**。`ensureLeaseHeartbeat` 只判 `leaseExpiresAt` 是否过期，而 `complete` 之后 lease 只是历史残留 —— 于是目标收工 5 分钟（`planned` 宽限）后，心跳把残留当「漏投」，补一条 1 秒提醒，把已经结束的循环又拉起来（实测 `wake-heartbeat` 记了 `overdueSeconds:8`，随后投递拉起一轮）。改成**只守 `active`**：`phase` 既非 `active` 也非 `blocked` 时把 `lastArmAt`/`leaseExpiresAt`/`recoveredAt` 三个键一并清掉（不清就等下一个进程再被它叫醒一次）；`blocked` 归 30 分钟待机巡检管，心跳不插 1 秒提醒，否则刚做的降频会被顶回每轮重排。顺带堵住叠装：插件被装两次（或热重载叠了一层）时两个计时器会并发跑到同一会话上，两边都还没写 `recoveredAt` 就各建一条提醒（实测 16ms 内两条 `wake-heartbeat`），加模块级 `beating` 闸门把一拍串起来。测试 **548 通过 / 2 跳过 / 0 失败 / 550 项 / 47 个文件** |
+| 0.22.10 | 同一毫秒 5 条 `wake-stale` 暴露了叠装：同一个 ctx 被装多份（热重载叠了一层、多 preset 作用域各装一份）时，每份 `pre-step` 监听都收到同一次回调，而「20 秒窗口」写在安装闭包里、互相看不见 —— 于是一次回合并发跑 5 遍巡检、写 5 遍 `BRIEF`、arm 5 次再删 5 次。窗口改成模块级（`lastReconcileAt` + `RECONCILE_WINDOW_MS`），跨安装共享；新增一条测试：连装两份、同一拍各调一次，断言只 `create` 一次。测试 **549 通过 / 2 跳过 / 0 失败 / 551 项 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 
