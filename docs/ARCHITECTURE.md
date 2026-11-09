@@ -29,7 +29,7 @@
 
 ## 模块表
 
-`lib/` 有 25 个文件、195 处 `export` 声明（去重后 179 个不同名字）。「被谁用」只算
+`lib/` 有 25 个文件、199 处 `export` 声明（去重后 183 个不同名字）。「被谁用」只算
 真实的 `import` 方与 preset 挂载行 —— 一个都没有的那几个是宿主入口，宿主不是通过
 `import` 进来的。
 
@@ -58,7 +58,7 @@
 | `subagent-compat.js` | `ctx.subagents` 的单一接缝 + 能力探针（0.2.x 兼容） | `startWorker` `drainWorkers` `subagentCompatible` `missingSubagentMethods` | `lib/index.js` `lib/spawn.js` `lib/watchdog.js` |
 | `supervise.js` | 监督层人格的纯函数改写：compose / strip / sync / remount | `composeSupervisorPersona` `stripSupervisorLayer` `syncSupervisedLayer` `remountPreset` | `lib/index.js` `lib/preset-files.js`；`scripts/verify-persona-compose.mjs` |
 | `tool-inventory.js` | 角色 → 工具面的正面表；「worker 零工具」是它的结论，不是旁注 | `ROLES` `TOOL_MATRIX` `listToolsFor` `toolsFor` | 只有 `tests/tools-doc.test.mjs` 读它（[TOOLS.md](TOOLS.md) 的核对基准） |
-| `watchdog.js` | 服务端循环兜底：提醒簿记、stale 回收、BRIEF 重排 | `reconcileLoop` `activeReminders` `installLoopWatchdog` `recoveryTargets` | `lib/index.js` `lib/spawn.js` |
+| `watchdog.js` | 服务端循环兜底：提醒簿记、stale 回收、BRIEF 重排；重启后按磁盘枚举补齐错过的唤醒 | `reconcileLoop` `activeReminders` `installLoopWatchdog` `recoveryTargets` `filterSupervisorSessionIds` `ensureLoopRecovered` `ensureBootSweep` | `lib/index.js` `lib/spawn.js` |
 | `worker-model-policy.js` | worker 的模型 / effort / 工具 deny 纯策略 | `selectWorkerModel` `resolveWorkerEffort` `workerDeniedTools` `WORKER_DENIED_TOOLS` | `lib/index.js` `lib/spawn.js`；`scripts/probe-host-model-selection.mjs` |
 
 ## 测试表

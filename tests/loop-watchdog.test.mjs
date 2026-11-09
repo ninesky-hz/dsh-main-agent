@@ -25,6 +25,7 @@ import {
   adaptiveWake,
   describeWake,
   idleStreakOf,
+  deriveLeaseOverdue,
   staleWake,
   watchdogPlan,
   workerDeadlineExceeded,
@@ -325,8 +326,38 @@ test('a watchdog row scheduled too far out is replaced with a nearer one', async
   })
   const outcome = await reconcileLoop(ctx, agent, log)
   assert.equal(outcome.action, 'arm')
-  assert.equal(calls[1], 'delete:watch-old')
-  assert.ok(calls[2].startsWith(`create:${WATCHDOG_TITLE}:`))
+  // lease-first：先建新的，再撤旧的。反过来的顺序在两次调用之间崩溃会留下
+  // 「零提醒」—— 重启后就没有任何东西能把这条循环拉起来了。
+  assert.ok(calls[1].startsWith(`create:${WATCHDOG_TITLE}:`), 'create 必须先于 delete')
+  assert.equal(calls[2], 'delete:watch-old')
+})
+
+test('a failed create keeps the old row: the loop is never left with zero reminders', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { ctx, agent, calls, log } = loopCtx({
+    goal: { phase: 'active' },
+    reminders: [{ id: 'watch-old', title: WATCHDOG_TITLE, scheduledAt: Date.now() + 6 * 3600_000 }],
+  })
+  // 建新提醒这一步失败（表被锁、写盘满、宿主换版本）。
+  const schedule = ctx.get('schedule')
+  schedule.create = async () => {
+    calls.push('create:failed')
+    throw new Error('table busy')
+  }
+  const outcome = await reconcileLoop(ctx, agent, log)
+  assert.equal(outcome.action, 'none')
+  assert.ok(!calls.some(call => call.startsWith('delete:')), '建失败时一条都不能删')
+})
+
+test('arming records a lease so a restart can tell the loop was abandoned', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState, sessionKeyOf } = await import('../lib/loop-journal.js')
+  const { ctx, agent, log } = loopCtx({ goal: { phase: 'active' }, reminders: [] })
+  const before = Date.now()
+  await reconcileLoop(ctx, agent, log)
+  const state = readLoopState(agent.session.header.cwd, sessionKeyOf(agent.session))
+  assert.ok(state.leaseExpiresAt > before, 'lease 到期时刻必须落在未来')
+  assert.ok(state.leaseExpiresAt > state.lastArmAt, 'lease 至少比建的时刻晚一个间隔')
 })
 
 test('a reminder the model scheduled itself makes the watchdog yield', async () => {
@@ -471,4 +502,165 @@ test('an edited GOAL.md is reported with its revision and body change', async ()
   await reconcileLoop(bare.ctx, bare.agent, bare.log)
   assert.equal(readdirSync(join(bare.agent.session.header.cwd, '.agi')).includes('GOAL.md'), false)
   assert.equal(eventNames(bare.agent).includes('goal-revised'), false)
+})
+
+// ------------------------------- lease 与冷启动扫描（崩溃后的续命路径）
+//
+// 真机症状：DSH 崩溃或被杀之后重开，那条会话永远停在「任务已停止」—— 没有
+// 任何回合会再触发 pre-step，而旧的冷启动扫描读的是内存里的 `agents.roots()`，
+// 重启后必然是空的。下面几条把「lease 过期能被看见」与「数据源必须是磁盘」
+// 这两个前提钉住。
+
+test('a lease is only overdue once the planned interval plus grace has passed', () => {
+  const now = 1_000_000_000
+  // 没有 lease、也没有 lastArmAt：未知，不算过期 —— 误判会让每次启动都多唤一次。
+  assert.equal(deriveLeaseOverdue({ now, seconds: 300 }).overdue, false)
+  // 还在未来：正常。
+  assert.equal(deriveLeaseOverdue({ leaseExpiresAt: now + 60_000, now, seconds: 300 }).overdue, false)
+  // 刚过期几秒：宽限内，不算。
+  assert.equal(deriveLeaseOverdue({ leaseExpiresAt: now - 1_000, now, seconds: 300 }).overdue, false)
+  // 过期超过宽限：算，并给出迟到秒数。
+  const late = deriveLeaseOverdue({ leaseExpiresAt: now - 900_000, now, seconds: 300 })
+  assert.equal(late.overdue, true)
+  assert.equal(late.overdueSeconds, 600)
+  // 升级前写下的循环状态只记了 lastArmAt：按当时的间隔推算，同样能判出来。
+  assert.equal(deriveLeaseOverdue({ lastArmAt: now - 3_600_000, now, seconds: 300 }).overdue, true)
+})
+
+test('the sweep picks supervisor sessions out of raw headers, never child or archived ones', async () => {
+  const { filterSupervisorSessionIds } = await import('../lib/watchdog.js')
+  const ids = filterSupervisorSessionIds([
+    { id: 'session-a', agentPreset: 'main-agent' },
+    { id: 'session-a', agentPreset: 'main-agent' },
+    { id: 'session-child', agentPreset: 'main-agent', origin: 'subagent' },
+    { id: 'session-plain', agentPreset: 'default' },
+    { id: 'session-archived', agentPreset: 'main-agent' },
+    null,
+    { agentPreset: 'main-agent' },
+  ], { archivedIds: ['session-archived'] })
+  assert.deepEqual(ids, ['session-a'])
+})
+
+/** ensureBootSweep 的最小 ctx：磁盘上有会话，内存里一条 agent 都没有（重启后的样子）。 */
+function bootCtx({ headers = [], live = [], archivedIds = [], cwd, goal = { phase: 'active' } } = {}) {
+  const calls = []
+  const agents = new Map()
+  const agentOf = id => {
+    const agent = { id, session: { id, header: { version: 4, cwd, agentPreset: 'main-agent' } } }
+    agents.set(id, agent)
+    return agent
+  }
+  const schedule = {
+    list: async ({ sessionId }) => {
+      calls.push(`list:${sessionId}`)
+      return []
+    },
+    create: async (sessionId, request) => {
+      calls.push(`create:${sessionId}:${request.after_seconds}`)
+      return { id: `created-${sessionId}`, ...request }
+    },
+    delete: async ({ id }) => {
+      calls.push(`delete:${id}`)
+      return { id, deleted: true }
+    },
+  }
+  const ctx = {
+    get: name => {
+      if (name === 'supervisorSettings') {
+        return { current: () => ({ wakeMinutes: 5, questionWaitMinutes: 2, watchdogEnabled: true }) }
+      }
+      if (name === 'goals') return { get: () => goal }
+      if (name === 'schedule') return schedule
+      if (name === 'agents') return { get: id => agents.get(id) }
+      if (name === 'sessions') return { list: () => live.map(header => ({ header })) }
+      if (name === 'sessionPersistence') return { list: async () => headers.map(header => ({ header })) }
+      if (name === 'workspaceRegistry') return { archivedSessionIds: archivedIds }
+      if (name === 'subagents') return { listChildren: async () => [] }
+      return undefined
+    },
+    waterfall: async (name, sessionId) => {
+      calls.push(`resolve:${sessionId}`)
+      return agentOf(sessionId)
+    },
+  }
+  return { ctx, calls }
+}
+
+const quietLog = { warn() {}, info() {} }
+
+test('a crashed loop with an expired lease wakes within a second on startup', async () => {
+  const { ensureBootSweep } = await import('../lib/watchdog.js')
+  const { writeLoopState, sessionKeyOf } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-boot-'))
+  const header = { id: 'session-crashed', agentPreset: 'main-agent' }
+  // 上一次巡检承诺的唤醒时刻是两小时前：这条循环本来早该被叫醒了。
+  const now = Date.now()
+  writeLoopState(cwd, { lastArmAt: now - 7_300_000, leaseExpiresAt: now - 7_200_000 }, sessionKeyOf(header))
+
+  // 同一会话同时出现在 live 与磁盘快照里：只该扫一次。
+  const { ctx, calls } = bootCtx({ headers: [header], live: [header], cwd })
+  const outcome = await ensureBootSweep(ctx, quietLog)
+
+  assert.equal(outcome.scanned, 1)
+  assert.deepEqual(outcome.recovered, ['session-crashed'])
+  assert.ok(calls.includes('create:session-crashed:1'), '过期就直接唤醒，不再等一个完整间隔')
+  assert.match(
+    readFileSync(join(cwd, '.agi', 'progress.jsonl'), 'utf8'),
+    /wake-recovered/,
+    '补齐唤醒这件事必须进时间线',
+  )
+})
+
+test('a session whose lease is still valid is left on its normal cadence', async () => {
+  const { ensureBootSweep } = await import('../lib/watchdog.js')
+  const { writeLoopState, sessionKeyOf } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-boot-'))
+  const header = { id: 'session-fresh', agentPreset: 'main-agent' }
+  writeLoopState(cwd, { leaseExpiresAt: Date.now() + 600_000 }, sessionKeyOf(header))
+
+  const { ctx, calls } = bootCtx({ headers: [header], cwd })
+  const outcome = await ensureBootSweep(ctx, quietLog)
+
+  assert.deepEqual(outcome.recovered, [])
+  const created = calls.filter(call => call.startsWith('create:'))
+  assert.equal(created.length, 1)
+  assert.ok(!created[0].endsWith(':1'), '没过期就不该立刻唤醒')
+})
+
+test('a session the host cannot mount is reported instead of silently dropped', async () => {
+  const { ensureBootSweep } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-boot-'))
+  const { ctx } = bootCtx({ headers: [{ id: 'session-lost', agentPreset: 'main-agent' }], cwd })
+  ctx.waterfall = async () => undefined
+
+  const outcome = await ensureBootSweep(ctx, quietLog)
+  assert.equal(outcome.scanned, 1)
+  assert.deepEqual(outcome.unresolved, ['session-lost'])
+})
+
+test('recovering a crashed loop is idempotent across a burst of startup sweeps', async () => {
+  const { ensureLoopRecovered } = await import('../lib/watchdog.js')
+  const { writeLoopState, sessionKeyOf } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-boot-'))
+  const agent = {
+    id: 'session-twice',
+    session: { id: 'session-twice', header: { version: 4, cwd, agentPreset: 'main-agent' } },
+  }
+  const now = Date.now()
+  writeLoopState(
+    cwd,
+    { lastArmAt: now - 7_300_000, leaseExpiresAt: now - 7_200_000 },
+    sessionKeyOf(agent.session),
+  )
+  const { ctx, calls } = bootCtx({ cwd })
+
+  const first = await ensureLoopRecovered(ctx, agent, quietLog)
+  assert.equal(first.action, 'recover')
+
+  // 同一次启动里扫描会排好几轮（3s/20s/60s…）：刚补齐过的那条不能再补，
+  // 否则一次崩溃换来的是一串重复唤醒。
+  const mark = calls.length
+  const second = await ensureLoopRecovered(ctx, agent, quietLog)
+  assert.notEqual(second.action, 'recover')
+  assert.ok(!calls.slice(mark).includes('create:session-twice:1'), '第二轮不该再立刻唤醒')
 })
