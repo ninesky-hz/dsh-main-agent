@@ -89,7 +89,7 @@ test('新版接口：create 用请求对象 + session target，而不是把会�
   assert.equal(name, 'create')
   assert.equal(actor, 'session-a')
   assert.equal(request.title, '兜底')
-  assert.deepEqual(request.timing, { after_seconds: 90 })
+  assert.deepEqual(request.timing, { kind: 'after', after_seconds: 90 })
   assert.deepEqual(request.target, { kind: 'session', sessionId: 'session-a' })
 })
 
@@ -111,9 +111,9 @@ test('旧版接口：仍按 (sessionId, request) 调用，不发新形态的请�
 test('秒数被夹到正整数：0 或负数不能变成「立刻无限循环」的提醒', async () => {
   const schedule = modernSchedule()
   await ensureReminder(schedule, 'session-a', { title: 't', prompt: 'p', afterSeconds: 0 })
-  assert.deepEqual(schedule.calls[0][1].timing, { after_seconds: 1 })
+  assert.deepEqual(schedule.calls[0][1].timing, { kind: 'after', after_seconds: 1 })
   await ensureReminder(schedule, 'session-a', { title: 't', prompt: 'p', afterSeconds: -30.6 })
-  assert.deepEqual(schedule.calls[1][1].timing, { after_seconds: 1 })
+  assert.deepEqual(schedule.calls[1][1].timing, { kind: 'after', after_seconds: 1 })
 })
 
 test('列提醒只认本会话：别的会话与 new_once 任务一律不算自己排的', async () => {
@@ -154,4 +154,38 @@ test('旧版撤提醒走 delete({ sessionId, id })', async () => {
 test('接口缺失时列提醒返回空数组，而不是抛给对账', async () => {
   assert.deepEqual(await listSessionReminders(undefined, 'session-a'), [])
   assert.deepEqual(await listSessionReminders({}, 'session-a'), [])
+})
+
+/**
+ * 复刻宿主 `validateTiming` 的校验：timing 必须恰好是 `{ kind, 对应选择器 }` 两个
+ * 键，少了 kind 会抛 `invalid_rule`。
+ *
+ * 这条测试是为了 0.22.4 那次漏网：签名换对了、`kind` 没带，宿主抛错又被
+ * `try/catch` 吞成一行 warn，于是「修好之后仍然不 arm」，只能靠人工重启才发现。
+ * 现在把这个形状钉死，改坏了本地就红。
+ *
+ * @param {object} timing 待校验的 timing 对象
+ * @returns {void} 形状不符时抛错
+ */
+function requireHostTiming(timing) {
+  const selectors = {
+    after: 'after_seconds',
+    at: 'at',
+    every: 'every_seconds',
+    daily: 'daily',
+    weekly: 'weekly',
+    cron: 'cron',
+    rrule: 'rrule',
+  }
+  const selector = selectors[timing?.kind]
+  if (selector === undefined) throw new Error('timing must contain exactly kind and its matching selector.')
+  const keys = Object.keys(timing).sort()
+  assert.deepEqual(keys, ['kind', selector].sort())
+}
+
+test('新形体必须过宿主的 validateTiming：kind 判别键不能省', async () => {
+  const schedule = modernSchedule()
+  await ensureReminder(schedule, 'session-a', { title: '兜底', prompt: '继续', afterSeconds: 42 })
+  requireHostTiming(schedule.calls[0][1].timing)
+  assert.deepEqual(schedule.calls[0][1].timing, { kind: 'after', after_seconds: 42 })
 })

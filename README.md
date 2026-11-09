@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.4**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.5**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -178,6 +178,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.2 | 修掉**崩溃重启后循环静默停住**（用户实测：DSH 进程意外退出，重开后会话永远停在「任务已停止」）。两个成因各补一刀：**零提醒窗口**—— `arm` 原来是 delete-then-create，两次写之间进程死掉就一条提醒都不剩；改为 lease-first（先 `create`，成功了才删旧行，建失败就放弃并保留旧行—— 最坏两条而不是零条），并把「承诺过的下一次唤醒时刻」落成 `leaseExpiresAt`（`lib/watchdog.js:862`，判据 `deriveLeaseOverdue`，宽限 `max(间隔, 5 分钟)`；旧状态只有 `lastArmAt` 时按它加间隔推算，升级不需要迁移）。**冷启动扫了个寂寞** —— 旧扫描读 `agents.roots()`（内存里的 live agent），重启后会话未被惰性激活，这个列表就是空的，而且 20 秒后永久放弃；改为枚举磁盘（`sessions.list()` + `sessionPersistence.list()`，`filterSupervisorSessionIds` 过滤 subagent / 非 main-agent preset /已归档 / 重复），逐会话 `ctx.waterfall('schedule/resolve-agent', id)` 挂载，挂不上就记 `unresolved` 并 warn（不再静默丢），租约过期直接补一条 `after_seconds:1` 唤醒并往`progress.jsonl` 记 `wake-recovered`，同一批启动的后续扫描按 `recoveredAt` 去重；重试节奏 3s/20s/60s/180s/600s 全部 `unref()`（不 unref 会让加载了插件的短命进程跑完不退—— `spawn-tool.test.mjs` 就是这么被挂住的）。顺带修掉自己挖的坑：`readLoopState` 是逐键白名单投影，新字段只写不读会让「写盘成功但判断永不成立」，已在 `EMPTY_STATE` 与解析分支同时补上。测试 520 → **528 通过 / 2 跳过 / 0 失败 / 530 项 / 46 个文件** |
 | 0.22.3 | 修掉 0.22.2 留给自己的一处漏判：**watchdog 把「监督者」硬编码成 `main-agent`**。路由层（`lib/index.js` 的 `countsAsSupervisor`）早就按「内置那档 + 设置里打开的 preset」判断，watchdog 这边却还写着 `sessionAgentPreset(session) !== 'main-agent'` —— 于是会话跑在 `cordis` 这类已打开监督循环的 preset 上时，`pre-step` 每次都被这道守卫挡回去，`.agi/loop-state.*` 与 `BRIEF.md` 一块都不写，`/supervisor/loop` 回报 `watchdog.armed=false`、`reminders=[]`：重启看就是「循环静默停住」，而设置面板说它是开着的。现在两处守卫（`pre-step`、冷启动 `filterSupervisorSessionIds`）都从活的设置里取集合（新导出 `deriveSupervisorPresets`，`main-agent` 永远在内），`ensureBootSweep` 与守卫共用同一份口径；设置面板勾选立即生效，不用重启。测试 530 → **530 通过 / 2 跳过 / 0 失败 / 532 项 / 46 个文件** |
 | 0.22.4 | 修掉**兜底提醒从没真正排上过**——三个 `schedule` 调用点全按旧签名写，而宿主早已换接口：`create(sessionId, request)` → `create(request, actorSessionId, signal)`（目标写进 `request.target`）、`delete({sessionId,id})` 整个方法被 `edit({id, action:'delete'})` 取代、`list({sessionId})` 变成只认分页不认会话。三处都在 `try/catch` 里，于是失败只剩一行 warn，循环停下来时没有任何东西会报告——这正是「重启后永远停在任务已停止」的最后一环。新增 `lib/schedule-compat.js` 按**能力探测**选签名（`edit`/`catalog` 存在即新版），不信版本号也不猜 `fn.length`（被装饰器包过的参数个数不可信）；`listSessionReminders` 用 `catalog()` 拉全表后按 `target.kind==='session' && target.sessionId` 归并（`new_once` 等开新会话的任务不算自己的），撤提醒走 `edit`/`delete` 双形态，秒数夹到 ≥1 防「零间隔自唤醒」。新增 `tests/schedule-compat.test.mjs` 8 条专测两代签名各自被选中、且不碰别的会话。测试 532 → **538 通过 / 2 跳过 / 0 失败 / 540 项 / 47 个文件** |
+| 0.22.5 | 0.22.4 的 `timing` 少一个判别键，arm 仍然静默失败：宿主 `validateTiming` 要求恰好 `{ kind, 对应选择器 }` 两个键（`if (!(value.kind in selectors) || !hasExactKeys(value, ['kind', selectors[value.kind]])) throw new ScheduleInputError('invalid_rule', ...)`），而适配层发的是裸 `{ after_seconds }` —— 又一次被 `try/catch` 吞成 warn，于是「签名修好了却还是不 arm」。改成 `{ kind: 'after', after_seconds: N }`；`tests/schedule-compat.test.mjs` 新增一条**复刻宿主 `validateTiming`** 的回归（`requireHostTiming` 逐键比对），把这个形状钉死，改坏本地就红。同时给这类失败加了可观测出口：arm 失败时除了 warn，还往 `.agi/progress.jsonl` 记一条 `wake-arm-failed`（含 `session`、`seconds`、`error`），否则「旁路失败」只能靠人肉怀疑才查得到。测试 **539 通过 / 2 跳过 / 0 失败 / 541 项 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 
