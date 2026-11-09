@@ -719,3 +719,109 @@ test('pre-step 不再硬编码 main-agent：设置里打开的那档照样开始
   const state = readLoopState(cwd, sessionKeyOf(agent.session))
   assert.ok(state.leaseExpiresAt > 0, 'cordis 会话也必须留下 lease')
 })
+
+/** 心跳用例的落盘准备：一个已经过期、还没被扫描救回来的 lease。 */
+async function seededLease(cwd, sessionId, patch = {}) {
+  const { writeLoopState } = await import('../lib/loop-journal.js')
+  const now = Date.now()
+  const key = sessionId.replace(/[^a-zA-Z0-9]/g, '').slice(-8)
+  writeLoopState(cwd, {
+    lastArmAt: now - 7_300_000,
+    leaseExpiresAt: now - 7_200_000,
+    ...patch,
+  }, key)
+  return key
+}
+
+test('心跳发现运行中漏投：lease 过期就补一条 1 秒后的提醒', async () => {
+  const { ensureLeaseHeartbeat } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-heartbeat-'))
+  const header = { id: 'session-crash', version: 4, cwd, agentPreset: 'main-agent' }
+  const { ctx, calls } = bootCtx({ headers: [header], cwd })
+  const key = await seededLease(cwd, 'session-crash')
+
+  const stop = ensureLeaseHeartbeat(ctx, quietLog, { intervalMs: 10 })
+  await new Promise(resolve => setTimeout(resolve, 80))
+  stop()
+
+  assert.ok(
+    calls.includes('create:session-crash:1'),
+    `过期 lease 必须补一条立刻到期的提醒，实际调用：${calls.join(',')}`,
+  )
+  const { readLoopState } = await import('../lib/loop-journal.js')
+  const state = readLoopState(cwd, key)
+  assert.ok(state.recoveredAt > 0, '补过之后要记下 recoveredAt，避免连环唤醒')
+  const events = readFileSync(join(cwd, '.agi', 'progress.jsonl'), 'utf8')
+  assert.ok(events.includes('wake-heartbeat'), '补唤醒必须留痕，不能只写 stderr')
+  assert.ok(readFileSync(join(cwd, '.agi', 'progress.jsonl'), 'utf8').includes('wake-heartbeat'))
+})
+
+test('心跳不重复补：已经有排着的兜底提醒就闭嘴', async () => {
+  const { ensureLeaseHeartbeat } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-heartbeat-pending-'))
+  const header = { id: 'session-waiting', version: 4, cwd, agentPreset: 'main-agent' }
+  const { ctx, calls } = bootCtx({ headers: [header], cwd })
+  ctx.get('schedule').list = async () => [
+    {
+      id: 'kept',
+      title: WATCHDOG_TITLE,
+      scheduledAt: new Date(Date.now() + 60_000).toISOString(),
+      involvedSessionIds: ['session-waiting'],
+    },
+  ]
+  await seededLease(cwd, 'session-waiting')
+
+  const stop = ensureLeaseHeartbeat(ctx, quietLog, { intervalMs: 10 })
+  await new Promise(resolve => setTimeout(resolve, 80))
+  stop()
+
+  assert.equal(calls.filter(call => call.startsWith('create:')).length, 0, '排着的提醒不是漏投')
+})
+
+test('心跳尊重 paused：空转停下的循环不该被它偷偷拉起来', async () => {
+  const { ensureLeaseHeartbeat } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-heartbeat-paused-'))
+  const header = { id: 'session-paused', version: 4, cwd, agentPreset: 'main-agent' }
+  const { ctx, calls } = bootCtx({ headers: [header], cwd })
+  await seededLease(cwd, 'session-paused', { pausedBy: 'idle' })
+
+  const stop = ensureLeaseHeartbeat(ctx, quietLog, { intervalMs: 10 })
+  await new Promise(resolve => setTimeout(resolve, 80))
+  stop()
+
+  assert.equal(calls.filter(call => call.startsWith('create:')).length, 0)
+})
+
+test('目标被空转判停后退到待机巡检：降频但不撤岗', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-standby-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const { ctx, calls, agent, log } = loopCtx({ goal: { id: 'g1', phase: 'blocked', revision: 1 } })
+  agent.session.header.cwd = cwd
+  const outcome = await reconcileLoop(ctx, agent, log)
+  assert.equal(outcome.action, 'arm')
+  assert.equal(outcome.wake.reason, 'idle-standby')
+  assert.ok(
+    calls.some(call => String(call).endsWith(`:${MAX_IDLE_SECONDS}`)),
+    `待机巡检必须排在 MAX_IDLE_SECONDS 之后，实际：${calls.join(',')}`,
+  )
+  const state = readLoopState(cwd, agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8))
+  assert.ok(state.leaseExpiresAt >= Date.now() + MAX_IDLE_SECONDS * 1000 - 5_000)
+})
+
+test('写了 NOTES 就算有产出：不该被当成空转判停', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-activity-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  // 只有进度日志是很久以前的；NOTES 是刚写的。
+  writeFileSync(join(cwd, '.agi', 'progress.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 3 * 3600_000).toISOString() })}\n`)
+  writeFileSync(join(cwd, '.agi', 'NOTES.md'), '# 笔记\n')
+  const { ctx, calls, agent, log } = loopCtx({ goal: { id: 'g1', phase: 'active', revision: 1 } })
+  agent.session.header.cwd = cwd
+  const outcome = await reconcileLoop(ctx, agent, log)
+  assert.ok(!calls.includes('block'), `有产出时不该判停，实际：${calls.join(',')}`)
+  assert.notEqual(outcome.action, 'block')
+})

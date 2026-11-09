@@ -29,6 +29,7 @@
 | --- | --- | --- | --- |
 | `.agi/config.json` | —（用户所有，插件只读） | `lib/index.js` | 改它必须由用户来；插件只能提议。 |
 | `.agi/GOAL_AMENDMENTS.md` | —（agent / 用户写） | `lib/index.js` | 目标锁定期间的纠偏记录。 |
+| `.agi/changelog.md` | —（agent 写完更时追加） | `lib/watchdog.js`（活跃信号只看 mtime，不读内容） | 与 NOTES 一样只是「有产出」的证据，插件不解析它。 |
 | `.agi/NOTES.md` | —（agent 写） | `lib/index.js` | 打底笔记。 |
 | `.agi/MISSION_REPORT.md` | —（agent 写） | `lib/index.js` | 收尾报告。 |
 
