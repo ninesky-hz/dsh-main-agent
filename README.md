@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.11**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.22.12**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -185,6 +185,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.9 | 0.22.8 之后还剩最后一个洞：**心跳不看目标状态**。`ensureLeaseHeartbeat` 只判 `leaseExpiresAt` 是否过期，而 `complete` 之后 lease 只是历史残留 —— 于是目标收工 5 分钟（`planned` 宽限）后，心跳把残留当「漏投」，补一条 1 秒提醒，把已经结束的循环又拉起来（实测 `wake-heartbeat` 记了 `overdueSeconds:8`，随后投递拉起一轮）。改成**只守 `active`**：`phase` 既非 `active` 也非 `blocked` 时把 `lastArmAt`/`leaseExpiresAt`/`recoveredAt` 三个键一并清掉（不清就等下一个进程再被它叫醒一次）；`blocked` 归 30 分钟待机巡检管，心跳不插 1 秒提醒，否则刚做的降频会被顶回每轮重排。顺带堵住叠装：插件被装两次（或热重载叠了一层）时两个计时器会并发跑到同一会话上，两边都还没写 `recoveredAt` 就各建一条提醒（实测 16ms 内两条 `wake-heartbeat`），加模块级 `beating` 闸门把一拍串起来。测试 **548 通过 / 2 跳过 / 0 失败 / 550 项 / 47 个文件** |
 | 0.22.10 | 同一毫秒 5 条 `wake-stale` 暴露了叠装：同一个 ctx 被装多份（热重载叠了一层、多 preset 作用域各装一份）时，每份 `pre-step` 监听都收到同一次回调，而「20 秒窗口」写在安装闭包里、互相看不见 —— 于是一次回合并发跑 5 遍巡检、写 5 遍 `BRIEF`、arm 5 次再删 5 次。窗口改成模块级（`lastReconcileAt` + `RECONCILE_WINDOW_MS`），跨安装共享；新增一条测试：连装两份、同一拍各调一次，断言只 `create` 一次。测试 **549 通过 / 2 跳过 / 0 失败 / 551 项 / 47 个文件** |
 | 0.22.11 | 0.22.10 只挡住了 `pre-step` 的重复巡检，**冷启动扫描还在被放大**：三个 preset 作用域各装一份插件，三份都排了同样的退避链（3s/20s/60s/180s/600s），启动瞬间对同一会话并发扫三遍 —— 实测重启后三秒内三条 `goal-stopped`（`22.087Z` / `22.965Z` / `25.394Z`），而本轮 `pre-step` 只有一条（`51.672Z`），正好印证窗口修对了、扫描还没修。修法同样是模块级：`lastRecoverAt` 按会话 id 记时刻，10 秒内扫过就不再扫（门要大于三份安装的启动抖动 3.3s、又要小于 20s 那一档退避，取 10s）。测试 **549 通过 / 2 跳过 / 0 失败 / 551 项 / 47 个文件** |
+| 0.22.12 | 修掉**中文续行请求不进守卫**。`isLongRunningContinuation()` 只认英文 `start\|resume\|continue\|restart\|proceed\|carry on\|keep going/working`，而 persona（`agent-presets/main-agent/agent.cordis.yml:72`、`presets/main-agent.patch.yml:87`）早已**用中文**承诺「对于每一次要求开始、恢复或继续长期任务的直接人类请求，都要先调用 `get_goal`」——于是中文用户说「继续这个长期任务」时整条守卫失效：watchdog 已把 goal 停在 `blocked`（实测 `blockedReason.code:'idle'`、`activation:'disarmed'`），agent 看起来却还在推进。这不是设计取舍，是实现与契约不一致。难点在中文没有词边界、`\b` 完全失效，而单论「有动作词」会把「继续看看这个文件」「恢复一下」「重启服务看看」也锁进只读白名单（那条白名单只放 `get_goal`/`start_goal`/`read`/`glob`/`grep` 与几个记忆工具，误锁比漏判更糟）。所以中文走**动作词 AND mission 词共现**：`CONTINUATION_ACTION_CJK`（继续/恢复/接着做/启动/重启…）且 `CONTINUATION_MISSION_CJK`（任务/目标/长期/常驻/循环/监督/goal/mission/supervisor…）。英文路径语义一行未动，`hasDurableMission` 的既有优先级不变。已知代价：「恢复任务列表」这类短语会命中，代价仅为多一次 `get_goal` + 一次 `read`，不阻断。测试从「先写失败用例确认缺陷」起步，`tests/goal-policy.test.mjs` 10 例全绿并覆盖反例（继续看看这个文件 / 恢复一下 / 接着做下一项 / 这个长期任务进展如何）。测试 551/47 → **554 项 / 552 通过 / 2 跳过 / 0 失败 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 

@@ -136,3 +136,83 @@ test('preset requires bounded recovery and a durable continuation path', async (
   assert.match(preset, /不要只用提醒\n\s+去模拟一个常驻循环/)
   assert.match(preset, /就安排一条有界的稍后重试/)
 })
+
+test('continuation detection accepts Chinese only when an action word and a mission word co-occur', () => {
+  // 中文没有词边界，不能照搬英文的 \b 规则：单独一个「继续」会把
+  // 「继续看看这个文件」这类日常请求也锁进只读白名单。共现规则比 \b 更严。
+  for (const text of ['继续这个长期任务', '恢复任务', '接着做这个 goal', '继续 mission', '重启监督循环']) {
+    assert.equal(isLongRunningContinuation(text), true, text)
+    assert.equal(isLongRunningContinuation(text, true), true, text)
+    // 一旦判定为续行，写操作必须先过 goal 检查 —— 这正是中文会话原先漏掉的闸门。
+    assert.equal(continuationToolDecision({
+      text,
+      hasDurableMission: true,
+      goalPhase: undefined,
+      toolName: 'bash',
+      goalChecked: false,
+    }), 'deny-unarmed', `${text} 必须进闸门`)
+  }
+  // 只有动作词、没有 mission 词 —— 即使 .agi/GOAL.md 存在也不进守卫。
+  for (const text of ['继续', '继续看看这个文件', '恢复一下', '接着做下一项']) {
+    assert.equal(isLongRunningContinuation(text, true), false, text)
+  }
+  // 只有 mission 词、没有动作词也不进守卫。
+  assert.equal(isLongRunningContinuation('这个长期任务进展如何', true), false)
+  // 英文语义保持不变。
+  for (const text of ['resume', 'keep going', 'proceed with it', 'carry on']) {
+    assert.equal(isLongRunningContinuation(text, true), true, text)
+  }
+  assert.equal(isLongRunningContinuation('the long-running mission', true), false)
+  assert.equal(isLongRunningContinuation('continue reading this paragraph'), false)
+})
+
+test('workspace grounding rejects plain .md notes, generated trees, and empty paths', () => {
+  // 真实踩坑点：计划文档不叫 README、名字里没有 RUNBOOK/TOOL/SCRIPT，
+  // 扩展名也不是脚本 —— 只读它不能满足 start_goal 之前的接地要求。
+  assert.equal(isWorkspaceGroundingPath('IMPLEMENTATION_PLAN.md'), false)
+  assert.equal(isWorkspaceGroundingPath('docs/ARCHITECTURE.md'), false)
+  assert.equal(isWorkspaceGroundingPath('.agi/NOTES.md'), false)
+  assert.equal(isWorkspaceGroundingPath('.agi/subagents/abc/outcome.md'), false)
+  // 生成物与依赖树一律排除，哪怕扩展名合格。
+  assert.equal(isWorkspaceGroundingPath('node_modules/pkg/index.js'), false)
+  assert.equal(isWorkspaceGroundingPath('.git/hooks/pre-commit'), false)
+  assert.equal(isWorkspaceGroundingPath('browser/.venv/bin/activate.py'), false)
+  // 空值与非字符串不崩溃，直接不算。
+  assert.equal(isWorkspaceGroundingPath(''), false)
+  assert.equal(isWorkspaceGroundingPath(undefined), false)
+  // 仓库里真正的脚本与源码算数；Windows 反斜杠先归一化。
+  assert.equal(isWorkspaceGroundingPath('scripts/inject-supervisor.mjs'), true)
+  assert.equal(isWorkspaceGroundingPath('scripts\\sync-preset-patch.mjs'), true)
+  assert.equal(isWorkspaceGroundingPath('lib/goal.js'), true)
+})
+
+test('continuation policy gates paused updates, completed goals, and grounding hoisting', () => {
+  const base = {
+    text: 'continue our quest',
+    hasDurableMission: true,
+    goalPhase: undefined,
+    goalChecked: false,
+  }
+  // paused 之下 update_goal 仍要先查 goal，查过才放行。
+  assert.equal(continuationToolDecision({ ...base, goalPhase: 'paused', toolName: 'update_goal' }), 'require-goal-check')
+  assert.equal(continuationToolDecision({ ...base, goalPhase: 'paused', goalChecked: true, toolName: 'update_goal' }), 'allow')
+  // complete 不是 active：写操作继续被拦，必须重新 start_goal。
+  assert.equal(continuationToolDecision({ ...base, goalPhase: 'complete', toolName: 'bash' }), 'deny-unarmed')
+  assert.equal(continuationToolDecision({ ...base, goalPhase: 'complete', goalChecked: true, toolName: 'start_goal' }), 'allow')
+  // 其余白名单工具不因未查 goal 而被拦 —— 勘察本身就是被鼓励的第一步。
+  for (const name of ['get_goal', 'read', 'glob', 'grep', 'mnemon_recall']) {
+    assert.equal(continuationToolDecision({ ...base, toolName: name }), 'allow', name)
+  }
+  // workspaceGroundingRequired 为假时，grounded 与否都不额外设卡。
+  assert.equal(continuationToolDecision({
+    ...base, goalChecked: true, toolName: 'start_goal', workspaceGroundingRequired: false, workspaceGrounded: false,
+  }), 'allow')
+  // 接地已达成时，即便 required 也不再拦。
+  assert.equal(continuationToolDecision({
+    ...base, goalChecked: true, toolName: 'start_goal', workspaceGroundingRequired: true, workspaceGrounded: true,
+  }), 'allow')
+  // 非续行请求完全不受影响。
+  assert.equal(continuationToolDecision({
+    text: 'what changed in the config?', hasDurableMission: true, goalPhase: undefined, toolName: 'bash', goalChecked: false,
+  }), 'unrestricted')
+})
