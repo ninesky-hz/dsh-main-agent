@@ -897,6 +897,49 @@ test('目标完成后不再待机：complete 是终点，不是等人', async ()
   assert.equal(state.pausedBy, undefined, '完成的目标不该留着「空转停过」的痕迹')
 })
 
+// 真机暴露过的问题：complete 分支主动把 `pausedBy` 擦成 undefined，而紧接着的判重
+// 恰好用 `pausedBy === undefined` —— 两段争同一个字段，于是每跑一次 reconcile 就
+// 重写一条 `goal-stopped`。实测重启后 09:44:57 与 09:45:27 各一条，间隔正好是冷启动
+// 退避的 20s 档，看起来像「退避链又扫了一遍」，实际是去重键被自己擦掉了。
+test('收尾事件只记一条：擦掉 idle 痕迹不该把去重键一起擦掉', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState, writeLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-stopped-once-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const { ctx, agent, log } = loopCtx({ goal: { id: 'g1', phase: 'complete', revision: 2 } })
+  agent.session.header.cwd = cwd
+  const key = agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8)
+  await writeLoopState(cwd, { pausedBy: 'idle' }, key)
+
+  await reconcileLoop(ctx, agent, log)
+  await reconcileLoop(ctx, agent, log)
+  await reconcileLoop(ctx, agent, log)
+
+  const stopped = readFileSync(join(cwd, '.agi', 'progress.jsonl'), 'utf8')
+    .split('\n')
+    .filter(line => line.includes('goal-stopped'))
+  assert.equal(stopped.length, 1, `收尾事件只该记一条，实际 ${stopped.length} 条`)
+  const state = readLoopState(cwd, key)
+  assert.equal(state.pausedBy, undefined, 'complete 仍要把 idle 痕迹擦干净')
+  assert.equal(state.stoppedPhase, 'complete', '去重键要落盘，否则下次启动还会重写')
+})
+
+test('新目标开工清掉收尾标记：同一个工作区之后停下来还能再记一条', async () => {
+  const { reconcileLoop } = await import('../lib/watchdog.js')
+  const { readLoopState, writeLoopState } = await import('../lib/loop-journal.js')
+  const cwd = mkdtempSync(join(tmpdir(), 'dsma-stopped-again-'))
+  writeFileSync(join(cwd, 'GOAL.md'), '# 目标\n')
+  mkdirSync(join(cwd, '.agi'), { recursive: true })
+  const { ctx, agent, log } = loopCtx({ goal: { id: 'g2', phase: 'active', revision: 3 } })
+  agent.session.header.cwd = cwd
+  const key = agent.session.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8)
+  await writeLoopState(cwd, { stoppedPhase: 'complete' }, key)
+
+  await reconcileLoop(ctx, agent, log)
+  assert.equal(readLoopState(cwd, key).stoppedPhase, undefined, '新目标开工要清掉上一轮的收尾标记')
+})
+
 test('叠装两份监听只巡检一次：窗口是模块级的，不跟着安装走', async () => {
   const { installLoopWatchdog } = await import('../lib/watchdog.js')
   const cwd = mkdtempSync(join(tmpdir(), 'dsma-dedupe-'))
