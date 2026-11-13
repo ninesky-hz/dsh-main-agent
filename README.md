@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.22.13**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.23.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.1）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.2）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -187,6 +187,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.11 | 0.22.10 只挡住了 `pre-step` 的重复巡检，**冷启动扫描还在被放大**：三个 preset 作用域各装一份插件，三份都排了同样的退避链（3s/20s/60s/180s/600s），启动瞬间对同一会话并发扫三遍 —— 实测重启后三秒内三条 `goal-stopped`（`22.087Z` / `22.965Z` / `25.394Z`），而本轮 `pre-step` 只有一条（`51.672Z`），正好印证窗口修对了、扫描还没修。修法同样是模块级：`lastRecoverAt` 按会话 id 记时刻，10 秒内扫过就不再扫（门要大于三份安装的启动抖动 3.3s、又要小于 20s 那一档退避，取 10s）。测试 **549 通过 / 2 跳过 / 0 失败 / 551 项 / 47 个文件** |
 | 0.22.12 | 修掉**中文续行请求不进守卫**。`isLongRunningContinuation()` 只认英文 `start\|resume\|continue\|restart\|proceed\|carry on\|keep going/working`，而 persona（`agent-presets/main-agent/agent.cordis.yml:72`、`presets/main-agent.patch.yml:87`）早已**用中文**承诺「对于每一次要求开始、恢复或继续长期任务的直接人类请求，都要先调用 `get_goal`」——于是中文用户说「继续这个长期任务」时整条守卫失效：watchdog 已把 goal 停在 `blocked`（实测 `blockedReason.code:'idle'`、`activation:'disarmed'`），agent 看起来却还在推进。这不是设计取舍，是实现与契约不一致。难点在中文没有词边界、`\b` 完全失效，而单论「有动作词」会把「继续看看这个文件」「恢复一下」「重启服务看看」也锁进只读白名单（那条白名单只放 `get_goal`/`start_goal`/`read`/`glob`/`grep` 与几个记忆工具，误锁比漏判更糟）。所以中文走**动作词 AND mission 词共现**：`CONTINUATION_ACTION_CJK`（继续/恢复/接着做/启动/重启…）且 `CONTINUATION_MISSION_CJK`（任务/目标/长期/常驻/循环/监督/goal/mission/supervisor…）。英文路径语义一行未动，`hasDurableMission` 的既有优先级不变。已知代价：「恢复任务列表」这类短语会命中，代价仅为多一次 `get_goal` + 一次 `read`，不阻断。测试从「先写失败用例确认缺陷」起步，`tests/goal-policy.test.mjs` 10 例全绿并覆盖反例（继续看看这个文件 / 恢复一下 / 接着做下一项 / 这个长期任务进展如何）。测试 551/47 → **554 项 / 552 通过 / 2 跳过 / 0 失败 / 47 个文件** |
 | 0.22.13 | 0.22.11 修掉了冷启动扫描的并发放大，但**收尾事件还在重复写**：部署 0.22.12 后重启，`.agi/progress.jsonl` 又出现两条 `goal-stopped`（`09:44:57.886Z` / `09:45:27.938Z`，间隔 30 秒），两条都写「目标已 complete」。根因不是退避链，而是 `lib/watchdog.js` 的 clear 分支里**两段代码争同一个字段**：`complete` 分支先把 `pausedBy` 擦成 `undefined`（否则下次启动会被 `pausedBy:'idle'` 误判成「停在等人」，这是 0.22.8 钉住的契约），紧接着的判重又恰好用 `pausedBy === undefined` —— 擦掉即判重成立，于是每跑一次 reconcile 就重写一条收尾事件并回写 `pausedBy:'goal-complete'`。修法是把**去重键独立成 `stoppedPhase`**（`lib/loop-journal.js` 的 `EMPTY_STATE` 与 `readLoopState`），`pausedBy` 的语义和清理契约一字未动；`goalActive` 时连同 `stoppedPhase` 一起清掉，否则同一个工作区下一次停下来会被永久吞掉。测试是**先证明能抓回归**再收工的：把 `lib/` 回退到 0.22.12 再跑，新用例「收尾事件只记一条」当场变红（`expected: 'complete'`），恢复实现后转绿。测试 554/47 → **556 项 / 554 通过 / 2 跳过 / 0 失败 / 47 个文件** |
+| 0.23.0 | 兼容 **dsh 0.2.2-rc.2**，同时保留 0.2.1 可用。rc.2 把 `ctx.subagents` 换了一代：`startActivation(spec)` 的 `prompt`/`parent`/`maxDepth` 从 `spec.request` **平铺到 spec 顶层**（并新增可选 `name`），`listChildren`/`drainChildren` 两个方法**整个删掉**（只剩 `listDescendants(root, signal)` 与 `drainDescendants(parents)`，后者语义是停整棵树）。升级前那版插件会派生即 `TypeError`（`spec.parent.id`）、并行上限与 Full stop 直接抛「服务不兼容」，而 watchdog 走的是 `?.listChildren` 可选链 —— 于是 worker 状态永远显示「未知」、停滞回收永不触发，**静默降级比报错更难发现**。修法是把 `lib/subagent-compat.js` 做成唯一接缝：`resolveSubagentGeneration()` 认代（`drainDescendants`/`listDescendants` 在 → `'0.2.2'`，`drainChildren`/`listChildren` 在 → `'0.2.1'`），`startWorker()` 按代给扁平或嵌套 spec，`listChildrenOf()` 在 rc.2 上取 `listDescendants` 再筛 `depth === 1`、在 rc.1 上原样透传，`listDescendantsOf()` 在 rc.1 上以 `listChildren` 做 BFS 重建（只对 `mode === 'continuable'` 下钻，行补 `parentId`/`depth`），`drainWorkers()` 在 rc.2 上换成 `drainDescendants([parent])`。能力探针不再要求「六个方法全在」，而是分成核心组与两组**二选一**，缺哪组就点名哪个能力；`/supervisor/health` 与 workers 路由都多报一个 `generation`。顺带修掉 rc.1 下的真 bug：`list_agents` 的 `descendants` 作用域原先直接调 `listDescendants`，而 0.2.1 根本没有这个方法。证据不是读 d.ts 推的：在 `/tmp/probe-rc2` 装真 rc.2 后探测实跑对象，`listChildren=undefined drainChildren=undefined`、`listDescendants=function drainDescendants=function`；`startActivation` 的读取顺序见 `dsh-subagent/lib/index.js:3018-3024`。注意本机安装被 `dsh-purge` 打过 74/76 个补丁（含 `dsh-subagent/lib/index.js`），升 rc.2 会覆盖，装完要重跑 `purge_apply` 再重启。测试 556/47 → **564 项 / 562 通过 / 2 跳过 / 0 失败 / 47 个文件** |
 
 ## 在新 PC 上运行本地课程
 

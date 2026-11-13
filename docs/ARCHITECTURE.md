@@ -29,7 +29,7 @@
 
 ## 模块表
 
-`lib/` 有 26 个文件、204 处 `export` 声明（去重后 188 个不同名字）。「被谁用」只算
+`lib/` 有 26 个文件、211 处 `export` 声明（去重后 195 个不同名字）。「被谁用」只算
 真实的 `import` 方与 preset 挂载行 —— 一个都没有的那几个是宿主入口，宿主不是通过
 `import` 进来的。
 
@@ -56,7 +56,7 @@
 | `settlement.js` | 收敛消息富化：worker 停下来的那一句该说什么 | `enrichSettlementMessages` `installSettlementDiagnostics` `terminalFailureAt` | `lib/spawn.js` |
 | `spawn.js` | settings 守卫下的 `subagent` 工具：模型白名单、并发上限、后台 job | `apply` `name` `inject` `Config` | preset 行 `dsh-main-agent/spawn` |
 | `stage.js` | worker stage 分类（first-match-wins）与标签渲染 | `workerStage` `renderStageLabel` `canRetry` | `lib/loop-journal.js` |
-| `subagent-compat.js` | `ctx.subagents` 的单一接缝 + 能力探针（0.2.x 兼容） | `startWorker` `drainWorkers` `subagentCompatible` `missingSubagentMethods` | `lib/index.js` `lib/spawn.js` `lib/watchdog.js` |
+| `subagent-compat.js` | `ctx.subagents` 的单一接缝 + 能力探针：0.2.1（嵌套 request / listChildren）与 0.2.2（扁平 spec / listDescendants）同时适配 | `startWorker` `drainWorkers` `listChildrenOf` `listDescendantsOf` `resolveSubagentGeneration` `subagentCompatible` `missingSubagentMethods` | `lib/index.js` `lib/spawn.js` `lib/watchdog.js` `lib/list-agents.js` |
 | `supervise.js` | 监督层人格的纯函数改写：compose / strip / sync / remount | `composeSupervisorPersona` `stripSupervisorLayer` `syncSupervisedLayer` `remountPreset` | `lib/index.js` `lib/preset-files.js`；`scripts/verify-persona-compose.mjs` |
 | `tool-inventory.js` | 角色 → 工具面的正面表；「worker 零工具」是它的结论，不是旁注 | `ROLES` `TOOL_MATRIX` `listToolsFor` `toolsFor` | 只有 `tests/tools-doc.test.mjs` 读它（[TOOLS.md](TOOLS.md) 的核对基准） |
 | `watchdog.js` | 服务端循环兜底：提醒簿记、stale 回收、BRIEF 重排；重启后按磁盘枚举补齐错过的唤醒 | `reconcileLoop` `activeReminders` `installLoopWatchdog` `recoveryTargets` `filterSupervisorSessionIds` `ensureLoopRecovered` `ensureBootSweep` | `lib/index.js` `lib/spawn.js` |
@@ -107,7 +107,7 @@
 | `spawn-tool.test.mjs` | `subagent` 工具层：0.2.x 参数兼容与并发上限 |
 | `stage.test.mjs` | stage 的 first-match-wins 顺序与标签 |
 | `state-ownership.test.mjs` | [STATE.md](STATE.md) 与源码里的写者双向核对 |
-| `subagent-compat.test.mjs` | 0.2.1 接缝契约与能力探针的降级行为 |
+| `subagent-compat.test.mjs` | 0.2.1 / 0.2.2 双代接缝契约、扁平与嵌套 spec、目录回退与能力探针的降级行为 |
 | `supervise-anchors.test.mjs` | 监督层 4 个锚点的判定 |
 | `supervise-layer.test.mjs` | 监督层纯改写的幂等与回滚 |
 | `supervise-persona-compose.test.mjs` | 人格叠加：dev agent + 监督层不互相吃掉 |

@@ -18,13 +18,20 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
 import {
+  CATALOG_METHODS,
+  CORE_METHODS,
+  DRAIN_METHODS,
   LEDGER_STALE_MS,
   REQUIRED_METHODS,
   childIsRunning,
   continuableChildIds,
   drainWorkers,
+  hasCatalog,
+  listChildrenOf,
+  listDescendantsOf,
   missingSubagentMethods,
   openWorkerCount,
+  resolveSubagentGeneration,
   runningChildIds,
   startWorker,
   subagentCompatible,
@@ -55,6 +62,34 @@ function hostService(overrides = {}) {
   return { ctx: { subagents: service }, calls }
 }
 
+/**
+ * A service that speaks the 0.2.2 contract (dsh 0.2.2-rc.2): the activation
+ * spec is flat, the catalog reads descendants, and release takes parents.
+ */
+function rc2Service(overrides = {}) {
+  const calls = []
+  const service = {
+    startActivation: async spec => {
+      calls.push(['startActivation', spec])
+      return {
+        childId: spec.childId ?? 'child-2',
+        name: 'agent-2',
+        result: Promise.resolve({ ok: true }),
+        dispose: async () => {},
+      }
+    },
+    drainDescendants: async parents => {
+      calls.push(['drainDescendants', parents])
+    },
+    listDescendants: async () => [],
+    sendMessage: async () => {},
+    interrupt: async () => {},
+    getProvider: () => ({ name: 'spawn' }),
+    ...overrides,
+  }
+  return { ctx: { subagents: service }, calls }
+}
+
 const REQUEST = { prompt: [{ type: 'text', text: 'do it' }], parent: 'parent-session' }
 
 test('a live 0.2.x service reports no missing methods', () => {
@@ -64,24 +99,57 @@ test('a live 0.2.x service reports no missing methods', () => {
   assert.equal(subagentIncompatibilityMessage(ctx), undefined)
 })
 
-test('the removed 0.1 API is reported by name, not invoked', () => {
+test('a host with neither catalog nor release API is reported by name, not invoked', () => {
   // Exactly what dsh-subagent 0.1 exposed.
   const { ctx } = hostService({})
   delete ctx.subagents.startActivation
   delete ctx.subagents.drainChildren
-  const missing = missingSubagentMethods(ctx)
-  assert.deepEqual(missing, ['startActivation', 'drainChildren'])
-  assert.deepEqual(missingSubagentMethods(ctx), REQUIRED_METHODS.filter(m => missing.includes(m)))
+  delete ctx.subagents.listChildren
+  assert.deepEqual(missingSubagentMethods(ctx), [
+    'startActivation',
+    'listChildren 或 listDescendants',
+    'drainChildren 或 drainDescendants',
+  ])
 
   const message = subagentIncompatibilityMessage(ctx)
   assert.match(message, /startActivation/)
-  assert.match(message, /drainChildren/)
+  assert.match(message, /listDescendants/)
   assert.match(message, /0\.2\.x/)
 })
 
+test('the alternative groups are what makes one generation enough', () => {
+  // A 0.2.2 host has no listChildren/drainChildren at all, yet nothing the
+  // plugin calls is missing; a 0.2.1 host that only loses its release API
+  // names exactly that capability, not a method.
+  assert.deepEqual(CATALOG_METHODS, ['listDescendants', 'listChildren'])
+  assert.deepEqual(DRAIN_METHODS, ['drainDescendants', 'drainChildren'])
+  assert.deepEqual(CORE_METHODS, ['startActivation', 'sendMessage', 'interrupt', 'getProvider'])
+  assert.equal(REQUIRED_METHODS.length, CORE_METHODS.length + CATALOG_METHODS.length + DRAIN_METHODS.length)
+
+  const { ctx } = hostService()
+  delete ctx.subagents.drainChildren
+  assert.deepEqual(missingSubagentMethods(ctx), ['drainChildren 或 drainDescendants'])
+})
+
+test('both host generations are compatible and named by their shape', () => {
+  const rc1 = hostService().ctx
+  const rc2 = rc2Service().ctx
+  assert.equal(resolveSubagentGeneration(rc1), '0.2.1')
+  assert.equal(resolveSubagentGeneration(rc2), '0.2.2')
+  assert.equal(resolveSubagentGeneration({}), undefined)
+  assert.deepEqual(missingSubagentMethods(rc2), [])
+  assert.equal(subagentCompatible(rc2), true)
+  assert.equal(hasCatalog(rc1), true)
+  assert.equal(hasCatalog(rc2), true)
+  assert.equal(hasCatalog({}), false)
+})
+
 test('a missing service is incompatible rather than fatal at probe time', () => {
-  assert.deepEqual(missingSubagentMethods({}), [...REQUIRED_METHODS])
-  assert.deepEqual(missingSubagentMethods(undefined), [...REQUIRED_METHODS])
+  const missing = missingSubagentMethods({})
+  assert.deepEqual(missing.slice(0, CORE_METHODS.length), CORE_METHODS)
+  assert.ok(missing.includes('listChildren 或 listDescendants'))
+  assert.ok(missing.includes('drainChildren 或 drainDescendants'))
+  assert.deepEqual(missingSubagentMethods(undefined), missing)
   assert.equal(subagentCompatible({}), false)
 })
 
@@ -121,6 +189,103 @@ test('foreground workers use delivery "caller" and omit an unset childId', async
   assert.equal('childId' in spec, false)
 })
 
+test('a 0.2.2 host gets the activation spec flat, with no nested request', async () => {
+  const { ctx, calls } = rc2Service()
+  const started = await startWorker(ctx, {
+    provider: 'spawn',
+    label: 'audit the plugin',
+    name: 'audit-1',
+    childId: 'fixed-child',
+    request: REQUEST,
+    signal: undefined,
+    mode: 'background',
+  })
+
+  const [method, spec] = calls[0]
+  assert.equal(method, 'startActivation')
+  assert.equal(spec.provider, 'spawn')
+  assert.equal(spec.label, 'audit the plugin')
+  assert.equal(spec.name, 'audit-1')
+  assert.equal(spec.childId, 'fixed-child')
+  assert.equal(spec.delivery, 'parent')
+  // 0.2.2 reads prompt/parent/maxDepth off the spec itself and never looks
+  // inside a `request` wrapper, so the wrapper has to be gone.
+  assert.deepEqual(spec.prompt, REQUEST.prompt)
+  assert.equal(spec.parent, 'parent-session')
+  assert.equal('request' in spec, false)
+  assert.equal(started.name, 'agent-2')
+  assert.equal(started.childId, 'fixed-child')
+})
+
+test('a 0.2.2 host never receives the retired name on the wrapper path', async () => {
+  const rc1 = hostService()
+  await startWorker(rc1.ctx, {
+    provider: 'spawn',
+    label: 'x',
+    name: 'audit-1',
+    request: REQUEST,
+  })
+  const spec = rc1.calls[0][1]
+  assert.equal(spec.request, REQUEST)
+  assert.equal('name' in spec, false, '0.2.1 has no named members')
+  assert.equal('prompt' in spec, false)
+})
+
+test('release on a 0.2.2 host stops the parent subtree', async () => {
+  const { ctx, calls } = rc2Service()
+  const parent = { id: 'parent-session' }
+  await drainWorkers(ctx, parent, ['a', 'b'])
+  assert.deepEqual(calls, [['drainDescendants', [parent]]])
+})
+
+test('direct children are the depth-1 rows of a 0.2.2 subtree', async () => {
+  const subtree = [
+    { id: 'a', mode: 'continuable', depth: 1, parentId: 'root' },
+    { id: 'b', mode: 'continuable', depth: 2, parentId: 'a' },
+    { id: 'c', mode: 'one-shot', depth: 1, parentId: 'root' },
+  ]
+  const rc2 = rc2Service({ listDescendants: async () => subtree })
+  assert.deepEqual((await listChildrenOf(rc2.ctx, 'root')).map(entry => entry.id), ['a', 'c'])
+
+  // 0.2.1 answers the same question natively.
+  const rc1 = hostService({ listChildren: async () => subtree.slice(0, 1) })
+  assert.deepEqual((await listChildrenOf(rc1.ctx, 'root')).map(entry => entry.id), ['a'])
+})
+
+test('a 0.2.1 host rebuilds the subtree from its direct-child catalog', async () => {
+  const catalog = {
+    root: [
+      { id: 'a', mode: 'continuable' },
+      { id: 'leaf', mode: 'one-shot' },
+    ],
+    a: [{ id: 'b', mode: 'continuable' }],
+    b: [],
+  }
+  const rc1 = hostService({ listChildren: async id => catalog[id] ?? [] })
+  const rows = await listDescendantsOf(rc1.ctx, 'root')
+  assert.deepEqual(
+    rows.map(row => [row.id, row.depth, row.parentId]),
+    [
+      ['a', 1, 'root'],
+      ['leaf', 1, 'root'],
+      ['b', 2, 'a'],
+    ],
+  )
+
+  const subtree = [{ id: 'a', mode: 'continuable', depth: 1, parentId: 'root' }]
+  const rc2 = rc2Service({ listDescendants: async () => subtree })
+  assert.deepEqual(await listDescendantsOf(rc2.ctx, 'root'), subtree)
+})
+
+test('no host-half module reaches into the subagent catalog directly', () => {
+  for (const file of ['spawn.js', 'index.js', 'watchdog.js', 'list-agents.js']) {
+    const source = stripComments(readFileSync(new URL(`../lib/${file}`, import.meta.url), 'utf8'))
+    for (const direct of ['subagents.listChildren', 'subagents.drainChildren', 'subagents.listDescendants', 'subagents.drainDescendants']) {
+      assert.equal(source.includes(direct), false, `lib/${file} still calls ${direct}`)
+    }
+  }
+})
+
 test('an incompatible host fails loud with an actionable message', async () => {
   const { ctx } = hostService()
   delete ctx.subagents.startActivation
@@ -128,7 +293,7 @@ test('an incompatible host fails loud with an actionable message', async () => {
     () => startWorker(ctx, { provider: 'spawn', label: 'x', request: REQUEST }),
     error => {
       assert.match(error.message, /ctx\.subagents\.startActivation/)
-      assert.match(error.message, /dsh-subagent 0\.2\.x/)
+      assert.match(error.message, /dsh-subagent 0\.2\.[12]/)
       assert.doesNotMatch(error.message, /is not a function/)
       return true
     },

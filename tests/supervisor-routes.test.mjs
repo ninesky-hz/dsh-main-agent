@@ -74,12 +74,14 @@ test('health reports a compatible host as ok', () => {
   assert.equal(body.package, 'dsh-main-agent')
   assert.deepEqual(body.subagents.missing, [])
   assert.equal(body.subagents.message, undefined)
+  assert.equal(body.subagents.generation, '0.2.1')
   assert.equal(res.headers['cache-control'], 'no-store')
 })
 
 test('health names every missing method on a drifted host', () => {
   const { req, res, read } = recorder()
-  // dsh-subagent 0.1 exported none of these three.
+  // dsh-subagent 0.1 exported none of these, and neither catalog nor release
+  // API is left, so each capability group is named once.
   const drifted = compatibleService()
   delete drifted.startActivation
   delete drifted.drainChildren
@@ -89,9 +91,14 @@ test('health names every missing method on a drifted host', () => {
   const { status, body } = read()
   assert.equal(status, 200)
   assert.equal(body.ok, false)
-  assert.deepEqual(body.subagents.missing, ['startActivation', 'drainChildren', 'listChildren'])
+  assert.deepEqual(body.subagents.missing, [
+    'startActivation',
+    'listChildren 或 listDescendants',
+    'drainChildren 或 drainDescendants',
+  ])
   assert.match(body.subagents.message, /startActivation/)
   assert.match(body.subagents.message, /0\.2\.x/)
+  assert.equal(body.subagents.generation, undefined)
 })
 
 test('health is a diagnostic route, so a missing service still answers 200', () => {
