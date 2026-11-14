@@ -2,11 +2,11 @@
 
 这个仓库只有三种东西，各自的规矩完全不同：
 
-- **`lib/`（26 个文件）** —— 纯逻辑 + 宿主接线。能被纯函数写完的就不碰宿主（唤醒策略、
+- **`lib/`（27 个文件）** —— 纯逻辑 + 宿主接线。能被纯函数写完的就不碰宿主（唤醒策略、
   目标续行判据、命名规则、模型策略都在这一侧），剩下的薄薄一层只做 `ctx` 接线：
   装 preset、挂 `/supervisor/*` 路由、把工具注册进 0.2.x 的 `ctx.subagents` 接缝。
   这条分界线是刻意的：宿主 API 会随版本变，而纯函数不会。
-- **`tests/`（47 个文件）** —— 只用 Node 内置模块和相对路径 `import`，**没有
+- **`tests/`（51 个文件）** —— 只用 Node 内置模块和相对路径 `import`，**没有
   `node_modules` 也能跑**。所以 `npm test` 在一台刚克隆的空机器上就是全部真话，
   不存在「装完依赖才知道坏没坏」。唯一一个非 `.test.mjs` 的 `harness-stub-loader.js`
   是给 `--import` 用的宿主 stub。
@@ -29,12 +29,13 @@
 
 ## 模块表
 
-`lib/` 有 26 个文件、211 处 `export` 声明（去重后 195 个不同名字）。「被谁用」只算
+`lib/` 有 27 个文件、214 处 `export` 声明（去重后 198 个不同名字）。「被谁用」只算
 真实的 `import` 方与 preset 挂载行 —— 一个都没有的那几个是宿主入口，宿主不是通过
 `import` 进来的。
 
 | 文件 | 职责 | 主要导出 | 被谁用 |
 | --- | --- | --- | --- |
+| `agents-compat.js` | `ctx.agents` 两代适配：顶层 agent 用 `roots()`（0.2.1–rc.2）或 `list()` 过滤（rc.3 起没有 `roots`），读不到就返回空数组 | `listRootAgents` `isRootAgent` `isRootExecution` | `lib/goal.js` |
 | `authority.js` | 每次派生记一条权威凭证：human-direct / rule / assumed，以及它的判据 | `deriveAuthority` `allowsAutoDerive` `recordAuthority` `AUTHORITY_KINDS` | `lib/spawn.js` |
 | `checks-tool.js` | `check_outcome` 工具壳：把 checks.json 的每条断言跑成可读报告 | `apply` `name` `inject` | preset 行 `dsh-main-agent/checks` |
 | `checks.js` | checks.json 的读取 / 执行 / expect 覆盖判定（纯逻辑，无宿主依赖） | `readChecks` `runChecks` `verifyExpect` `readExpect` | `lib/checks-tool.js` `lib/loop-journal.js` `lib/spawn.js` |
@@ -64,25 +65,29 @@
 
 ## 测试表
 
-47 个 `*.test.mjs`，同目录还有一个 `harness-stub-loader.js` —— 那是给 `--import` 用的
+51 个 `*.test.mjs`，同目录还有一个 `harness-stub-loader.js` —— 那是给 `--import` 用的
 宿主 stub，不是测试。一行一个文件，写清它到底守什么 —— 一个测试文件如果说不出一句
 「它守的是什么」，那它就不是测试。
 
 | 文件 | 覆盖什么 |
 | --- | --- |
+| `agents-compat.test.mjs` | `ctx.agents` 两代：旧宿主走 `roots()`、rc.3 走 `list()` 过滤，两条读法都抛错时退化成空数组而不是抛进工具链 |
 | `authority.test.mjs` | 权威判据的分类与标签、凭证账本的写入 |
 | `backup-retention.test.mjs` | `scripts/backup-retention.mjs`：备份保留策略与清理边界 |
 | `brief-receipt.test.mjs` | BRIEF 读回执：写成功 ≠ 被读过，连续未读才报警 |
 | `checks-tool.test.mjs` | `check_outcome` 的 execute 输出契约（含失败项不参与通过计数） |
 | `checks.test.mjs` | checks.json 的读写、`expect` 的覆盖判定、超时与输出截断 |
 | `client-feed.test.mjs` | 浏览器半的不变量：不依赖构建产物、只读 Feed 形状 |
+| `control-tools.test.mjs` | `send_message` / `interrupt_agent` / `wait_agent`：名字与 id 双寻址、歧义即拒、wait_agent 按宿主代数补齐且不重复注册 |
 | `expect.test.mjs` | expect.json 的契约：条目上限、文本截断、判定顺序 |
 | `feed-view.test.mjs` | Feed 视图的快照渲染（含空态与多 worker） |
 | `full-stop.test.mjs` | Full stop 的事务顺序：先记账再收摊，失败可回滚 |
 | `goal-policy.test.mjs` | 续行识别、安全工具白名单、GOAL.md 渲染 |
 | `goal-revision.test.mjs` | GOAL.md 的 revision 与指纹：改动才换 revision |
 | `goal-tools.test.mjs` | goal 前端端到端（用 `snapshotEvents` 走一遍真事件流） |
+| `host-seams.test.mjs` | `scripts/probe-host-seams.mjs` 的槽清单与 `lib/client.js` 实际注册的槽集合相等；侧栏行与主面板同 id；浏览器 bundle 不依赖宿主包；`lib/` 的宿主导入都写在 peerDependencies 里 |
 | `install-spec.test.mjs` | `scripts/install-spec.mjs`：安装规格的生成 |
+| `list-agents.test.mjs` | `list_agents` 的具名投影：`path` 即地址、无名字回落 id、`activity` 能报未 materialize 的 running |
 | `loop-journal.test.mjs` | loop-state / progress.jsonl / BRIEF 的读写与 pruner |
 | `loop-watchdog.test.mjs` | 唤醒策略曲线 + watchdog 的纯策略部分 |
 | `naming.test.mjs` | 命名纪律棘轮：四类动词常量与文档双向相等、例外表仍然对得上源码 |

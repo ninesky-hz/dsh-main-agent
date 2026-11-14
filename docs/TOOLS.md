@@ -20,6 +20,7 @@
 | `send_message` | lead | 消息投给「我派出去的那个子会话」；worker 没有子级，它唯一的上行通道是宿主原生 report。 |
 | `interrupt_agent` | lead | 中断的是自己名下的 agent，属于调度动作；worker 的职责是把手上这个单元做完。 |
 | `list_agents` | lead | 列出的是「我的子级」；worker 没有子级，结果永远是空表。 |
+| `wait_agent` | lead | 等的是「我名下的其他 agent 有没有新动静」；worker 那一层没有可等的对象，等待只会变成空转。dsh 0.2.2-rc.2 起它只在 `@deepseek-ai/dsh-tool-subagent-control` 里注册，而本插件的 preset 整行替换掉了那个插件，所以由 control 按宿主代数补上。 |
 | `check_outcome` | lead | 清单是 worker 自己写的，让它自己跑自己的验收等于自证；只有 Lead 跑出来的结果才算证据。 |
 | `get_goal` | lead | goal 是会话级的续行契约，只有监督者这一层持有；worker 拿到它只会让范围漂移。 |
 | `start_goal` | lead | 写 GOAL.md 等于替整个会话承诺目标，这个承诺必须由看见用户原话的那一层做出。 |

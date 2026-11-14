@@ -29,19 +29,34 @@ function host({
   children = [],
   settings = { workerModels: ['runtime/current'], workerEfforts: {}, maxParallelWorkers: 3 },
   providerReady = true,
+  generation = '0.2.1',
 } = {}) {
   const activations = []
   const registered = []
   const service = {
     startActivation: async spec => {
       activations.push(spec)
-      return { childId: spec.childId ?? 'child-internal', result: Promise.resolve({ stopReason: 'completed', output: [] }), dispose: async () => {} }
+      return {
+        childId: spec.childId ?? 'child-internal',
+        // rc.2 answers with the resolved name (host-allocated when omitted);
+        // 0.2.1 has no names at all.
+        ...generation === '0.2.2' ? { name: spec.name ?? 'agent-1' } : {},
+        result: Promise.resolve({ stopReason: 'completed', output: [] }),
+        dispose: async () => {},
+      }
     },
-    drainChildren: async () => {},
-    listChildren: async () => children,
     sendMessage: async () => {},
     interrupt: async () => {},
     getProvider: () => (providerReady ? { name: 'spawn' } : undefined),
+  }
+  if (generation === '0.2.2') {
+    service.listDescendants = async () => children
+    service.drainDescendants = async () => {}
+    service.namesOf = () => []
+    service.resolveName = async (_caller, raw) => raw
+  } else {
+    service.drainChildren = async () => {}
+    service.listChildren = async () => children
   }
   const ctx = {
     logger: { info() {}, warn() {}, error() {} },
@@ -397,4 +412,45 @@ test('三个分支的 schema 都声明了 expect（严格模式里漏一个字�
     }
     assert.equal(branch.properties.expect.required, undefined, 'expect 本身不必填，不给 done_when 时也要能返回')
   }
+})
+
+test('rc.2 上图省下的 name 会透传给宿主并回传', async () => {
+  const { tool, activations } = await mountedSystem({ generation: '0.2.2' })
+  const result = await call(tool, {
+    description: 'audit', prompt: 'x', model: 'runtime/current', name: 'reviewer',
+  })
+
+  assert.equal(activations[0].name, 'reviewer')
+  assert.equal(result.name, 'reviewer', '调用方拿到的地址必须和宿主认的那个一致')
+  assert.equal(result.nameNotice, undefined, '宿主支持时不打「被忽略」的补丁')
+})
+
+test('rc.2 上不给 name 就由宿主分配，结果里回传分配到的名字', async () => {
+  const { tool, activations } = await mountedSystem({ generation: '0.2.2' })
+  const result = await call(tool, { description: 'audit', prompt: 'x', model: 'runtime/current' })
+
+  assert.equal(activations[0].name, undefined)
+  assert.equal(result.name, 'agent-1')
+})
+
+test('0.2.1 上 name 被忽略，且结果里说明只能按 id 寻址', async () => {
+  const { tool, activations } = await mountedSystem()
+  const result = await call(tool, {
+    description: 'audit', prompt: 'x', model: 'runtime/current', name: 'reviewer',
+  })
+
+  assert.equal(activations[0].name, undefined, '0.2.1 的 startActivation 不认 name')
+  assert.match(result.nameNotice, /0\.2\.2-rc\.2|被忽略/)
+})
+
+test('名字不合法在派生之前就被拒，不消耗并行名额', async () => {
+  const { tool, activations } = await mountedSystem()
+  for (const name of ['Reviewer', 'lead', 'has space', 'x'.repeat(33), '1abc']) {
+    await assert.rejects(
+      () => call(tool, { description: 'x', prompt: 'x', model: 'runtime/current', name }),
+      /name/,
+      `${name} 应该被拒`,
+    )
+  }
+  assert.equal(activations.length, 0)
 })

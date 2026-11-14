@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.23.0**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.23.1**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.2）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.3）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -36,14 +36,18 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
   注入，**不要**写 `{{cwd}}`：0.2.1 起它不是内建变量，未注册的名字会让 prompt 在装配期
   抛 `unknown prompt variable`，整个 preset 在发出模型请求之前就挂掉（0.10.1 已修）。
 
-本仓库的单元测试（`tests/` 下 47 个 `.test.mjs`）当前 `npm test` 全绿：断言数、通过数、
+本仓库的单元测试（`tests/` 下 51 个 `.test.mjs`）当前 `npm test` 全绿：断言数、通过数、
 跳过数一律以 `npm test` 打印的汇总行为准，不在这里抄 —— 抄一次就多一个会过期的数字
 （`npm test` = `node --test tests/*.test.mjs`；两个跳过项是
 `tests/preset-rows.test.mjs` 里按 preset 行解析真实宿主运行时，只在设置了 `DSH_APP_ASAR`
 时才跑）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`），0.2.2-rc.1 的模型选择 seam 另有真机 probe
-（`scripts/probe-host-model-selection.mjs`）。`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
+（`scripts/probe-host-model-selection.mjs`）。0.2.2-rc.2 / rc.3 两次升级没有只读 changelog：
+`npm pack` 双版逐字节比对 + 真包探针（装 54 个 `@deepseek-ai/*` 后实 `import` 求值、把真实
+方法集喂给 `resolveSubagentGeneration()`），结论见版本表 0.23.0 与 0.23.2 两行；这套核对从
+rc.3 起固化成 `scripts/probe-host-seams.mjs`，下次升级一条命令复跑。
+`peerDependencies` 里 `@deepseek-ai/dsh-subagent`
 的区间是 `>=0.2.1-rc.2 <0.3.0` —— 更早的宿主没有 `ctx.subagents` 的 0.2.x 方法。
 
 **克隆后自测**：`git clone` 之后 `npm install` 再 `npm test` 即可。仓库根的 `.npmrc`
@@ -188,6 +192,9 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.22.12 | 修掉**中文续行请求不进守卫**。`isLongRunningContinuation()` 只认英文 `start\|resume\|continue\|restart\|proceed\|carry on\|keep going/working`，而 persona（`agent-presets/main-agent/agent.cordis.yml:72`、`presets/main-agent.patch.yml:87`）早已**用中文**承诺「对于每一次要求开始、恢复或继续长期任务的直接人类请求，都要先调用 `get_goal`」——于是中文用户说「继续这个长期任务」时整条守卫失效：watchdog 已把 goal 停在 `blocked`（实测 `blockedReason.code:'idle'`、`activation:'disarmed'`），agent 看起来却还在推进。这不是设计取舍，是实现与契约不一致。难点在中文没有词边界、`\b` 完全失效，而单论「有动作词」会把「继续看看这个文件」「恢复一下」「重启服务看看」也锁进只读白名单（那条白名单只放 `get_goal`/`start_goal`/`read`/`glob`/`grep` 与几个记忆工具，误锁比漏判更糟）。所以中文走**动作词 AND mission 词共现**：`CONTINUATION_ACTION_CJK`（继续/恢复/接着做/启动/重启…）且 `CONTINUATION_MISSION_CJK`（任务/目标/长期/常驻/循环/监督/goal/mission/supervisor…）。英文路径语义一行未动，`hasDurableMission` 的既有优先级不变。已知代价：「恢复任务列表」这类短语会命中，代价仅为多一次 `get_goal` + 一次 `read`，不阻断。测试从「先写失败用例确认缺陷」起步，`tests/goal-policy.test.mjs` 10 例全绿并覆盖反例（继续看看这个文件 / 恢复一下 / 接着做下一项 / 这个长期任务进展如何）。测试 551/47 → **554 项 / 552 通过 / 2 跳过 / 0 失败 / 47 个文件** |
 | 0.22.13 | 0.22.11 修掉了冷启动扫描的并发放大，但**收尾事件还在重复写**：部署 0.22.12 后重启，`.agi/progress.jsonl` 又出现两条 `goal-stopped`（`09:44:57.886Z` / `09:45:27.938Z`，间隔 30 秒），两条都写「目标已 complete」。根因不是退避链，而是 `lib/watchdog.js` 的 clear 分支里**两段代码争同一个字段**：`complete` 分支先把 `pausedBy` 擦成 `undefined`（否则下次启动会被 `pausedBy:'idle'` 误判成「停在等人」，这是 0.22.8 钉住的契约），紧接着的判重又恰好用 `pausedBy === undefined` —— 擦掉即判重成立，于是每跑一次 reconcile 就重写一条收尾事件并回写 `pausedBy:'goal-complete'`。修法是把**去重键独立成 `stoppedPhase`**（`lib/loop-journal.js` 的 `EMPTY_STATE` 与 `readLoopState`），`pausedBy` 的语义和清理契约一字未动；`goalActive` 时连同 `stoppedPhase` 一起清掉，否则同一个工作区下一次停下来会被永久吞掉。测试是**先证明能抓回归**再收工的：把 `lib/` 回退到 0.22.12 再跑，新用例「收尾事件只记一条」当场变红（`expected: 'complete'`），恢复实现后转绿。测试 554/47 → **556 项 / 554 通过 / 2 跳过 / 0 失败 / 47 个文件** |
 | 0.23.0 | 兼容 **dsh 0.2.2-rc.2**，同时保留 0.2.1 可用。rc.2 把 `ctx.subagents` 换了一代：`startActivation(spec)` 的 `prompt`/`parent`/`maxDepth` 从 `spec.request` **平铺到 spec 顶层**（并新增可选 `name`），`listChildren`/`drainChildren` 两个方法**整个删掉**（只剩 `listDescendants(root, signal)` 与 `drainDescendants(parents)`，后者语义是停整棵树）。升级前那版插件会派生即 `TypeError`（`spec.parent.id`）、并行上限与 Full stop 直接抛「服务不兼容」，而 watchdog 走的是 `?.listChildren` 可选链 —— 于是 worker 状态永远显示「未知」、停滞回收永不触发，**静默降级比报错更难发现**。修法是把 `lib/subagent-compat.js` 做成唯一接缝：`resolveSubagentGeneration()` 认代（`drainDescendants`/`listDescendants` 在 → `'0.2.2'`，`drainChildren`/`listChildren` 在 → `'0.2.1'`），`startWorker()` 按代给扁平或嵌套 spec，`listChildrenOf()` 在 rc.2 上取 `listDescendants` 再筛 `depth === 1`、在 rc.1 上原样透传，`listDescendantsOf()` 在 rc.1 上以 `listChildren` 做 BFS 重建（只对 `mode === 'continuable'` 下钻，行补 `parentId`/`depth`），`drainWorkers()` 在 rc.2 上换成 `drainDescendants([parent])`。能力探针不再要求「六个方法全在」，而是分成核心组与两组**二选一**，缺哪组就点名哪个能力；`/supervisor/health` 与 workers 路由都多报一个 `generation`。顺带修掉 rc.1 下的真 bug：`list_agents` 的 `descendants` 作用域原先直接调 `listDescendants`，而 0.2.1 根本没有这个方法。证据不是读 d.ts 推的：在 `/tmp/probe-rc2` 装真 rc.2 后探测实跑对象，`listChildren=undefined drainChildren=undefined`、`listDescendants=function drainDescendants=function`；`startActivation` 的读取顺序见 `dsh-subagent/lib/index.js:3018-3024`。注意本机安装被 `dsh-purge` 打过 74/76 个补丁（含 `dsh-subagent/lib/index.js`），升 rc.2 会覆盖，装完要重跑 `purge_apply` 再重启。测试 556/47 → **564 项 / 562 通过 / 2 跳过 / 0 失败 / 47 个文件** |
+| 0.23.1 | 补齐 **dsh 0.2.2-rc.2 的工具面迁移**——rc.2 把 `send_message` / `interrupt_agent` / `wait_agent` 从 team 插件搬进了 `tool-subagent-control`，并改用**名字**寻址，而本插件的 preset 整行替换掉了那个插件，于是三处会静默失效：① `wait_agent` 直接消失（team 插件不再提供，替换行也不注册它），监督者的等待能力整块没了且没有任何报错；② 名字断链——team 任务的 `owner`、rc.2 的 `agent` 参数、多层子级的 `父名/子名` 只认名字，而 `send_message` 只收 `subagent_id`、`list_agents` 丢弃 `entry.path`，模型手里有名字却找不到投递口；③ `subagent` 不暴露也不回传 `name`，派生完拿不到地址。修法：`lib/control.js` 加 `wait_agent`（**按宿主代数条件注册** —— rc.1 的 team 插件已注册同名工具，重复注册会让插件加载失败；有 `tools.get('wait_agent')` 时不抢）、`send_message`/`interrupt_agent` 增加 `agent` 名字参数（走 `ctx.subagents.resolveName`，旧 `subagent_id`/`agent_id` 全部保留，两个都给则拒），wait 的去重与 rc.2 同构（`exec.rootCallId` + WeakMap，同一次模型工具调用里已上报的 pending 输入不再唤醒）；`lib/list-agents.js` 输出 `name`（`path` → `name` → `id`），状态并入 catalog 的 `activity`（能报出尚未 materialize 的 running）；`lib/spawn.js` 增加 `name` 参数并在派生**之前**校验（`^[a-z][a-z0-9-]{0,31}$`、不能是 `lead`），rc.2 上透传并回传宿主分配的名字，0.2.1 上改为回一条 `nameNotice` 说明只能按 id 寻址——静默丢名字会让调用方以为以后能按名字派任务。测试 564/47 → **582 项 / 580 通过 / 2 跳过 / 0 失败 / 49 个文件**（新增 `tests/control-tools.test.mjs`、`tests/list-agents.test.mjs`） |
+| 0.23.2 | 核对 **dsh 0.2.2-rc.3**，结论是**无需改代码** —— 但这条结论由三个独立证据面支撑，不是读 changelog 推的。① **`npm pack` 双版逐字节比对**（rc.2 vs rc.3，排除 `package.json`）：`dsh-subagent`、`dsh-schedule`、`dsh-goal`、`dsh-tools`、`dsh-session`、`dsh-llm`、`dsh-agent`、`dsh-client-ui-slots`、`dsh-web-app` 的运行时 JS **逐字节全等**，`dsh-web-app` 里那四份 `presets/*.patch.yml`（本插件 preset 的行来源）也在其中；有差异的只有 `ui-sidebar`（新增兄弟槽 `sidebar.session.action`、`SidebarRoot` 把 New-session 按钮包进 `div.newSessionRow`）、`ui-primitives`（upload 图标）、`agent-preset`（`skills/dsh-doc/references/packages.md` 文档）。② **真包探针**：`.test-tmp/rc3/probe` 装 54 个 `@deepseek-ai/*` 全 `0.2.2-rc.3`；`SubagentRuntime.prototype` 19 个方法里 `listDescendants`/`drainDescendants`/`namesOf`/`resolveName` 全在、`listChildren`/`drainChildren` 全无，把这份真实方法集喂给 `resolveSubagentGeneration()` 稳定得 `'0.2.2'`；`startActivation` 仍从 spec 顶层读 `prompt`（`dsh-subagent/src/manager.ts:409-410`）、`parent`（`src/index.ts:275`）、`maxDepth`（`src/index.ts:272`），0.23.0 的平铺 spec 与 `lib/subagent-compat.js:251-280` 的 `flattenRequest` 逐字段对齐；插件 `lib/` 的 6 组具名导入（`dsh-tools#defineTool`、`dsh-session#SessionId`、`dsh-llm#{createUserMessage,HarnessError,boundContextSummary}`、`schemastery#default`）缺失 0。③ **官方 compare diff**：515 个变更文件里 378 个只改 `package.json` 版本号（机械复核：A 组中非 `package.json` 文件数 **0**），137 个有实质内容，但逐个判定后没有一个落在插件接口面上 —— `ui-sidebar` 是纯增量 `+18/-0`（新增槽声明、联合类型只加成员、New-session 的 JSX 逐字节移进 children）、`ui-primitives` 加 upload 图标、`ui-workspace` 发 `workspace.picker` Factory、新实验包 `dsh-deepseek-chat-import`（46 个文件，默认 `enabled: false`，自带 `cordis.patch.yml` 写明 shipped profiles 不含它，行 id 与本插件的 `- insert: preset-main-agent` 不重名）、`apps/desktop` 只给安装器 `restart-status.h` 的 `CreateProcessW` 补工作目录（不改更新通道与状态目录契约；插件 `lib/` 里 `installer`/`restart-status`/`update-channel` 零命中）。插件注册的 4 个槽（`conversation.view`、`plugins.item`、`main`、`sidebar.panellist`）在 diff 中 **0 次被删改**，而且 rc.3 自带上游测试仍在断言 `expect(b.slots.spec('sidebar.panellist')).toEqual({ kind: 'list', scope: 'root' })`；`slot-catalog.ts` 只是生成物（运行时只拿它给槽树补注释字段），真正的 `slots.register` 校验在 renderer，判据是父条目的 children 表有没有声明过这个名字。控制工具仍驻留 `dsh-tool-subagent-control`（`wait_agent` `src/wait-agent.ts:91`、`send_message` `src/index.ts:44`、`interrupt_agent` `src/index.ts:120`），而本插件 preset 整行替换掉它 —— 0.23.1「按代际条件补注册 `wait_agent`」的判据继续成立。三个证据面都固化成了可重跑的东西：新增 `scripts/probe-host-seams.mjs`（`node scripts/probe-host-seams.mjs <宿主目录>`，六项接缝逐个判定、失败非 0 退出）+ `tests/host-seams.test.mjs`（守探针的槽清单、侧栏行与主面板同 id、`lib/client.js` 零宿主依赖、`lib/` 的宿主导入都在 peer 里）。测试 **586 项 / 584 通过 / 2 跳过 / 0 失败 / 50 个文件**。部署提醒不变：本机安装被 `dsh-purge` 打过补丁，升 rc.3 会覆盖，装完重跑 `purge_apply` 再重启 |
+| 0.23.3 | 修 **`ctx.agents.roots()` 在 0.2.2 上根本不存在** —— 0.23.2 那行只对了 package 字节面，漏了接口面：`npm pack` 取 rc.2 与 rc.3 的 `@deepseek-ai/dsh-agent`，两份 `lib/index.js` 的 sha256 **完全相同**（`bc2a39de…`），而**两份 `lib/types/index.d.ts` 里 `roots` 的命中数都是 0** —— 这根接缝在 rc.2 之前就已经没了，逐字节比对只能证明「rc.2 → rc.3 没有回归」，证明不了「与 rc.2 兼容」。后果：`lib/goal.js` 三处 `ctx.agents.roots()`（`humanMessages`、`tools/pre-execute`、`tools/post-execute`）里，pre-execute 那个**对每一次工具调用都执行**，在任何 0.2.2 宿主上都会在工具到达之前抛 `ctx.agents.roots is not a function` —— 一个布尔判断把整条工具链打死，表现成「插件装了但所有工具全挂、模型文本却正常」。修法是收进唯一接缝 `lib/agents-compat.js`：`listRootAgents(ctx)` 有 `roots()` 就走旧语义、否则用 `list()` 按会话头过滤顶层（`meta.origin !== 'subagent'` 且 `delegationDepth` 缺失或 0；只带 `parentSession` 的普通 fork 仍是顶层），两条读法都抛错时返回 `[]` 而不是把异常抛进工具链；`isRootExecution(ctx, agent)` 是三个调用点的唯一入口（`agent` 为 `undefined`/`null` 直接 `false`）；`isRootAgent(agent)` 单独暴露判据。证据不是读 `.d.ts` 推的：rc.3 真包里 `AgentRegistry.prototype` 上 `roots === undefined`、`list` 是 function，`Object.create(AgentRegistry.prototype)` 覆写 `list` 后 `listRootAgents()` 只挑出顶层（`tests/agents-compat.test.mjs` 7 例钉住两代读法与四个降级路径）。测试 **593 项 / 593 通过 / 0 跳过 / 0 失败 / 51 个文件** |
 
 ## 在新 PC 上运行本地课程
 
@@ -1012,12 +1019,13 @@ blank 规则、写入者归属都由控制器负责），但不启动回合 —�
 | `scripts/install-manual.sh` | 非 bundle 的兜底安装器：只写 `.agent-presets/main-agent/` 与工作区 `.agi/` 骨架，**不碰** profile 的 `cordis.patch.yml`（0.13.4 起 schedule 服务归 host 层，重复声明会撞注册） |
 | `scripts/repair-profile.mjs` | profile 离线修复工具：诊断/清理重复的 `preset-main-agent` 声明、本 bundle 在用户层 patch 里的行、残留依赖与 node_modules、preset 目录，并诊断 `package.json`/`pnpm-lock.yaml` 版本漂移与 pnpm 冷静期（见「升级与卸载」） |
 | `scripts/install-spec.mjs` | 安装地址规范化器：把浏览器地址栏复制的裸 URL 补成 `.git` 结尾的 git spec（也收尾斜杠、`/tree/…` 页面地址），并把 `ERR_PNPM_TARBALL_EXTRACT` 日志反查成该用的地址（见「若 pnpm 报 `ERR_PNPM_TARBALL_EXTRACT`」） |
+| `scripts/probe-host-seams.mjs` | 升级宿主时的一条命令核对：`node scripts/probe-host-seams.mjs <宿主目录>` 依次验证 `lib/` 的宿主导入可解析且具名导出齐全、`resolveSubagentGeneration()` 对**已装**的 runtime 原型给出的代数、`dsh-subagent` 的 `startActivation` 是否仍是扁平 spec、`wait_agent` 在这台宿主上由谁提供、四个浏览器槽是否仍在宿主 client bundle 里、`lib/client.js` 是否零宿主依赖。任一接缝不成立就非 0 退出，并把失败项按名字列出来（0.23.2 用它核对 rc.3；`tests/host-seams.test.mjs` 守它自己的槽清单不漂移） |
 | `scripts/sync-preset-patch.mjs` | 从 `agent-presets/main-agent/` 重新生成 `presets/main-agent.patch.yml`（`npm run sync-preset`，`prepack` 也会跑） |
 | `scripts/sync-prompts.mjs` | 把 `prompts/*.md` 单向写回 `agent-presets/main-agent/agent.cordis.yml` 的两个块标量，并把 revision（两份 md 的 sha256 前 8 位）盖到 patch 头行与 `prompts/CHANGELOG.md`。`--stamp` 只盖章、不碰 YAML —— 因为 patch 由生成器整份重写，revision 只能在生成**之后**才盖得住，所以 `sync-preset` 是三步而不是两步 |
 | `scripts/sync-profile.mjs` | 把仓库同步到运行时**真正加载的两份拷贝**：profile 的 `node_modules/dsh-main-agent/`（宿主 `require` 这份）与 `~/.dsh/.agent-presets/main-agent/`（宿主启动时读这份 preset，`installPreset` 默认 `if-absent`，**已存在就永不覆盖**）。默认只诊断并列差异，`--apply` 才写、且先整目录备份。只同步其中一份，是「改完代码重启也没变化」的典型死法 |
 | `scripts/accept-worker.mjs` | `npm run accept -- <sessionId 或目录名> [备注]`：写 `.agi/subagents/<id>/archived.json`，把已验收的 worker 从 BRIEF 的「等用户验收」里摘掉，改显示 `ended/archived — 已验收归档` |
 | `scripts/inject-supervisor.mjs` | 命令行版的「跨模式」：把监督层写进 profile patch 的 preset 行快照（`--target <preset> --write` / `--dry-run` / `--revert`） |
-| `tests/` | 47 个 `node --test` 文件（全量 `npm test` 会打印实际的断言数）：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
+| `tests/` | 51 个 `node --test` 文件（全量 `npm test` 会打印实际的断言数）：preset 行与 patch 同步、settings 卡片、feed/stop 路由、跨模式叠加与文件改写、preset 开关状态（`pendingRestart` / `mounted`）、worker 模型策略、worker 验收（`checks.json` / `check_outcome`）、worker report 六态与 stage 分类、outbox 退避与同类保序、备份保留与 loop-state 清理、`prompts/*.md` 与 YAML 块标量的逐字节相等与写回幂等、install-spec、repair-profile 等 |
 | `DESIGN.md` / `IMPLEMENTATION_PLAN.md` | 设计记录（Q1–Q23、A1–A6、S1–S4、N1–N23、G1）与 v2 计划 |
 
 ## 文档索引

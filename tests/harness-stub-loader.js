@@ -24,6 +24,13 @@ export function defineTool(definition) {
   return definition
 }
 `],
+  // `lib/control.js` brands outgoing ids with `SessionId`; the brand itself is
+  // a type-level illusion, so identity is the faithful stand-in.
+  ['@deepseek-ai/dsh-session', `
+export function SessionId(value) {
+  return value
+}
+`],
   // `stopHandler` imports the schedule fold dynamically for its Full-stop
   // transaction. The real fold is a full event-sourced state machine; these
   // tests only need create/delete bookkeeping to prove the route contract.
