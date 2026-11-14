@@ -69,7 +69,11 @@ function resolveHome(dir, home) {
 
 async function readJson(file) {
   try {
-    return { value: JSON.parse(await readFile(file, 'utf8')), error: null }
+    // Windows 上 `Set-Content -Encoding utf8`、`Out-File` 和不少编辑器默认写带 BOM 的
+    // UTF-8；BOM 是编码标记不是内容，不剥掉会让整份 profile manifest 判成坏 JSON——
+    // 而这恰恰是最该由本脚本修的那种现场。约定与 lib/checks.js 的 readJsonText 一致。
+    const text = (await readFile(file, 'utf8')).replace(/^\uFEFF/, '')
+    return { value: JSON.parse(text), error: null }
   } catch (error) {
     if (error && error.code === 'ENOENT') return { value: null, error: null }
     return { value: null, error: String(error?.message ?? error) }

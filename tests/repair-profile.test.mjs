@@ -290,6 +290,18 @@ test('findRowSpans 认出三条行，并区分顶层与 `- insert:` 内嵌', () 
   for (const key of ['line', 'indent', 'start', 'end']) assert.equal(key in presetRows[0], true)
 })
 
+test('package.json 带 BOM 仍能扫描：这正是 Windows 编辑器写坏 manifest 的现场', async () => {
+  const { home, dir } = await fixture()
+  const body = await readFile(path.join(dir, 'package.json'), 'utf8')
+  await writeFile(path.join(dir, 'package.json'), `\uFEFF${body}`)
+  const scan = await scanProfile(dir, { home })
+  assert.equal(scan.packageError, null)
+  assert.equal(scan.findings.some((finding) => /解析失败/.test(finding)), false)
+  assert.equal(scan.dependency, 'https://gitee.com/n-sky/dsh-main-agent.git')
+  assert.equal(scan.bundlesListed, true)
+  await rm(home, { recursive: true, force: true })
+})
+
 test('诊断合成坏 profile：legacy 行、漂移、冷静期、preset 目录同时报出', async () => {
   const { home, dir } = await uninstallFixture()
   const before = await readFile(path.join(dir, 'package.json'), 'utf8')
