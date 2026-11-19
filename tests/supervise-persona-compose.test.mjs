@@ -40,6 +40,19 @@ const POJA_LIKE = `# 工作方式
 遇到本段没覆盖的情况，用一条原则裁决：**让操作者拿到他真正要的东西，且不骗他。**
 `
 
+test('勾选只授予能力，不强迫每个对话都开循环', () => {
+  // 反例（曾经是正例）：persona 写着「首轮先用 start_goal」。面板的勾选语义是
+  // 「这个 preset 具备监督者能力」，不是「每次对话都必须武装一个 goal」——
+  // 那会把普通问答也拉进巡检循环，然后每次都要人来收尾。
+  assert.ok(
+    !SUPERVISOR_PERSONA.includes('首轮先用 start_goal'),
+    '不许再有「首轮先 start_goal」这种无条件武装',
+  )
+  assert.match(SUPERVISOR_PERSONA, /明确要求长任务/, '武装要挂在明确的长期信号上')
+  assert.match(SUPERVISOR_PERSONA, /一次就能收尾的请求不要 start_goal/, '一次性能收尾的请求按普通助手做完就停')
+  assert.match(SUPERVISOR_PERSONA, /勾成监督者只代表这些能力可用/, '把面板勾选的语义写进人格里')
+})
+
 test('空 prefix 的出厂 preset 仍然只拿到监督者人格（向后兼容）', () => {
   assert.equal(composeSupervisorPersona(''), SUPERVISOR_PERSONA)
   assert.equal(composeSupervisorPersona(undefined), SUPERVISOR_PERSONA)

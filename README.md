@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.23.5**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.23.6**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -234,6 +234,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.23.3 | 修 **`ctx.agents.roots()` 在 0.2.2 上根本不存在** —— 0.23.2 那行只对了 package 字节面，漏了接口面：`npm pack` 取 rc.2 与 rc.3 的 `@deepseek-ai/dsh-agent`，两份 `lib/index.js` 的 sha256 **完全相同**（`bc2a39de…`），而**两份 `lib/types/index.d.ts` 里 `roots` 的命中数都是 0** —— 这根接缝在 rc.2 之前就已经没了，逐字节比对只能证明「rc.2 → rc.3 没有回归」，证明不了「与 rc.2 兼容」。后果：`lib/goal.js` 三处 `ctx.agents.roots()`（`humanMessages`、`tools/pre-execute`、`tools/post-execute`）里，pre-execute 那个**对每一次工具调用都执行**，在任何 0.2.2 宿主上都会在工具到达之前抛 `ctx.agents.roots is not a function` —— 一个布尔判断把整条工具链打死，表现成「插件装了但所有工具全挂、模型文本却正常」。修法是收进唯一接缝 `lib/agents-compat.js`：`listRootAgents(ctx)` 有 `roots()` 就走旧语义、否则用 `list()` 按会话头过滤顶层（`meta.origin !== 'subagent'` 且 `delegationDepth` 缺失或 0；只带 `parentSession` 的普通 fork 仍是顶层），两条读法都抛错时返回 `[]` 而不是把异常抛进工具链；`isRootExecution(ctx, agent)` 是三个调用点的唯一入口（`agent` 为 `undefined`/`null` 直接 `false`）；`isRootAgent(agent)` 单独暴露判据。证据不是读 `.d.ts` 推的：rc.3 真包里 `AgentRegistry.prototype` 上 `roots === undefined`、`list` 是 function，`Object.create(AgentRegistry.prototype)` 覆写 `list` 后 `listRootAgents()` 只挑出顶层（`tests/agents-compat.test.mjs` 7 例钉住两代读法与四个降级路径）。测试 **593 项 / 593 通过 / 0 跳过 / 0 失败 / 51 个文件** |
 | 0.23.4 | 收 0.23.3 的尾巴，外加修掉一个「修不了自己该修现场」的工具。① `lib/goal.js` 的 `hasDirectHumanMessage()` 仍是 0.23.3 那个根因的第二半：拿 `typeof agents?.roots !== 'function'` 当能力探测，而 rc.3 起 `AgentRegistry` 公开面只有 `get()`/`list()` → 恒 `false`，它决定的 direct-human 权限与 `lib/spawn.js:683` 的 reserved 槽被静默关掉（不抛错，所以看起来只是「预留槽永远开不了」）；改成只判 `agents` 是否存在，「是不是顶层」交给下面的 `isRootExecution`，两代宿主都在那里收口。② `scripts/repair-profile.mjs` 的 `readJson()` 原先裸 `JSON.parse`：profile 的 `package.json` 一旦被 Windows 工具写成带 BOM 的 UTF-8（`Set-Content -Encoding utf8`、编辑器「UTF-8 with BOM」），它自己先报「package.json 解析失败」——恰好修不了它最该修的那种现场。这个现场今天真发生过：桌面版启动时 `dsh-app-boot` 的 `readProfileManifest` 也是裸 `JSON.parse` 读同一个文件，BOM 让 host 启动即 fatal（`crash-2026-11-14T11-33-24` / `11-34-36` 两份日志）。改为剥 `^\uFEFF`，与 `lib/checks.js` 的 `readJsonText` 同一约定。新增两条测试：一条静态守卫（`lib/` 里除 `agents-compat.js` 外出现 `.roots(` 就红，注释先剥掉再扫），一条带 BOM 的 `package.json` 仍能扫描。测试 **595 项 / 595 通过 / 0 跳过 / 0 失败 / 51 个文件** |
 | 0.23.5 | 修 **看门狗把自己判停之后再也回不来**，并把 **dsh 0.2.2-rc.4 / rc.5** 的核对结论补记进正文（见上文「dsh 0.2.x 兼容性」的三层证据：上游 compare、rc.3 ↔ rc.5 双 `npm pack` 逐文件 sha256 —— 两棵树各 2102 个文件、0 增删、56 个差异且全部落在 `package.json` 版本号 + `dsh-client-ui-sidebar/client.js` 的 `localBuildVersion()` + `dsh-llm` 的 `ErrorCodes.CONTENT_REFUSED`，以及隔离 `DSH_HOME` 装 rc.5 后真启动打 `/supervisor/health`）。① 死锁是三个各自都对的实现互锁：唤醒只能由 `dsh-schedule` 投递，而它给的 `source.kind === 'schedule'`，`humanMessages()` 只认 `'user'` —— 定时回合永远不满足「直接人类回合」；`lib/watchdog.js` 连续空转达阈值时用 `goals.block(…, { code: 'idle' })` 停目标（刻意用 block 而不是 pause：block 带原因码，重启后仍读得到「是被空转停的」）；`update_goal` 的 resume 原先只认直接人类回合 —— 于是系统停了它、却只有人能开它，而叫醒它的那条通道永远不算人。现场就在本机：`loop-state` 里 `idleTicks: 6`、`pausedBy: 'idle'`，`BRIEF.md` 写「上次停止原因：目标已 paused」，8 个 worker 全部 `ended/ready`，从此再没推进过。② 修法按**「是谁做的决定」**分权，判据只有一份：`lib/goal-policy.js` 的 `SYSTEM_HOLD_CODES = ['idle']`、`isSystemHeld(goal)`、`deriveGoalActionAuthority()`、`deriveGoalActionDenial()` —— `start` 与 `pause` 仍只认直接人类回合，`resume` 额外认 `blocked + blockedReason.code === 'idle'` 这一种系统持有；`model-reported` 阻塞与人类按下的 `paused` 照旧只有人能解除。`requireDirectHuman()` 删掉，换成 `lib/goal.js` 的 `goalActionCredential()`；系统持有的恢复在 `.agi/CHANGELOG.jsonl` 留 `authority: { kind: 'rule', id: 'goal-system-hold' }`（`lib/authority.js`，`authorityBasis()` 给它生成带判停原因的依据），与人类亲手恢复事后可分辨。③ 顺带修掉一处契约不一致：`tools/pre-execute` 守卫原先在 `humanMessages(...).at(-1) === undefined` 时直接 `next()`，于是在定时唤醒、goal 回合这些**真实工作回合里整条闸门不存在** —— 模型照 persona 调 `start_goal`，一路放行到工具本体才抛「需要一个直接人类回合」，错长在「权限」上而不是「这一轮不是人开口的那一轮」。现在同一份判据在执行前就说话：已武装 goal 的合法 goal 回合与空转判停的 resume 放行，其余 goal 写入动作直接给出对应文案；非 goal 工具不受影响（没退回只读白名单 —— 那会掐死真正需要派活儿的定时回合）。刻意**没**做：删人类限定、加第二回合确认门（DESIGN N16 已否决）、把判停改回 pause、在 `node_modules` 副本里改代码。决策记进 `DESIGN.md` N25。测试 595/51 → **602 项 / 600 通过 / 2 跳过 / 0 失败 / 51 个文件**（新增 7 例：判据与文案、凭证与账本、三例守卫行为）。生效前提：重启 dsh；重启前那个 `pausedBy: 'idle'` 的会话下次唤醒即可自己 resume |
+| 0.23.6 | 修 **「勾一个 preset 就等于每个对话都开循环」** —— 面板勾选的本义是**授予能力**（这个模式拿得到 `start_goal`、派 worker、定时器、`.agi/` 记账），不是替会话武装目标；但注入的人格第一句写着「首轮先用 start_goal 锁定一个可验收的目标」，于是任何被勾选的模式一开口就进循环，普通问答也要人来说一句「收尾」才静默。① `lib/supervise.js` 与 `scripts/inject-supervisor.mjs` 的两份 `SUPERVISOR_PERSONA` 同步改写（只改一份会让运行时注入与 `--write` 静态写入的语义分叉）：武装改挂在「操作者明确要求长任务 / 持续编排 / 继续」这个信号上，一次就能收尾的问答、单次修改、查资料按普通助手做完就停；人格里直接写明「勾成监督者只代表这些能力可用，不代表每个对话都得开一个循环」。② `README.md` 里那句「勾选的 preset 每回合都会想锁定目标、派 worker、写 `.agi/`」一并改掉 —— 它描述的是旧行为，留着会和面板语义打架。③ 新增一例反向测试钉住：persona 不许含「首轮先用 start_goal」，必须含新语义的三句判据。测试 602 → **603 项 / 601 通过 / 2 跳过 / 0 失败**。面板勾选状态未被改动（`supervisedPresets` 仍是用户勾的那几项）；生效前提：重启 dsh（人格是模块常量，运行中的进程仍持旧文案） |
 
 ## 在新 PC 上运行本地课程
 
@@ -871,9 +872,10 @@ unregister 会在 fiber dispose 时自动调用，所以改写 `plugins` → 重
 重启进程。勾选结果持久化在 `agi-supervisor-setup` 域，进程启动后由一次幂等
 的对账重建。
 
-> 这一步改变的是**行为**，不只是面板可见性：勾选的 preset 每回合都会想锁定
-> 目标、派 worker、写 `.agi/`。对「只想快速改个文件」的会话，留在未勾选状态
-> 更省事。
+> 勾选的语义是**授予能力**，不是**替这个会话开循环**：勾上之后这个 preset 才拿得到
+> `start_goal` / 派 worker / 定时器 / `.agi/` 记账这些手段。要不要真的武装一个目标，
+> 由对话内容决定 —— 操作者明确要求长任务、持续编排或「继续 / 接着做」时才 `start_goal`；
+> 一次就能收尾的问答、单次修改、查资料按普通助手做完就停，不留循环状态，也不需要人来收尾。
 >
 > 静态写死等价于 `scripts/inject-supervisor.mjs --target <preset> --write`
 > （`--dry-run` 只打印将改的行，`--revert` 把快照撤回），它会往 profile patch
