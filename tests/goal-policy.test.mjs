@@ -3,9 +3,13 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
+  SYSTEM_HOLD_CODES,
   continuationToolDecision,
+  deriveGoalActionAuthority,
+  deriveGoalActionDenial,
   isGoalSetupSafeTool,
   isLongRunningContinuation,
+  isSystemHeld,
   isWorkspaceGroundingPath,
   normalizedGoalList,
   normalizedGoalText,
@@ -215,4 +219,66 @@ test('continuation policy gates paused updates, completed goals, and grounding h
   assert.equal(continuationToolDecision({
     text: 'what changed in the config?', hasDurableMission: true, goalPhase: undefined, toolName: 'bash', goalChecked: false,
   }), 'unrestricted')
+})
+
+
+// ---------------------------------------------------------------------------
+// 系统持有（system hold）：判据是「谁停的」，不是「谁在问」
+//
+// 看门狗连续空转时用 `goals.block(…, { code: 'idle' })` 停目标 —— 带原因码，重启后
+// 仍读得到。既然「为什么停」被持久化了，恢复的授权就该读它：插件自己停的，插件自己
+// 开；人停的（paused）、模型自报阻塞的（model-reported），仍然只有人能解除。
+// ---------------------------------------------------------------------------
+
+test('SYSTEM_HOLD_CODES：只有看门狗的空转判停算系统持有', () => {
+  assert.deepEqual(SYSTEM_HOLD_CODES, ['idle'])
+
+  assert.equal(isSystemHeld({ phase: 'blocked', blockedReason: { code: 'idle' } }), true)
+  // 人类暂停：决定是人做的，系统不替人撤销。
+  assert.equal(isSystemHeld({ phase: 'paused' }), false)
+  // 模型自报阻塞：需要一个成年人拍板，不是「空转」。
+  assert.equal(isSystemHeld({ phase: 'blocked', blockedReason: { code: 'model-reported' } }), false)
+  assert.equal(isSystemHeld({ phase: 'blocked' }), false)
+  assert.equal(isSystemHeld({ phase: 'active' }), false)
+  assert.equal(isSystemHeld({ phase: 'complete' }), false)
+  assert.equal(isSystemHeld(undefined), false)
+  assert.equal(isSystemHeld(null), false)
+  assert.equal(isSystemHeld('blocked'), false)
+})
+
+test('deriveGoalActionAuthority：system-hold 只对 resume 成立，人开口永远压过它', () => {
+  const held = { phase: 'blocked', blockedReason: { code: 'idle', message: '连续空转' } }
+
+  // 系统停的、系统开：这是本方案唯一的自动通道。
+  assert.equal(deriveGoalActionAuthority({ action: 'resume', directHuman: false, goal: held }), 'system-hold')
+  // 武装新目标与按住循环都在移动自主活动的边界，只有人能决定。
+  assert.equal(deriveGoalActionAuthority({ action: 'start', directHuman: false, goal: held }), 'reject')
+  assert.equal(deriveGoalActionAuthority({ action: 'pause', directHuman: false, goal: held }), 'reject')
+  // 人停的目标不能自动恢复。
+  assert.equal(deriveGoalActionAuthority({ action: 'resume', directHuman: false, goal: { phase: 'paused' } }), 'reject')
+  // 人开口时永远是人，连空转判停也不改变这一点。
+  assert.equal(deriveGoalActionAuthority({ action: 'resume', directHuman: true, goal: held }), 'direct-human')
+  assert.equal(deriveGoalActionAuthority({ action: 'start', directHuman: true, goal: undefined }), 'direct-human')
+  // 缺省不猜：没有凭证就是拒绝。
+  assert.equal(deriveGoalActionAuthority(), 'reject')
+  assert.equal(deriveGoalActionAuthority({ action: 'resume', goal: undefined }), 'reject')
+})
+
+test('deriveGoalActionDenial：说清现场，而不是只丢一句权限不足', () => {
+  const start = deriveGoalActionDenial('start', undefined)
+  assert.match(start, /start_goal 需要一个直接人类回合/)
+  // 文案必须点名那几类非人类回合 —— 报错长在「权限」上的根因就在这里。
+  for (const word of ['定时唤醒', 'goal 回合', '插件通知', '子 agent']) {
+    assert.match(start, new RegExp(word))
+  }
+
+  assert.match(deriveGoalActionDenial('pause', { phase: 'active' }), /只有人能把正在跑的循环按住/)
+  assert.match(deriveGoalActionDenial('resume', undefined), /没有可恢复的 goal/)
+  assert.match(deriveGoalActionDenial('resume', { phase: 'paused' }), /被人暂停/)
+  // 停在别的原因码上时，把那个码原文报出来，而不是含糊成「不可恢复」。
+  assert.match(
+    deriveGoalActionDenial('resume', { phase: 'blocked', blockedReason: { code: 'model-reported' } }),
+    /model-reported/,
+  )
+  assert.match(deriveGoalActionDenial('resume', { phase: 'blocked' }), /需要一个直接人类回合/)
 })

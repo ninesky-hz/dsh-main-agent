@@ -8,7 +8,7 @@
 停滞检测、派生预算），不另起一套调度器。本仓库**就是一个可安装的 dsh 插件包**：
 一条命令即可把整套配置装到任何运行 dsh 的机器上。
 
-当前版本 **0.23.4**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
+当前版本 **0.23.5**。零依赖（`dependencies` 为空），`yaml` 按需从宿主
 `node_modules` 解析，拿不到时相关能力降级而不是让插件加载失败。
 
 在 `glm-5.3`（Z.AI）上做过端到端实测（**0.10.x 时代**的记录，之后的跨模式与
@@ -21,7 +21,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 
 本仓库源自 `n-sky/dsh-supervisor`，自 **0.10.0** 起改名为 **`dsh-main-agent`** 并迁到
 `https://gitee.com/n-sky/dsh-main-agent.git`（旧仓库保留 0.9.4 及其以前的版本）。
-它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.3）的移植：
+它承载了向 **dsh 0.2.x**（0.2.0-rc.2 起，现验证到 0.2.2-rc.5）的移植：
 
 - 设置遵循逐行 `Config` 模型 —— `export const Config` 配合 `.volatile()` 字段，
   不再有 `installSettingsSection` / `settingsNamespace`（二者均已在上游移除）；值是实时
@@ -43,7 +43,7 @@ bug 的链接检查器并重跑），以及整进程重启后恢复。评分结�
 时才跑）；
 0.2.0-rc.2 上还做过完整 profile 的 `--dump-config` 组合与实机启动验证
 （`/supervisor/models` 返回 `200`），0.2.2-rc.1 的模型选择 seam 另有真机 probe
-（`scripts/probe-host-model-selection.mjs`）。0.2.2-rc.2 / rc.3 两次升级没有只读 changelog：
+（`scripts/probe-host-model-selection.mjs`）。0.2.2-rc.2 / rc.3 / rc.5 三次升级没有只读 changelog：
 `npm pack` 双版逐字节比对 + 真包探针（装 54 个 `@deepseek-ai/*` 后实 `import` 求值、把真实
 方法集喂给 `resolveSubagentGeneration()`），结论见版本表 0.23.0 与 0.23.2 两行；这套核对从
 rc.3 起固化成 `scripts/probe-host-seams.mjs`，下次升级一条命令复跑。
@@ -108,6 +108,43 @@ rc.3 → rc.5 的实质代码改动只落在两个客户端包上，都不在本
   Chat 处理后的显示文本、新增 `rawText` 承载原始模型输出）。本插件**没有**自定义推理渲染器：
   `lib/` 里出现的 `reasoning` 全是 worker 模型目录的 `reasoning.efforts`
   （`lib/worker-model-policy.js`、`lib/spawn.js`），与 Chat 的推理槽位无关。
+
+**0.2.2-rc.4 / rc.5 同样无需改动，这次是三层证据。** 前几次只做 `npm pack` 比对 + 真包探针；
+rc.5 这轮补上了真宿主启动：
+
+1. 上游 compare（GitHub API，rc.4→rc.5 与 rc.3→rc.4 两次）：rc.4→rc.5 的实质改动只有 DeepSeek
+   服务端搜索（`packages/client/ui-settings-web-search/*`、`docs/subsystems/web*`、
+   `packages/extensions/tool-cordis/src/api-catalog.ts`、一条 web 搜索 overlay 测试），其余全是
+   各包 `package.json` 的版本号；rc.3→rc.4 只有 `dsh-llm/src/error.ts`（新增
+   `ErrorCodes.CONTENT_REFUSED`，纯增量）、`dsh-llm-deepseek/src/translate.ts`、
+   `dsh-experimental-liveshare/src/host/tunnel-worker.ts`。后两个包既不在本插件的 import 面内，
+   也不在下面的 54 包探针集里（它们分别是模型供应商与会话共享侧的实现）。
+2. `npm pack` 取 0.2.2-rc.3 与 0.2.2-rc.5 两份、逐文件 `sha256`：两棵树各 2102 个文件、**0 增删**，
+   差异 56 个 = `package.json` 49 个（只有版本号；脚本逐包比 `dependencies` /
+   `peerDependencies` / `optionalDependencies` / `exports` / `peerDependenciesMeta` / `scripts`
+   的键集合，**零漂移**）+ 非包描述文件 7 个，只落在两个包上：
+   `dsh-client-ui-sidebar/lib/client.js`（唯一差异是 `localBuildVersion()` 里
+   `0.2.2-rc.3-6b729fe` → `0.2.2-rc.5-3f85d88`；`sidebar.panellist`、`sidebar.panellist.actions`、
+   `sidebar.session.action`、`sidebar.workspaces`、`sidebar.brand.*` 的槽声明逐字节相同），
+   以及 `dsh-llm` 的 `lib/index.js` + `src/error.ts` + `lib/types/error.{js,d.ts,js.map,d.ts.map}`
+   —— 这六个文件的差异也只有一行：`ErrorCodes` 新增 `CONTENT_REFUSED: {}`。本插件只用
+   `HarnessError` / `createUserMessage` / `boundContextSummary`，不碰 `ErrorCodes` 的判定分支。
+   `scripts/probe-host-seams.mjs` 对新树复跑：5 项 PASS、1 项 SKIP（该树只有一个 client bundle，
+   `conversation.view` 无处命中，属预期）。
+3. 真宿主装配：隔离 `DSH_HOME` 里装 `@deepseek-ai/dsh@0.2.2-rc.5`，用
+   `--from-default-profile web` 派生 profile，`dsh.profile.bundles` 加入本插件并以 `link:` 装进
+   profile 的 `node_modules`。`dsh --profile rctest --dump-config` 退出码 0、无 warning、无未命中的
+   patch 目标 —— `cordis.patch.yml` 与 `presets/main-agent.patch.yml` 在 rc.5 的 `dsh-base` +
+   `dsh-web-app` 层之上正常叠加，组合出 `agi-supervisor-setup`、`preset-main-agent` 与
+   `dsh-main-agent/{goal,control,list-agents,spawn,checks}` 五个子入口。真启动（`--port 51999`）后
+   打自家接口：`GET /supervisor/health` →
+   `{"version":"0.23.4","ok":true,"supervisorPresets":["main-agent"],"schedule":{"available":true},"subagents":{"generation":"0.2.2","missing":[]}}`；
+   `GET /supervisor/presets` 里 `main-agent` 行 `supervised=true`、`rows=3`、`missing=[]`、`live=true`。
+   那次启动日志里两条 `failed to import`（`jobs`、`job-controller` 缺 `@deepseek-ai/dsh-jobs`）
+   是「扁平 `npm install` 手搓宿主树」留下的缺包，与插件无关 —— 官方 profile 由 pnpm 按锁文件装齐。
+
+桌面端本体（`@deepseek-ai/dsh-desktop-runtime`）不在公共 registry 上，跟随 app 安装包升级；
+插件侧在升级后复跑 `GET /supervisor/health` 与 `GET /supervisor/presets` 确认接线即可。
 
 **0.2.2-rc.1 是第一个必须改代码的宿主版本**（0.20.0 起支持，旧版仍兼容）。
 peer 区间、`ctx.tools.register(defineTool(...))`、`ctx.subagents` 六个方法、Session Projection
@@ -196,6 +233,7 @@ node scripts/probe-host-model-selection.mjs "<装有 0.2.2 宿主包的目录>"
 | 0.23.2 | 核对 **dsh 0.2.2-rc.3**，结论是**无需改代码** —— 但这条结论由三个独立证据面支撑，不是读 changelog 推的。① **`npm pack` 双版逐字节比对**（rc.2 vs rc.3，排除 `package.json`）：`dsh-subagent`、`dsh-schedule`、`dsh-goal`、`dsh-tools`、`dsh-session`、`dsh-llm`、`dsh-agent`、`dsh-client-ui-slots`、`dsh-web-app` 的运行时 JS **逐字节全等**，`dsh-web-app` 里那四份 `presets/*.patch.yml`（本插件 preset 的行来源）也在其中；有差异的只有 `ui-sidebar`（新增兄弟槽 `sidebar.session.action`、`SidebarRoot` 把 New-session 按钮包进 `div.newSessionRow`）、`ui-primitives`（upload 图标）、`agent-preset`（`skills/dsh-doc/references/packages.md` 文档）。② **真包探针**：`.test-tmp/rc3/probe` 装 54 个 `@deepseek-ai/*` 全 `0.2.2-rc.3`；`SubagentRuntime.prototype` 19 个方法里 `listDescendants`/`drainDescendants`/`namesOf`/`resolveName` 全在、`listChildren`/`drainChildren` 全无，把这份真实方法集喂给 `resolveSubagentGeneration()` 稳定得 `'0.2.2'`；`startActivation` 仍从 spec 顶层读 `prompt`（`dsh-subagent/src/manager.ts:409-410`）、`parent`（`src/index.ts:275`）、`maxDepth`（`src/index.ts:272`），0.23.0 的平铺 spec 与 `lib/subagent-compat.js:251-280` 的 `flattenRequest` 逐字段对齐；插件 `lib/` 的 6 组具名导入（`dsh-tools#defineTool`、`dsh-session#SessionId`、`dsh-llm#{createUserMessage,HarnessError,boundContextSummary}`、`schemastery#default`）缺失 0。③ **官方 compare diff**：515 个变更文件里 378 个只改 `package.json` 版本号（机械复核：A 组中非 `package.json` 文件数 **0**），137 个有实质内容，但逐个判定后没有一个落在插件接口面上 —— `ui-sidebar` 是纯增量 `+18/-0`（新增槽声明、联合类型只加成员、New-session 的 JSX 逐字节移进 children）、`ui-primitives` 加 upload 图标、`ui-workspace` 发 `workspace.picker` Factory、新实验包 `dsh-deepseek-chat-import`（46 个文件，默认 `enabled: false`，自带 `cordis.patch.yml` 写明 shipped profiles 不含它，行 id 与本插件的 `- insert: preset-main-agent` 不重名）、`apps/desktop` 只给安装器 `restart-status.h` 的 `CreateProcessW` 补工作目录（不改更新通道与状态目录契约；插件 `lib/` 里 `installer`/`restart-status`/`update-channel` 零命中）。插件注册的 4 个槽（`conversation.view`、`plugins.item`、`main`、`sidebar.panellist`）在 diff 中 **0 次被删改**，而且 rc.3 自带上游测试仍在断言 `expect(b.slots.spec('sidebar.panellist')).toEqual({ kind: 'list', scope: 'root' })`；`slot-catalog.ts` 只是生成物（运行时只拿它给槽树补注释字段），真正的 `slots.register` 校验在 renderer，判据是父条目的 children 表有没有声明过这个名字。控制工具仍驻留 `dsh-tool-subagent-control`（`wait_agent` `src/wait-agent.ts:91`、`send_message` `src/index.ts:44`、`interrupt_agent` `src/index.ts:120`），而本插件 preset 整行替换掉它 —— 0.23.1「按代际条件补注册 `wait_agent`」的判据继续成立。三个证据面都固化成了可重跑的东西：新增 `scripts/probe-host-seams.mjs`（`node scripts/probe-host-seams.mjs <宿主目录>`，六项接缝逐个判定、失败非 0 退出）+ `tests/host-seams.test.mjs`（守探针的槽清单、侧栏行与主面板同 id、`lib/client.js` 零宿主依赖、`lib/` 的宿主导入都在 peer 里）。测试 **586 项 / 584 通过 / 2 跳过 / 0 失败 / 50 个文件**。部署提醒不变：本机安装被 `dsh-purge` 打过补丁，升 rc.3 会覆盖，装完重跑 `purge_apply` 再重启 |
 | 0.23.3 | 修 **`ctx.agents.roots()` 在 0.2.2 上根本不存在** —— 0.23.2 那行只对了 package 字节面，漏了接口面：`npm pack` 取 rc.2 与 rc.3 的 `@deepseek-ai/dsh-agent`，两份 `lib/index.js` 的 sha256 **完全相同**（`bc2a39de…`），而**两份 `lib/types/index.d.ts` 里 `roots` 的命中数都是 0** —— 这根接缝在 rc.2 之前就已经没了，逐字节比对只能证明「rc.2 → rc.3 没有回归」，证明不了「与 rc.2 兼容」。后果：`lib/goal.js` 三处 `ctx.agents.roots()`（`humanMessages`、`tools/pre-execute`、`tools/post-execute`）里，pre-execute 那个**对每一次工具调用都执行**，在任何 0.2.2 宿主上都会在工具到达之前抛 `ctx.agents.roots is not a function` —— 一个布尔判断把整条工具链打死，表现成「插件装了但所有工具全挂、模型文本却正常」。修法是收进唯一接缝 `lib/agents-compat.js`：`listRootAgents(ctx)` 有 `roots()` 就走旧语义、否则用 `list()` 按会话头过滤顶层（`meta.origin !== 'subagent'` 且 `delegationDepth` 缺失或 0；只带 `parentSession` 的普通 fork 仍是顶层），两条读法都抛错时返回 `[]` 而不是把异常抛进工具链；`isRootExecution(ctx, agent)` 是三个调用点的唯一入口（`agent` 为 `undefined`/`null` 直接 `false`）；`isRootAgent(agent)` 单独暴露判据。证据不是读 `.d.ts` 推的：rc.3 真包里 `AgentRegistry.prototype` 上 `roots === undefined`、`list` 是 function，`Object.create(AgentRegistry.prototype)` 覆写 `list` 后 `listRootAgents()` 只挑出顶层（`tests/agents-compat.test.mjs` 7 例钉住两代读法与四个降级路径）。测试 **593 项 / 593 通过 / 0 跳过 / 0 失败 / 51 个文件** |
 | 0.23.4 | 收 0.23.3 的尾巴，外加修掉一个「修不了自己该修现场」的工具。① `lib/goal.js` 的 `hasDirectHumanMessage()` 仍是 0.23.3 那个根因的第二半：拿 `typeof agents?.roots !== 'function'` 当能力探测，而 rc.3 起 `AgentRegistry` 公开面只有 `get()`/`list()` → 恒 `false`，它决定的 direct-human 权限与 `lib/spawn.js:683` 的 reserved 槽被静默关掉（不抛错，所以看起来只是「预留槽永远开不了」）；改成只判 `agents` 是否存在，「是不是顶层」交给下面的 `isRootExecution`，两代宿主都在那里收口。② `scripts/repair-profile.mjs` 的 `readJson()` 原先裸 `JSON.parse`：profile 的 `package.json` 一旦被 Windows 工具写成带 BOM 的 UTF-8（`Set-Content -Encoding utf8`、编辑器「UTF-8 with BOM」），它自己先报「package.json 解析失败」——恰好修不了它最该修的那种现场。这个现场今天真发生过：桌面版启动时 `dsh-app-boot` 的 `readProfileManifest` 也是裸 `JSON.parse` 读同一个文件，BOM 让 host 启动即 fatal（`crash-2026-11-14T11-33-24` / `11-34-36` 两份日志）。改为剥 `^\uFEFF`，与 `lib/checks.js` 的 `readJsonText` 同一约定。新增两条测试：一条静态守卫（`lib/` 里除 `agents-compat.js` 外出现 `.roots(` 就红，注释先剥掉再扫），一条带 BOM 的 `package.json` 仍能扫描。测试 **595 项 / 595 通过 / 0 跳过 / 0 失败 / 51 个文件** |
+| 0.23.5 | 修 **看门狗把自己判停之后再也回不来**，并把 **dsh 0.2.2-rc.4 / rc.5** 的核对结论补记进正文（见上文「dsh 0.2.x 兼容性」的三层证据：上游 compare、rc.3 ↔ rc.5 双 `npm pack` 逐文件 sha256 —— 两棵树各 2102 个文件、0 增删、56 个差异且全部落在 `package.json` 版本号 + `dsh-client-ui-sidebar/client.js` 的 `localBuildVersion()` + `dsh-llm` 的 `ErrorCodes.CONTENT_REFUSED`，以及隔离 `DSH_HOME` 装 rc.5 后真启动打 `/supervisor/health`）。① 死锁是三个各自都对的实现互锁：唤醒只能由 `dsh-schedule` 投递，而它给的 `source.kind === 'schedule'`，`humanMessages()` 只认 `'user'` —— 定时回合永远不满足「直接人类回合」；`lib/watchdog.js` 连续空转达阈值时用 `goals.block(…, { code: 'idle' })` 停目标（刻意用 block 而不是 pause：block 带原因码，重启后仍读得到「是被空转停的」）；`update_goal` 的 resume 原先只认直接人类回合 —— 于是系统停了它、却只有人能开它，而叫醒它的那条通道永远不算人。现场就在本机：`loop-state` 里 `idleTicks: 6`、`pausedBy: 'idle'`，`BRIEF.md` 写「上次停止原因：目标已 paused」，8 个 worker 全部 `ended/ready`，从此再没推进过。② 修法按**「是谁做的决定」**分权，判据只有一份：`lib/goal-policy.js` 的 `SYSTEM_HOLD_CODES = ['idle']`、`isSystemHeld(goal)`、`deriveGoalActionAuthority()`、`deriveGoalActionDenial()` —— `start` 与 `pause` 仍只认直接人类回合，`resume` 额外认 `blocked + blockedReason.code === 'idle'` 这一种系统持有；`model-reported` 阻塞与人类按下的 `paused` 照旧只有人能解除。`requireDirectHuman()` 删掉，换成 `lib/goal.js` 的 `goalActionCredential()`；系统持有的恢复在 `.agi/CHANGELOG.jsonl` 留 `authority: { kind: 'rule', id: 'goal-system-hold' }`（`lib/authority.js`，`authorityBasis()` 给它生成带判停原因的依据），与人类亲手恢复事后可分辨。③ 顺带修掉一处契约不一致：`tools/pre-execute` 守卫原先在 `humanMessages(...).at(-1) === undefined` 时直接 `next()`，于是在定时唤醒、goal 回合这些**真实工作回合里整条闸门不存在** —— 模型照 persona 调 `start_goal`，一路放行到工具本体才抛「需要一个直接人类回合」，错长在「权限」上而不是「这一轮不是人开口的那一轮」。现在同一份判据在执行前就说话：已武装 goal 的合法 goal 回合与空转判停的 resume 放行，其余 goal 写入动作直接给出对应文案；非 goal 工具不受影响（没退回只读白名单 —— 那会掐死真正需要派活儿的定时回合）。刻意**没**做：删人类限定、加第二回合确认门（DESIGN N16 已否决）、把判停改回 pause、在 `node_modules` 副本里改代码。决策记进 `DESIGN.md` N25。测试 595/51 → **602 项 / 600 通过 / 2 跳过 / 0 失败 / 51 个文件**（新增 7 例：判据与文案、凭证与账本、三例守卫行为）。生效前提：重启 dsh；重启前那个 `pausedBy: 'idle'` 的会话下次唤醒即可自己 resume |
 
 ## 在新 PC 上运行本地课程
 
@@ -523,9 +561,21 @@ goal-round 驱动器仍安装在宿主上。
 goal 服务，并返回同一个模型回合，使工作继续。
 生成的文档用于可见性与纠偏，不是审批闸门：
 人类可以查看它，并通过普通聊天改向、暂停或停止。
-`update_goal` 刻意省略了 `edit`；暂停、恢复、完成、阻塞
-阈值、原生修订版本、投影与自动续行都保持其
-Harness 行为。
+`update_goal` 刻意省略了 `edit`；暂停、完成、阻塞阈值、
+原生修订版本、投影与自动续行都保持其 Harness 行为。
+
+暂停与恢复按「**是谁做的决定**」分权，而不是按「谁在问」：`pause` 只有直接人类
+回合能按下去；`resume` 除了人，还认一种系统凭证 —— 看门狗因为连续空转把目标停下
+（`phase: 'blocked'` 且 `blockedReason.code === 'idle'`）时，停它不是人的决定，所以
+重新打开也不需要人来批准，恢复后在 `.agi/CHANGELOG.jsonl` 留一条
+`authority: { kind: 'rule', id: 'goal-system-hold' }` 的记录，事后与人类亲手恢复可分辨。
+模型自报的 `model-reported` 阻塞与人类按下的 `paused` 都不在此列，仍然只有人能解除。
+这条分权的理由是死锁：唤醒只能由定时任务投递（`source.kind === 'schedule'`），而定时
+回合永远不算直接人类回合 —— 若 `resume` 也只认人，纯定时驱动的会话一旦被空转判停就
+再也回不来了。`tools/pre-execute` 守卫用同一份判据（`lib/goal-policy.js` 的
+`deriveGoalActionAuthority` / `deriveGoalActionDenial`）在执行**前**就拒掉不该发生的
+goal 写入动作，并说明现场（这类回合里不要 `start_goal`、不要 `pause`），而不是等工具
+执行后抛一条看起来像权限问题的错。
 
 只有当原生可续行子级真正收敛后，才会报告 worker 失败。
 监督者保留那一次唤醒，并用子级持久的最终 `turn/end` 丰富它，

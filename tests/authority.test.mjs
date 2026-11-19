@@ -19,6 +19,7 @@ import {
   authorityLabel,
   deriveAuthority,
   recordAuthority,
+  SYSTEM_HOLD_RULE_ID,
 } from '../lib/authority.js'
 
 const workspace = () => {
@@ -164,6 +165,43 @@ test('recordAuthority：写不进去也只返回失败，不抛', () => {
     })
     assert.equal(result.ok, false)
     assert.equal(typeof result.error, 'string')
+  } finally {
+    cleanup()
+  }
+})
+
+
+test('SYSTEM_HOLD_RULE_ID：它是 resume 的凭证，依据里写明「谁停的」', () => {
+  assert.equal(SYSTEM_HOLD_RULE_ID, 'goal-system-hold')
+
+  const basis = authorityBasis({ kind: 'rule', id: SYSTEM_HOLD_RULE_ID })
+  assert.deepEqual(basis.rules, [
+    {
+      id: SYSTEM_HOLD_RULE_ID,
+      evidence: 'goal.blockedReason.code=idle（看门狗空转判停，不是人类的决定）',
+    },
+  ])
+  assert.equal(basis.humanDirect, false)
+  assert.equal(authorityLabel({ kind: 'rule', id: SYSTEM_HOLD_RULE_ID }), 'rule:goal-system-hold')
+
+  // 写进账本后，一次自动恢复与一次人类恢复事后可分辨。
+  const { dir, cleanup } = workspace()
+  try {
+    const result = recordAuthority(dir, {
+      authority: { kind: 'rule', id: SYSTEM_HOLD_RULE_ID },
+      action: 'goal-resume',
+      summary: '目标 goal-2f1c 由系统持有恢复为 active（停下的原因：idle）',
+      goalId: 'goal-2f1c',
+      blockedReason: { code: 'idle', message: '连续空转' },
+      turnSource: 'schedule',
+    })
+    assert.equal(result.ok, true)
+    const entry = JSON.parse(readFileSync(join(dir, '.agi', 'CHANGELOG.jsonl'), 'utf8').trim())
+    assert.deepEqual(entry.authority, { kind: 'rule', id: SYSTEM_HOLD_RULE_ID })
+    assert.equal(entry.actor, 'main-agent')
+    assert.equal(entry.action, 'goal-resume')
+    assert.equal(entry.turnSource, 'schedule')
+    assert.match(entry.ts, /^\d{4}-\d{2}-\d{2}T/)
   } finally {
     cleanup()
   }

@@ -24,7 +24,7 @@
 | `check_outcome` | lead | 清单是 worker 自己写的，让它自己跑自己的验收等于自证；只有 Lead 跑出来的结果才算证据。 |
 | `get_goal` | lead | goal 是会话级的续行契约，只有监督者这一层持有；worker 拿到它只会让范围漂移。 |
 | `start_goal` | lead | 写 GOAL.md 等于替整个会话承诺目标，这个承诺必须由看见用户原话的那一层做出。 |
-| `update_goal` | lead | pause / complete / blocked 是对整条任务的判断；worker 只看得到自己那一个单元。 |
+| `update_goal` | lead | pause / complete / blocked 是对整条任务的判断；worker 只看得到自己那一个单元。resume 不是「只认人」的例外：停在看门狗空转判停（`blockedReason.code === 'idle'`）上的 goal 由系统自己恢复，判据是「谁停的」（DESIGN.md N25）。 |
 | `ask_user_question` | denied | 在子会话里挂起等用户回答不会唤醒任何 report，worker 会死等；上行必须走宿主原生 report。 |
 
 ## 为什么 worker 那一列是空的

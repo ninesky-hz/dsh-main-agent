@@ -12,7 +12,7 @@
 | `.agi/BRIEF.md` | `lib/loop-journal.js` | 模型（每轮读）、`lib/index.js` | `writeBrief` 整份覆盖写；写盘失败时对每条待投递 entry 记一次投递失败。 |
 | `.agi/outbox.jsonl` | `lib/outbox.js` | `lib/loop-journal.js`（渲染待投递）、`lib/watchdog.js`（投递失败事实） | 读-改-写、整份重写；`enqueue` / `markDelivered` / `markFailed` 都在 `.agi/outbox.lock` 里做。 |
 | `.agi/GOAL.md` | `lib/goal.js` | `lib/index.js`、`lib/client.js` | 目标生命周期文件；范围变更走 `GOAL_AMENDMENTS.md`。 |
-| `.agi/CHANGELOG.jsonl` | `lib/index.js` | `lib/index.js`（Feed） | append-only。 |
+| `.agi/CHANGELOG.jsonl` | `lib/index.js`、`lib/authority.js`（`recordAuthority`） | `lib/index.js`（Feed） | append-only。`recordAuthority` 写的每条都带 `authority`（`human-direct` / `rule:<id>` / `assumed`），因此一次系统持有恢复（`rule:goal-system-hold`）与一次人类亲手恢复事后可分辨。 |
 | `.agi/progress.jsonl` | `lib/index.js`、`lib/loop-journal.js` | `lib/watchdog.js`、`lib/index.js` | append-only：多写者安全，所以这里登记的「唯一写者」不成立，也不需要有锁。 |
 | `.agi/questions.jsonl` | `lib/index.js` | `lib/index.js`、`lib/watchdog.js` | append-only；watchdog 只读它数「还有几个问题没答」。 |
 | `.agi/proposals.jsonl` | `lib/spawn.js` | `lib/index.js` | append-only。 |

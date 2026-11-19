@@ -13,7 +13,7 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { register } from 'node:module'
@@ -83,6 +83,7 @@ function harness(events) {
     agent,
     tools,
     sections,
+    listeners,
     goals: { value: undefined },
     ctx: {
       agents: {
@@ -239,4 +240,117 @@ test('update_goal admits a goal round but never a pause, and still enforces the 
   )
   const completed = await runGoalTool(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'complete' })
   assert.equal(completed.goal.phase, 'complete')
+})
+
+
+/** 一个不是人开口的回合：定时唤醒投递的消息 source.kind 固定是 'schedule'。 */
+function scheduledTurnLog() {
+  return [
+    event('session/start', 0, {}),
+    event('turn/start', 1, { turn: TURN }),
+    event('user/message', 2, {
+      content: [{ type: 'text', text: '巡检一次' }],
+      source: { kind: 'schedule' },
+    }),
+  ]
+}
+
+/** `tools/pre-execute` 守卫：跑一次，返回它给出的结果与 next 被调用的次数。 */
+async function runGuard(context, name, args) {
+  const guard = context.listeners.get('tools/pre-execute')
+  assert.equal(typeof guard, 'function', 'tools/pre-execute 守卫必须注册')
+  let forwarded = 0
+  const result = await guard({ agent: context.agent, name, arguments: args }, () => {
+    forwarded += 1
+    return 'next'
+  })
+  return { result, forwarded }
+}
+
+test('定时唤醒里 start_goal 在执行前就被拒，且理由说的是现场不是权限', async () => {
+  const context = harness(scheduledTurnLog())
+
+  const { result, forwarded } = await runGuard(context, 'start_goal', { objective: 'x' })
+  assert.equal(forwarded, 0, '被拒的 goal 写入动作不该继续往下走')
+  assert.equal(result?.kind, 'deny')
+  assert.match(result.reason, /start_goal 需要一个直接人类回合/)
+  assert.match(result.reason, /定时唤醒/)
+
+  // 守卫只接管 goal 写入动作：同一条定时回合里的普通工具照旧放行，
+  // 这样 watchdog 真正需要派活儿的回合不会被掐死。
+  const plain = await runGuard(context, 'bash', { command: 'ls' })
+  assert.equal(plain.result, 'next')
+  assert.equal(plain.forwarded, 1)
+
+  // 守卫若被绕过，工具本体是最后一道闸：同样是「需要直接人类回合」，不是 TypeError。
+  await assert.rejects(
+    async () => runGoalTool(context, 'start_goal', {
+      objective: 'Ship a verified report.',
+      constraints: [],
+      milestones: [],
+      out_of_scope: [],
+    }),
+    policyMessage(/start_goal 需要一个直接人类回合/),
+  )
+  assert.equal(context.goals.value, undefined, '被拒的 start_goal 不该武装任何目标')
+})
+
+test('看门狗判停的 goal 可以在定时唤醒里自己恢复，并留下系统持有的凭证', async () => {
+  const context = harness(scheduledTurnLog())
+  const idle = { code: 'idle', message: '连续 5 个回合没有推进' }
+  context.goals.value = goalRecord({ phase: 'blocked', blockedReason: idle })
+
+  const guard = await runGuard(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'resume' })
+  assert.equal(guard.result, 'next', '系统自己停的目标必须能在定时回合里自己回来')
+
+  const changelog = join(CWD, '.agi', 'CHANGELOG.jsonl')
+  const before = existsSync(changelog)
+    ? readFileSync(changelog, 'utf8').trim().split('\n').filter(Boolean).length
+    : 0
+
+  const resumed = await runGoalTool(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'resume' })
+  assert.equal(resumed.goal.phase, 'active')
+
+  const lines = readFileSync(changelog, 'utf8').trim().split('\n').filter(Boolean)
+  assert.equal(lines.length, before + 1, '一次自动恢复必须留一条带凭证的记录')
+  const entry = JSON.parse(lines.at(-1))
+  assert.deepEqual(entry.authority, { kind: 'rule', id: 'goal-system-hold' })
+  assert.equal(entry.actor, 'main-agent')
+  assert.equal(entry.action, 'goal-resume')
+  assert.equal(entry.goalId, 'goal-2f1c')
+  assert.deepEqual(entry.blockedReason, idle)
+  assert.equal(entry.turnSource, 'schedule')
+  assert.match(entry.summary, /idle/)
+})
+
+test('非人类回合里 pause 与「不是空转」的 resume 执行前就被拒，complete 不被接管', async () => {
+  const context = harness(scheduledTurnLog())
+
+  // 模型自报阻塞：需要一个成年人拍板，理由里要把原因码原文报出来。
+  context.goals.value = goalRecord({ phase: 'blocked', blockedReason: { code: 'model-reported', message: 'stuck' } })
+  const blocked = await runGuard(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'resume' })
+  assert.equal(blocked.result?.kind, 'deny')
+  assert.match(blocked.result.reason, /model-reported/)
+
+  // 人暂停的目标：解除同样要人。
+  context.goals.value = goalRecord({ phase: 'paused' })
+  const paused = await runGuard(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'resume' })
+  assert.equal(paused.result?.kind, 'deny')
+  assert.match(paused.result.reason, /被人暂停/)
+
+  // 按住正在跑的循环只有人能决定。
+  context.goals.value = goalRecord()
+  const hold = await runGuard(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'pause' })
+  assert.equal(hold.result?.kind, 'deny')
+  assert.match(hold.result.reason, /只有人能把正在跑的循环按住/)
+
+  // complete / blocked 有自己那条 goal-round 通道，刻意不在这条守卫里接管。
+  const finish = await runGuard(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'complete' })
+  assert.equal(finish.result, 'next')
+
+  // 工具本体给出的仍是同一句「现场」，两处判据没有漂移。
+  await assert.rejects(
+    async () => runGoalTool(context, 'update_goal', { goal_id: 'goal-2f1c', revision: 1, action: 'pause' }),
+    policyMessage(/只有人能把正在跑的循环按住/),
+  )
 })
